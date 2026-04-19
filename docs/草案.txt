@@ -1,0 +1,323 @@
+无限画布数据治理应用 - 前端设计规格说明书
+文档信息
+项目	内容
+文档版本	v1.0.0
+状态	草案
+1. 产品概述
+1.1 产品定位
+一款以无限画布为核心交互界面的数据治理工具，用户通过自然语言指令生成数据查询、处理逻辑，并以可视化卡片形式在画布上编排数据血缘关系。
+
+1.2 核心价值
+所见即所得：SQL/DataFrame 逻辑与元数据可视化呈现
+
+可追溯性：画布连线即数据血缘地图
+
+低门槛：Chat 自然语言替代复杂编码
+
+1.3 用户画像
+角色	使用场景
+数据分析师	快速探查数据、生成报表逻辑
+数据工程师	梳理数据血缘、设计ETL流程
+业务人员	通过自然语言获取数据洞察
+2. 技术栈选型
+类别	技术选型	版本	说明
+框架	React	^18.2.0	UI 构建
+语言	TypeScript	^5.0.0	类型安全
+构建工具	Vite	^5.0.0	快速开发
+状态管理	Zustand	^4.5.0	轻量级画布状态
+画布引擎	React Flow	^11.10.0	无限画布核心
+布局算法	Dagre	^0.8.5	自动排版
+代码编辑器	Monaco Editor	^0.45.0	SQL/Python 编辑
+UI 组件库	Ant Design	^5.12.0	基础组件
+样式方案	Tailwind CSS	^3.4.0	原子化样式
+HTTP 客户端	Axios	^1.6.0	API 请求
+WebSocket	Socket.io-client	^4.6.0	流式响应
+3. 页面布局架构
+
+3.2 布局尺寸规范
+区域	默认尺寸	可调整	说明
+Header	56px	否	Logo、项目名称、用户头像
+Sidebar	280px	是	可拖拽边缘调整宽度
+Chat Panel	400px	是	可拖拽顶部边缘调整高度，支持折叠
+4. 核心组件设计
+4.1 画布核心组件
+4.1.1 ReactFlowCanvas
+typescript
+interface ReactFlowCanvasProps {
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+  onNodesChange: OnNodesChange;
+  onEdgesChange: OnEdgesChange;
+  onConnect: OnConnect;
+  onNodeDoubleClick: (node: CanvasNode) => void;
+}
+
+// 画布配置常量
+const CANVAS_CONFIG = {
+  minZoom: 0.1,
+  maxZoom: 2.0,
+  snapToGrid: true,
+  snapGrid: [15, 15],
+  fitViewPadding: 0.2,
+};
+4.1.2 节点类型定义
+节点类型	标识	描述
+Source Table	sourceTable		数据源物理表
+SQL Query	sqlQuery		SQL 查询逻辑
+DataFrame	dataFrame		Python 处理逻辑
+Visualization	visualization		图表可视化
+Note	note		文本注释
+4.1.3 自定义节点数据结构
+typescript
+interface BaseNodeData {
+  title: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SourceTableNodeData extends BaseNodeData {
+  type: 'sourceTable';
+  tableName: string;
+  database: string;
+  schema: TableSchema[];
+  partitionKey?: string;
+  rowCount?: number;
+}
+
+interface SQLQueryNodeData extends BaseNodeData {
+  type: 'sqlQuery';
+  sql: string;
+  dialect: 'mysql' | 'postgresql' | 'hive' | 'spark';
+  outputSchema: TableSchema[];
+  executionStatus?: 'idle' | 'running' | 'success' | 'error';
+  lastRunTime?: string;
+  lineage: {
+    upstream: string[];   // 上游节点 ID
+    downstream: string[]; // 下游节点 ID
+  };
+}
+
+interface DataFrameNodeData extends BaseNodeData {
+  type: 'dataFrame';
+  language: 'python' | 'pyspark';
+  code: string;
+  inputSchema: TableSchema[];
+  outputSchema: TableSchema[];
+}
+4.2 Chat 交互组件
+4.2.1 ChatPanel 状态定义
+typescript
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: string;
+  attachments?: {
+    type: 'node' | 'sql' | 'schema';
+    nodeIds?: string[];
+    content?: string;
+  }[];
+}
+
+interface ChatContext {
+  selectedNodes: CanvasNode[];  // 当前画布选中的节点
+  referencedNodes: CanvasNode[]; // 在输入框中 @ 引用的节点
+}
+4.2.2 上下文引用交互规范
+操作	触发方式	视觉反馈
+引用画布节点	输入 @ 或拖拽节点到输入框	显示蓝色标签
+引用 SQL 片段	选中画布中 SQL 块按 Ctrl+C 复制引用	粘贴时显示为代码块引用
+引用 Schema	右键节点 → "复制字段定义"	显示表格结构摘要
+4.3 自动排版组件
+4.3.1 排版触发时机
+事件	触发方式	排版范围
+初始加载	自动	全部节点
+新增节点	用户生成新卡片	增量局部排版
+手动整理	点击工具栏按钮 / Ctrl+Shift+L	选中节点或全部
+连线变更	完成连线操作后	受影响子树
+4.3.2 排版配置参数
+typescript
+interface LayoutConfig {
+  direction: 'TB' | 'LR';           // 垂直/水平
+  nodeWidth: number;                 // 默认 280
+  nodeHeight: number;                // 默认 180
+  rankSep: number;                   // 层级间距 120
+  nodeSep: number;                   // 同层间距 60
+  edgePadding: number;               // 边距 40
+  ranker: 'network-simplex' | 'tight-tree' | 'longest-path';
+}
+5. 数据流与状态管理
+5.1 Zustand Store 结构
+typescript
+interface CanvasStore {
+  // 画布状态
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+  viewport: Viewport;
+  
+  // 选中状态
+  selectedNodeIds: string[];
+  selectedEdgeIds: string[];
+  
+  // Chat 上下文
+  chatContext: ChatContext;
+  
+  // 操作历史（用于撤销/重做）
+  history: {
+    past: CanvasSnapshot[];
+    future: CanvasSnapshot[];
+  };
+  
+  // Actions
+  addNode: (node: Partial<CanvasNode>) => void;
+  updateNode: (id: string, data: Partial<CanvasNodeData>) => void;
+  removeNodes: (ids: string[]) => void;
+  addEdge: (edge: Partial<CanvasEdge>) => void;
+  removeEdges: (ids: string[]) => void;
+  
+  // 布局 Actions
+  autoLayout: (nodeIds?: string[]) => void;
+  incrementalLayout: (newNodeId: string) => void;
+  
+  // 历史 Actions
+  undo: () => void;
+  redo: () => void;
+  
+  // Chat Actions
+  sendMessage: (content: string, attachments?: Attachment[]) => Promise<void>;
+  addNodeToContext: (nodeId: string) => void;
+  clearContext: () => void;
+}
+5.2 API 接口定义
+typescript
+// 自然语言生成 SQL
+POST /api/ai/generate-sql
+Request: {
+  prompt: string;
+  contextNodes?: string[];
+  dialect: string;
+}
+Response: {
+  sql: string;
+  explanation: string;
+  suggestedNodeTitle: string;
+}
+
+// 执行 SQL 查询
+POST /api/query/execute
+Request: {
+  sql: string;
+  dialect: string;
+  limit?: number;
+}
+Response: {
+  columns: TableSchema[];
+  rows: any[][];
+  executionTime: number;
+  rowCount: number;
+}
+
+// 生成 DataFrame 代码
+POST /api/ai/generate-dataframe
+Request: {
+  prompt: string;
+  inputSchema: TableSchema[];
+  language: 'python' | 'pyspark';
+}
+Response: {
+  code: string;
+  explanation: string;
+}
+6. 交互规范
+6.1 快捷键映射
+快捷键	功能	作用域
+Space + Drag	拖动画布	画布区
+Scroll	缩放画布	画布区
+Ctrl + Z	撤销	全局
+Ctrl + Shift + Z	重做	全局
+Ctrl + C/V	复制/粘贴节点	画布区
+Delete	删除选中节点/边	画布区
+Ctrl + A	全选节点	画布区
+Ctrl + Shift + L	自动排版	画布区
+Ctrl + K	打开命令面板	全局
+Ctrl + /	聚焦 Chat 输入框	全局
+Esc	取消选中/关闭弹窗	全局
+6.2 拖拽交互规范
+拖拽源	拖拽目标	行为
+Sidebar 表节点	画布空白区	创建 SourceTable 节点
+画布节点	Chat 输入框	添加到对话上下文
+画布节点输出端口	另一节点输入端口	建立连线关系
+文件	画布区	导入 JSON 画布配置
+6.3 右键菜单规范
+节点类型	菜单项
+所有节点	复制、删除、复制引用、添加备注
+SQL Query	编辑 SQL、运行、查看执行计划、导出结果
+DataFrame	编辑代码、运行、查看输出 Schema
+Source Table	刷新元数据、查看表详情、预览数据
+
+8. 性能优化策略
+8.1 画布渲染优化
+策略	实现方式	预期效果
+虚拟化节点	React Flow 内置视口裁剪	大量节点时保持 60fps
+节点内容懒加载	IntersectionObserver	减少初始渲染开销
+Schema 列表虚拟滚动	react-window	字段数量多时不卡顿
+防抖排版计算	lodash.debounce	避免频繁重排
+8.2 状态更新优化
+typescript
+// 使用浅比较避免不必要的重渲染
+const nodeSelector = (state: CanvasStore) => state.nodes;
+const selectedNodeIdsSelector = (state: CanvasStore) => state.selectedNodeIds;
+
+// 细粒度订阅
+const nodes = useStore(
+  useShallow((state) => 
+    state.nodes.filter(n => state.selectedNodeIds.includes(n.id))
+  )
+);
+9. 错误处理与降级
+9.1 错误边界
+场景	处理方式
+AI 服务超时	显示重试按钮，保留用户输入
+SQL 执行失败	在节点上显示错误标记，悬浮展示错误信息
+布局计算失败	回退到网格排列
+WebSocket 断开	自动重连，期间禁用 Chat 输入
+9.2 离线支持
+画布状态自动保存至 LocalStorage
+
+恢复时提示用户上次编辑时间
+
+AI 功能离线时自动禁用
+
+10. 测试策略
+10.1 单元测试覆盖
+模块	覆盖目标	工具
+Store Actions	90%	Vitest
+工具函数（布局算法）	95%	Vitest
+自定义 Hooks	85%	@testing-library/react-hooks
+10.2 E2E 测试场景
+场景	验证点
+用户输入指令生成 SQL 节点	节点正确创建并放置在画布
+连线两个节点触发上下文推荐	Chat 面板显示推荐指令
+框选节点执行自动排版	节点位置按层级调整
+引用节点到 Chat 并发送指令	上下文正确注入 API 请求
+11. 交付物清单
+交付物	格式	说明
+组件库源码	TypeScript + React	完整前端工程
+组件 Storybook	Storybook 静态站点	组件文档与示例
+设计稿	Figma 链接	高保真视觉稿
+API 接口文档	OpenAPI 3.0	前后端接口约定
+部署配置	Dockerfile + Nginx	生产环境部署
+附录
+A. 术语表
+术语	定义
+画布卡片	画布上的一个可拖拽节点
+上下文引用	Chat 输入中引用的画布节点信息
+数据血缘	数据从源头到目标的流转路径
+增量排版	仅对新节点进行避让计算，不动已有节点
+B. 参考资料
+React Flow 官方文档
+
+Dagre 布局算法文档
+
+Zustand 最佳实践

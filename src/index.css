@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-primary: #0f0f0f;
+  --color-bg-canvas: #171717;
+  --color-bg-surface: #1a1a1a;
+  --color-bg-card: #171717;
+  --color-bg-input: #1e1e1e;
+
+  --color-border-subtle: #242424;
+  --color-border-default: #2e2e2e;
+  --color-border-prominent: #363636;
+  --color-border-light: #393939;
+
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #b4b4b4;
+  --color-text-muted: #898989;
+  --color-text-dim: #4d4d4d;
+
+  --color-brand: #3ecf8e;
+  --color-brand-link: #00c573;
+  --color-brand-border: rgba(62, 207, 142, 0.3);
+
+  --color-node-source: hsl(270, 60%, 60%);
+  --color-node-sql: hsl(152, 58%, 52%);
+  --color-node-df: hsl(25, 75%, 55%);
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Source Code Pro', 'Menlo', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #171717;
+  color: #fafafa;
+  font-family: var(--font-sans);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #363636;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4d4d4d;
+}
+
+.react-flow__edge-path {
+  stroke: #3ecf8e;
+  stroke-width: 2;
+}
+.react-flow__edge.animated .react-flow__edge-path {
+  stroke-dasharray: 5;
+  animation: dashdraw 0.5s linear infinite;
+}
+@keyframes dashdraw {
+  from { stroke-dashoffset: 10; }
+  to { stroke-dashoffset: 0; }
+}
+
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: #3ecf8e;
+  border: 2px solid #171717;
+}
+.react-flow__handle:hover {
+  background: #00c573;
+}
+
+.react-flow__background {
+  background: #171717 !important;
+}
+
+.react-flow__controls button {
+  background: #1e1e1e !important;
+  border: 1px solid #2e2e2e !important;
+  color: #fafafa !important;
+  fill: #fafafa !important;
+}
+.react-flow__controls button:hover {
+  background: #2a2a2a !important;
+}
+.react-flow__controls button svg {
+  fill: #fafafa !important;
+}
+
+.react-flow__minimap {
+  background: #0f0f0f !important;
+  border: 1px solid #2e2e2e !important;
+}
