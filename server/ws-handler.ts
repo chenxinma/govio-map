@@ -23,6 +23,8 @@ export function setupWebSocket(server: import("http").Server) {
           case "message_update":
             if (event.assistantMessageEvent.type === "text_delta") {
               ws.send(JSON.stringify({ type: "text_delta", content: event.assistantMessageEvent.delta }));
+            } else if (event.assistantMessageEvent.type === "thinking_delta") {
+              ws.send(JSON.stringify({ type: "thinking_delta", content: event.assistantMessageEvent.delta }));
             }
             break;
           case "tool_execution_start":

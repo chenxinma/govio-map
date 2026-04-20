@@ -71,6 +71,7 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   nodePreviews?: NodePreview[];
+  thinking?: string;
 }
 
 export interface NodePreview {

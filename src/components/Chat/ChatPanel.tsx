@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, X, ChevronDown, ChevronUp, MessageCircle } from 'lucide-react';
+import { Send, X, ChevronDown, ChevronUp, MessageCircle, ChevronRight, Loader } from 'lucide-react';
 import { Zap, Database, FileCode } from 'lucide-react';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useCanvasStore } from '../../store/canvas-store';
 import type { ChatMessage, NodePreview } from '../../types';
 
@@ -42,7 +44,11 @@ function MessageItem({ message }: { message: ChatMessage }) {
               : 'bg-bg-surface text-text-secondary border border-border-subtle'
           }`}
         >
-          {message.content}
+          {isUser ? (
+            message.content
+          ) : (
+            <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+          )}
         </div>
         {message.nodePreviews && message.nodePreviews.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
@@ -59,13 +65,19 @@ function MessageItem({ message }: { message: ChatMessage }) {
 export default function ChatPanel() {
   const [input, setInput] = useState('');
   const [collapsed, setCollapsed] = useState(false);
+  const [showThinking, setShowThinking] = useState(true);
   const messages = useCanvasStore((s) => s.messages);
   const referencedNodes = useCanvasStore((s) => s.referencedNodes);
   const sendMessage = useCanvasStore((s) => s.sendMessage);
   const removeReference = useCanvasStore((s) => s.removeReference);
   const isStreaming = useCanvasStore((s) => s.isStreaming);
   const streamingContent = useCanvasStore((s) => s.streamingContent);
+  const streamingThinking = useCanvasStore((s) => s.streamingThinking);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setShowThinking(true);
+  }, [isStreaming]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -127,15 +139,32 @@ export default function ChatPanel() {
         {messages.map((msg) => (
           <MessageItem key={msg.id} message={msg} />
         ))}
-        {isStreaming && streamingContent && (
+        {isStreaming && (
           <div className="flex justify-start mb-3">
             <div className="max-w-[85%]">
               <div className="text-[10px] font-mono uppercase tracking-[1.2px] text-brand mb-1">
                 AI Assistant
               </div>
+              {streamingThinking && showThinking && !streamingContent && (
+                <div className="mb-2">
+                  <button
+                    onClick={() => setShowThinking(false)}
+                    className="flex items-center gap-1 text-xs text-text-dim hover:text-text-muted mb-1"
+                  >
+                    <ChevronRight size={12} className={showThinking ? "rotate-90" : ""} />
+                    <Loader size={10} className="animate-spin" />
+                    Thinking
+                  </button>
+                  <div className="rounded-lg px-3 py-2 text-xs leading-relaxed bg-bg-surface/50 text-text-dim border border-border-subtle font-mono">
+                    {streamingThinking}
+                  </div>
+                </div>
+              )}
               <div className="rounded-lg px-3 py-2 text-sm leading-relaxed bg-bg-surface text-text-secondary border border-border-subtle">
-                {streamingContent}
-                <span className="inline-block w-1.5 h-4 ml-0.5 bg-brand/60 animate-pulse" />
+                <Markdown remarkPlugins={[remarkGfm]}>
+                  {streamingContent || "思考中..."}
+                </Markdown>
+                {streamingContent && <span className="inline-block w-1.5 h-4 ml-0.5 bg-brand/60 animate-pulse" />}
               </div>
             </div>
           </div>

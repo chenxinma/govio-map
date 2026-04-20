@@ -2,7 +2,7 @@ import type { ReferencedNode } from "../types";
 import { matchQuery } from "./mock-ai";
 
 export interface StreamEvent {
-  type: "text_delta" | "message_start" | "message_end" | "tool_start" | "tool_end" | "error";
+  type: "text_delta" | "message_start" | "message_end" | "tool_start" | "tool_end" | "error" | "thinking_delta";
   content?: string;
   toolName?: string;
   success?: boolean;
@@ -20,38 +20,43 @@ export interface AIService {
 class WebSocketAIService implements AIService {
   private ws: WebSocket | null = null;
   private callbacks: Set<(event: StreamEvent) => void> = new Set();
-  private connected = false;
+  private connectPromise: Promise<void> | null = null;
 
   constructor() {
     this.connect();
   }
 
   private connect() {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsPort = parseInt(window.location.port) + 1;
-    this.ws = new WebSocket(`${protocol}//${window.location.hostname}:${wsPort}/ws`);
+    this.connectPromise = new Promise((resolve) => {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsPort = parseInt(window.location.port) + 1;
+      this.ws = new WebSocket(`${protocol}//${window.location.hostname}:${wsPort}/ws`);
 
-    this.ws.onopen = () => { this.connected = true; };
-    this.ws.onclose = () => { this.connected = false; };
-    this.ws.onerror = () => { this.connected = false; };
+      this.ws.onopen = () => { resolve(); };
+      this.ws.onclose = () => { this.connectPromise = null; };
+      this.ws.onerror = () => { this.connectPromise = null; };
 
-    this.ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      this.callbacks.forEach((cb) => cb(data));
-    };
+      this.ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        this.callbacks.forEach((cb) => cb(data));
+      };
+    });
   }
 
   async sendMessage(content: string, refs?: ReferencedNode[]): Promise<void> {
+    if (this.connectPromise) await this.connectPromise;
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) throw new Error("Not connected");
     this.ws.send(JSON.stringify({ type: "prompt", content, referencedNodes: refs }));
   }
 
   async steer(content: string): Promise<void> {
+    if (this.connectPromise) await this.connectPromise;
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) throw new Error("Not connected");
     this.ws.send(JSON.stringify({ type: "steer", content }));
   }
 
   async followUp(content: string): Promise<void> {
+    if (this.connectPromise) await this.connectPromise;
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) throw new Error("Not connected");
     this.ws.send(JSON.stringify({ type: "followUp", content }));
   }
@@ -67,7 +72,7 @@ class WebSocketAIService implements AIService {
   }
 
   isConnected(): boolean {
-    return this.connected;
+    return this.ws?.readyState === WebSocket.OPEN;
   }
 }
 
@@ -97,7 +102,7 @@ class MockAIService implements AIService {
     return () => { this.callbacks.delete(callback); };
   }
 
-  isConnected(): boolean { return true; }
+  isConnected(): boolean { return false; }
 }
 
 let instance: AIService | null = null;
