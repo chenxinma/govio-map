@@ -2,10 +2,23 @@ import type { ReferencedNode } from "../types";
 import { matchQuery } from "./mock-ai";
 
 export interface StreamEvent {
-  type: "text_delta" | "message_start" | "message_end" | "tool_start" | "tool_end" | "error" | "thinking_delta";
+  type: "text_delta" | "message_start" | "message_end" | "tool_start" | "tool_end" | "error" | "thinking_delta" | "govio_node_create";
   content?: string;
   toolName?: string;
   success?: boolean;
+  nodeType?: "sqlQuery" | "dataFrame" | "report";
+  title?: string;
+  sql?: string;
+  outputColumns?: string[];
+  dfName?: string;
+  sourceName?: string;
+  totalRows?: number;
+  totalColumns?: number;
+  memoryUsage?: string;
+  columns?: Array<{ name: string; nonNull: number; dtype: string }>;
+  reportType?: "diff" | "correlation";
+  reportContent?: string;
+  sourceRefs?: Array<{ label: string }>;
 }
 
 export interface AIService {

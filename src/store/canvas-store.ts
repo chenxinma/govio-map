@@ -19,6 +19,7 @@ interface CanvasStore {
   edges: Edge[];
   messages: ChatMessage[];
   referencedNodes: ReferencedNode[];
+  lastReferencedNodes: ReferencedNode[];
   previewPanels: PreviewPanel[];
 
   onNodesChange: OnNodesChange;
@@ -36,6 +37,7 @@ interface CanvasStore {
   sendMessage: (content: string) => void;
   addSourceTableToCanvas: (tableName: string) => void;
   autoLayout: () => void;
+  createGovioNode: (event: StreamEvent) => void;
 
   openPreviewPanel: (nodeId: string) => void;
   closePreviewPanel: (panelId: string) => void;
@@ -47,6 +49,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   edges: [],
   messages: [],
   referencedNodes: [],
+  lastReferencedNodes: [],
   previewPanels: [],
   isStreaming: false,
   streamingContent: "",
@@ -100,7 +103,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         : undefined,
     };
 
-    set({ messages: [...messages, userMsg], referencedNodes: [] });
+    set({ messages: [...messages, userMsg], referencedNodes: [], lastReferencedNodes: [...referencedNodes] });
 
     const aiService = getAIService();
 
@@ -139,6 +142,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         case "error":
           set({ isStreaming: false, streamingContent: "", streamingThinking: "" });
           unsubscribe();
+          break;
+        case "govio_node_create":
+          get().createGovioNode(event);
           break;
       }
     });
@@ -197,6 +203,87 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const { nodes, edges } = get();
     const { nodes: layoutedNodes } = getLayoutedElements(nodes, edges);
     set({ nodes: layoutedNodes });
+  },
+
+  createGovioNode: (event) => {
+    const { nodes, edges, lastReferencedNodes } = get();
+    const nodeId = nextId("gov");
+    const now = new Date().toISOString();
+    let newNode: Node;
+
+    switch (event.nodeType) {
+      case "sqlQuery":
+        newNode = {
+          id: nodeId,
+          type: "sqlQuery",
+          position: { x: 0, y: 0 },
+          data: {
+            type: "sqlQuery",
+            title: event.title || "SQL Query",
+            createdAt: now,
+            sql: event.sql || "",
+            outputColumns: event.outputColumns || [],
+          },
+        };
+        break;
+      case "dataFrame":
+        newNode = {
+          id: nodeId,
+          type: "dataFrame",
+          position: { x: 0, y: 0 },
+          data: {
+            type: "dataFrame",
+            title: event.title || `DF: ${event.dfName}`,
+            createdAt: now,
+            dfName: event.dfName || "",
+            sourceName: event.sourceName || "",
+            totalRows: event.totalRows || 0,
+            totalColumns: event.totalColumns || 0,
+            memoryUsage: event.memoryUsage || "0 B",
+            columns: event.columns || [],
+            previewData: [],
+          },
+        };
+        break;
+      case "report":
+        newNode = {
+          id: nodeId,
+          type: "report",
+          position: { x: 0, y: 0 },
+          data: {
+            type: "report",
+            title: event.title || "Report",
+            createdAt: now,
+            reportType: event.reportType || "diff",
+            content: event.reportContent || "",
+            sourceRefs: event.sourceRefs || [],
+          },
+        };
+        break;
+      default:
+        return;
+    }
+
+    const newEdges: Edge[] = [];
+    const seen = new Set<string>();
+    for (const ref of lastReferencedNodes) {
+      const key = `${ref.nodeId}->${nodeId}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        newEdges.push({
+          id: `e-${ref.nodeId}-${nodeId}`,
+          source: ref.nodeId,
+          target: nodeId,
+          style: { stroke: "#3ecf8e", strokeWidth: 2 },
+          animated: true,
+        });
+      }
+    }
+
+    const allNodes = [...nodes, newNode];
+    const allEdges = [...edges, ...newEdges];
+    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(allNodes, allEdges);
+    set({ nodes: layoutedNodes, edges: layoutedEdges });
   },
 
   openPreviewPanel: (nodeId) => {
