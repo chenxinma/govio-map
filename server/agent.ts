@@ -1,6 +1,7 @@
 import { createAgentSession, SessionManager, createCodingTools, DefaultResourceLoader, type AgentSession } from "@mariozechner/pi-coding-agent";
 import { homedir } from "os";
 import { join } from "path";
+import govioCanvasExtension from "./extensions/govio-canvas.js";
 
 
 let session: AgentSession | null = null;
@@ -9,6 +10,9 @@ export async function getOrCreateSession(): Promise<AgentSession> {
   if (session) return session;
 
   const loader = new DefaultResourceLoader({
+    extensionFactories: [
+      (pi) => { govioCanvasExtension(pi); },
+    ],
     skillsOverride: (current) => {
       const filteredSkills = current.skills.filter(
         (s) => s.name.includes("browser") || s.name.includes("search") || s.name.includes("govio") || s.name.includes("observe"),
