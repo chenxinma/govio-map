@@ -1,4 +1,4 @@
-import { pushGovioNode, type GovioNodeCreateEvent } from "../govio-node-queue.js";
+import { pushGovioNode } from "../govio-node-queue.js";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -207,6 +207,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
     const cmd = extractBashCommand(event.input);
     if (!/govio-cli\s+observe/.test(cmd)) return;
 
+    if (!Array.isArray(event.content)) return;
     const stdout = extractTextContent(event.content);
     const subcommand = parseObserveSubcommand(cmd);
 
@@ -226,8 +227,11 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
 
   pi.on("message_end", (event) => {
     if (event.message.role !== "assistant") return;
+    if (!event.message.content) return;
 
     const text = extractAssistantText(event.message);
+    if (!text) return;
+
     const sqlBlocks = extractSqlCodeBlocks(text);
 
     for (const block of sqlBlocks) {

@@ -18,6 +18,7 @@ export function setupWebSocket(server: import("http").Server) {
       ws.send(JSON.stringify({ type: "session_ready", sessionId: session.sessionId }));
 
       const unsubscribe = session.subscribe((event) => {
+        try {
         if (ws.readyState !== WebSocket.OPEN) return;
 
         switch (event.type) {
@@ -48,6 +49,9 @@ export function setupWebSocket(server: import("http").Server) {
             break;
           case "agent_end":
             break;
+        }
+        } catch (err) {
+          console.error("[ws] Subscribe callback error:", err);
         }
       });
 

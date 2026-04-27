@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import type { Node, Edge, Connection, OnNodesChange, OnEdgesChange } from '@xyflow/react';
 import { addEdge, applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
-import type { CanvasNodeData, ChatMessage, ReferencedNode } from '../types';
+import type { CanvasNodeData, ChatMessage, DataFrameNodeData, ReferencedNode } from '../types';
+import { MOCK_TABLES } from '../data/mock-tables';
 import { nextId } from '../services/mock-ai';
 import { getLayoutedElements } from '../utils/layout';
 import { getAIService, type StreamEvent } from '../services/ai-service';
@@ -144,7 +145,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           unsubscribe();
           break;
         case "govio_node_create":
-          get().createGovioNode(event);
+          try { get().createGovioNode(event); } catch (err) { console.error("[canvas] createGovioNode error:", err); }
           break;
       }
     });
