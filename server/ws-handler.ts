@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { getOrCreateSession } from "./agent.js";
-import { flushGovioNodes } from "./govio-node-queue.js";
+import { flushGovioNodes, emitFlushed } from "./govio-node-queue.js";
 
 interface WSMessage {
   type: "prompt" | "steer" | "followUp" | "abort";
@@ -34,18 +34,14 @@ export function setupWebSocket(server: import("http").Server) {
             break;
           case "tool_execution_end":
             ws.send(JSON.stringify({ type: "tool_end", toolName: event.toolName, success: !event.isError }));
-            for (const node of flushGovioNodes()) {
-              ws.send(JSON.stringify({ type: "govio_node_create", ...node }));
-            }
+            emitFlushed(flushGovioNodes());
             break;
           case "message_start":
             ws.send(JSON.stringify({ type: "message_start" }));
             break;
           case "message_end":
             ws.send(JSON.stringify({ type: "message_end" }));
-            for (const node of flushGovioNodes()) {
-              ws.send(JSON.stringify({ type: "govio_node_create", ...node }));
-            }
+            emitFlushed(flushGovioNodes());
             break;
           case "agent_end":
             break;
