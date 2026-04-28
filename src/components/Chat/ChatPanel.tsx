@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, X, ChevronDown, ChevronUp, MessageCircle, ChevronRight, Loader } from 'lucide-react';
+import { Send, X, MessageCircle, ChevronRight, Loader } from 'lucide-react';
 import { Zap, Database, FileCode } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -64,8 +64,8 @@ function MessageItem({ message }: { message: ChatMessage }) {
 
 export default function ChatPanel() {
   const [input, setInput] = useState('');
-  const [collapsed, setCollapsed] = useState(false);
-  const [showThinking, setShowThinking] = useState(true);
+
+  const [hideThinking, setHideThinking] = useState(false);
   const messages = useCanvasStore((s) => s.messages);
   const referencedNodes = useCanvasStore((s) => s.referencedNodes);
   const sendMessage = useCanvasStore((s) => s.sendMessage);
@@ -76,15 +76,12 @@ export default function ChatPanel() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setShowThinking(true);
-  }, [isStreaming]);
-
-  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const handleSend = () => {
     if (!input.trim() && referencedNodes.length === 0) return;
+    setHideThinking(false);
     sendMessage(input.trim());
     setInput('');
   };
@@ -96,23 +93,8 @@ export default function ChatPanel() {
     }
   };
 
-  if (collapsed) {
-    return (
-      <div className="h-12 bg-bg-primary border-t border-border-default flex items-center px-4">
-        <button
-          onClick={() => setCollapsed(false)}
-          className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors"
-        >
-          <MessageCircle size={16} />
-          <span>AI Assistant</span>
-          <ChevronUp size={14} />
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="h-[320px] bg-bg-primary border-t border-border-default flex flex-col">
+    <div className="h-full bg-bg-primary border-l border-border-default flex flex-col">
       <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
         <div className="flex items-center gap-2">
           <MessageCircle size={14} className="text-brand" />
@@ -120,12 +102,6 @@ export default function ChatPanel() {
             AI Assistant
           </span>
         </div>
-        <button
-          onClick={() => setCollapsed(true)}
-          className="text-text-muted hover:text-text-primary transition-colors"
-        >
-          <ChevronDown size={16} />
-        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3">
@@ -145,13 +121,13 @@ export default function ChatPanel() {
               <div className="text-[10px] font-mono uppercase tracking-[1.2px] text-brand mb-1">
                 AI Assistant
               </div>
-              {streamingThinking && showThinking && !streamingContent && (
+              {streamingThinking && !hideThinking && !streamingContent && (
                 <div className="mb-2">
                   <button
-                    onClick={() => setShowThinking(false)}
+                    onClick={() => setHideThinking(true)}
                     className="flex items-center gap-1 text-xs text-text-dim hover:text-text-muted mb-1"
                   >
-                    <ChevronRight size={12} className={showThinking ? "rotate-90" : ""} />
+                    <ChevronRight size={12} className={!hideThinking ? "rotate-90" : ""} />
                     <Loader size={10} className="animate-spin" />
                     Thinking
                   </button>
