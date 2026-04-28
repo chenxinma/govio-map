@@ -39,6 +39,10 @@ export function setupWebSocket(server: import("http").Server) {
         if (ws.readyState !== WebSocket.OPEN) return;
 
         switch (event.type) {
+          case "agent_start":
+            console.log("[ws] Agent session started");
+            ws.send(JSON.stringify({ type: "agent_start" }));
+            break;
           case "message_update":
             if (event.assistantMessageEvent.type === "text_delta") {
               ws.send(JSON.stringify({ type: "text_delta", content: event.assistantMessageEvent.delta }));
@@ -50,6 +54,7 @@ export function setupWebSocket(server: import("http").Server) {
             ws.send(JSON.stringify({ type: "tool_start", toolName: event.toolName }));
             break;
           case "tool_execution_end":
+            console.log(`[ws] Tool execution end: ${event.toolName} success=${!event.isError}`);
             ws.send(JSON.stringify({ type: "tool_end", toolName: event.toolName, success: !event.isError }));
             emitFlushed(flushGovioNodes());
             break;
@@ -61,6 +66,7 @@ export function setupWebSocket(server: import("http").Server) {
             emitFlushed(flushGovioNodes());
             break;
           case "agent_end":
+            console.log("[ws] Agent session ended");
             break;
         }
         } catch (err) {
