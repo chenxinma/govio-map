@@ -23,29 +23,24 @@ export interface CanvasService {
 class WebSocketCanvasService implements CanvasService {
   private ws: WebSocket | null = null;
   private callbacks: Set<(event: CanvasEvent) => void> = new Set();
-  private connectPromise: Promise<void> | null = null;
 
   constructor() {
     this.connect();
   }
 
   private connect() {
-    this.connectPromise = new Promise((resolve) => {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsPort = parseInt(window.location.port) + 1;
       this.ws = new WebSocket(`${protocol}//${window.location.hostname}:${wsPort}/canvas`);
 
       this.ws.onopen = () => {
         console.log("[canvas-service] Connected to /canvas");
-        resolve();
       };
       this.ws.onclose = () => {
         console.log("[canvas-service] Disconnected from /canvas");
-        this.connectPromise = null;
       };
       this.ws.onerror = () => {
         console.warn("[canvas-service] Failed to connect to /canvas");
-        this.connectPromise = null;
       };
 
       this.ws.onmessage = (event) => {
@@ -62,7 +57,6 @@ class WebSocketCanvasService implements CanvasService {
           console.error("[canvas-service] parse error:", err);
         }
       };
-    });
   }
 
   subscribe(callback: (event: CanvasEvent) => void): () => void {
@@ -79,6 +73,7 @@ class WebSocketCanvasService implements CanvasService {
 
 class MockCanvasService implements CanvasService {
   subscribe(_callback: (event: CanvasEvent) => void): () => void {
+    void _callback;
     return () => {};
   }
 
