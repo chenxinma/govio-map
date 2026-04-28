@@ -34,8 +34,10 @@ export function useChat() {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttempts = useRef(0);
   const currentAssistantId = useRef<string | null>(null);
+  const disposedRef = useRef(false);
 
   const connect = useCallback(() => {
+    if (disposedRef.current) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -52,6 +54,7 @@ export function useChat() {
       console.log("[chat] Disconnected from /ws");
       setIsConnected(false);
       wsRef.current = null;
+      if (disposedRef.current) return;
       const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 10000);
       reconnectAttempts.current += 1;
       reconnectTimer.current = setTimeout(connect, delay);
@@ -165,8 +168,10 @@ export function useChat() {
   }, []);
 
   useEffect(() => {
+    disposedRef.current = false;
     connect();
     return () => {
+      disposedRef.current = true;
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       wsRef.current?.close();
     };
