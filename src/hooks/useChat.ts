@@ -79,6 +79,13 @@ export function useChat() {
 
           case "message_start":
             setIsStreaming(true);
+            if (currentAssistantId.current) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === currentAssistantId.current ? { ...m, isStreaming: false } : m
+                )
+              );
+            }
             const assistantId = nextMsgId();
             currentAssistantId.current = assistantId;
             setMessages((prev) => [
@@ -146,6 +153,20 @@ export function useChat() {
             break;
 
           case "message_end":
+            setIsStreaming(false);
+            if (currentAssistantId.current) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === currentAssistantId.current
+                    ? { ...m, isStreaming: false }
+                    : m
+                )
+              );
+              currentAssistantId.current = null;
+            }
+            break;
+
+          case "agent_end":
             setIsStreaming(false);
             if (currentAssistantId.current) {
               setMessages((prev) =>
