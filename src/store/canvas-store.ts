@@ -6,6 +6,7 @@ import { MOCK_TABLES } from '../data/mock-tables';
 import { nextId } from '../services/mock-ai';
 import { getLayoutedElements } from '../utils/layout';
 import { getAIService, type StreamEvent } from '../services/ai-service';
+import { getCanvasService } from '../services/canvas-service';
 
 export interface PreviewPanel {
   id: string;
@@ -39,6 +40,7 @@ interface CanvasStore {
   addSourceTableToCanvas: (tableName: string) => void;
   autoLayout: () => void;
   createGovioNode: (event: StreamEvent) => void;
+  subscribeToCanvas: () => void;
 
   openPreviewPanel: (nodeId: string) => void;
   closePreviewPanel: (panelId: string) => void;
@@ -111,18 +113,23 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     set({ isStreaming: true, streamingContent: "", streamingThinking: "" });
     let fullContent = "";
     let thinkingContent = "";
+    let streamingRAF: number | null = null;
 
     const unsubscribe = aiService.subscribe((event: StreamEvent) => {
       switch (event.type) {
         case "text_delta":
           fullContent += event.content || "";
-          set({ streamingContent: fullContent });
+          streamingRAF ??= requestAnimationFrame(() => {
+            streamingRAF = null;
+            set({ streamingContent: fullContent });
+          });
           break;
         case "thinking_delta":
           thinkingContent += event.content || "";
           set({ streamingThinking: thinkingContent });
           break;
         case "message_end": {
+          if (streamingRAF != null) { cancelAnimationFrame(streamingRAF); streamingRAF = null; }
           if (fullContent.trim()) {
             const aiMsg: ChatMessage = {
               id: nextId('msg'),
@@ -141,11 +148,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           break;
         }
         case "error":
+          if (streamingRAF != null) { cancelAnimationFrame(streamingRAF); streamingRAF = null; }
           set({ isStreaming: false, streamingContent: "", streamingThinking: "" });
           unsubscribe();
-          break;
-        case "govio_node_create":
-          try { get().createGovioNode(event); } catch (err) { console.error("[canvas] createGovioNode error:", err); }
           break;
       }
     });
@@ -153,6 +158,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     try {
       await aiService.sendMessage(content, referencedNodes);
     } catch (err) {
+      if (streamingRAF != null) { cancelAnimationFrame(streamingRAF); streamingRAF = null; }
       const errMsg: ChatMessage = {
         id: nextId('msg'),
         role: 'assistant',
@@ -207,7 +213,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   createGovioNode: (event) => {
-    const { nodes, edges, lastReferencedNodes } = get();
+    const { nodes, edges } = get();
     const nodeId = nextId("gov");
     const now = new Date().toISOString();
     let newNode: Node;
@@ -265,26 +271,31 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         return;
     }
 
-    const newEdges: Edge[] = [];
-    const seen = new Set<string>();
-    for (const ref of lastReferencedNodes) {
-      const key = `${ref.nodeId}->${nodeId}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        newEdges.push({
-          id: `e-${ref.nodeId}-${nodeId}`,
-          source: ref.nodeId,
-          target: nodeId,
-          style: { stroke: "#3ecf8e", strokeWidth: 2 },
-          animated: true,
-        });
-      }
-    }
-
     const allNodes = [...nodes, newNode];
-    const allEdges = [...edges, ...newEdges];
-    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(allNodes, allEdges);
-    set({ nodes: layoutedNodes, edges: layoutedEdges });
+    try {
+      const { nodes: layoutedNodes } = getLayoutedElements(allNodes, edges);
+      set({ nodes: layoutedNodes });
+    } catch (err) {
+      console.error("[canvas] autoLayout failed, falling back to sequential placement:", err);
+      newNode.position = {
+        x: 100 + nodes.length * 60,
+        y: 100 + nodes.length * 40,
+      };
+      set({ nodes: allNodes });
+    }
+  },
+
+  subscribeToCanvas: () => {
+    const canvasService = getCanvasService();
+    canvasService.subscribe((event) => {
+      if (event.type === "govio_node_create") {
+        try {
+          get().createGovioNode(event);
+        } catch (err) {
+          console.error("[canvas] createGovioNode error:", err);
+        }
+      }
+    });
   },
 
   openPreviewPanel: (nodeId) => {
