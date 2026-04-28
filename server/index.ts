@@ -1,6 +1,5 @@
 import { createServer } from "http";
 import { setupWebSocket } from "./ws-handler.js";
-import { setupCanvasWebSocket } from "./canvas-ws-handler.js";
 import { handleParquetApi } from "./parquet-api.js";
 import type { Plugin } from "vite";
 
@@ -16,7 +15,6 @@ export function wsPlugin(): Plugin {
         res.end(JSON.stringify({ error: "Not found" }));
       });
       setupWebSocket(httpServer);
-      setupCanvasWebSocket(httpServer);
 
       server.httpServer?.on("listening", () => {
         const address = server.httpServer?.address();

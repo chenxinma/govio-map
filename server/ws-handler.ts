@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
+import type { IncomingMessage } from "http";
 import { getOrCreateSession } from "./agent.js";
-import { flushGovioNodes, emitFlushed } from "./govio-node-queue.js";
+import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, type GovioNodeCreateEvent } from "./govio-node-queue.js";
 
 interface WSMessage {
   type: "prompt" | "steer" | "followUp" | "abort";
@@ -9,7 +10,23 @@ interface WSMessage {
 }
 
 export function setupWebSocket(server: import("http").Server) {
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on("upgrade", (req: IncomingMessage, socket, head) => {
+    const { pathname } = new URL(req.url || "/", `http://${req.headers.host}`);
+
+    if (pathname === "/ws") {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit("connection", ws, req);
+      });
+    } else if (pathname === "/canvas") {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        handleCanvasConnection(ws);
+      });
+    } else {
+      socket.destroy();
+    }
+  });
 
   wss.on("connection", async (ws: WebSocket) => {
     try {
@@ -90,4 +107,30 @@ export function setupWebSocket(server: import("http").Server) {
   });
 
   return wss;
+}
+
+async function handleCanvasConnection(ws: WebSocket) {
+  try {
+    const session = await getOrCreateSession();
+
+    ws.send(JSON.stringify({ type: "canvas_ready", sessionId: session.sessionId }));
+
+    const unsubscribe = onGovioNodesFlushed((events: GovioNodeCreateEvent[]) => {
+      try {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        for (const node of events) {
+          ws.send(JSON.stringify({ type: "govio_node_create", ...node }));
+        }
+      } catch (err) {
+        console.error("[canvas-ws] Flush callback error:", err);
+      }
+    });
+
+    ws.on("close", () => {
+      unsubscribe();
+    });
+  } catch (err) {
+    ws.send(JSON.stringify({ type: "error", message: `Canvas session init failed: ${err}` }));
+    ws.close();
+  }
 }
