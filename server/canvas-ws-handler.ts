@@ -12,9 +12,13 @@ export function setupCanvasWebSocket(server: import("http").Server) {
       ws.send(JSON.stringify({ type: "canvas_ready", sessionId: session.sessionId }));
 
       const unsubscribe = onGovioNodesFlushed((events: GovioNodeCreateEvent[]) => {
-        if (ws.readyState !== WebSocket.OPEN) return;
-        for (const node of events) {
-          ws.send(JSON.stringify({ type: "govio_node_create", ...node }));
+        try {
+          if (ws.readyState !== WebSocket.OPEN) return;
+          for (const node of events) {
+            ws.send(JSON.stringify({ type: "govio_node_create", ...node }));
+          }
+        } catch (err) {
+          console.error("[canvas-ws] Flush callback error:", err);
         }
       });
 
