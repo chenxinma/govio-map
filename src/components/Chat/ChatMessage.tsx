@@ -10,7 +10,7 @@ function ToolPill({ tool }: { tool: ToolCall }) {
   const isRunning = tool.success === undefined;
 
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-bg-primary border border-border-subtle text-text-secondary">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-[#242424] border border-border-subtle text-text-secondary">
       <Wrench size={10} />
       <span>{tool.toolName}</span>
       {isRunning && <Loader2 size={10} className="animate-spin" />}
@@ -44,7 +44,7 @@ function ThinkingSection({ content }: { content: string }) {
         <span>Thinking</span>
       </button>
       {open && (
-        <div className="mt-1 p-2 rounded bg-bg-primary text-xs text-text-muted whitespace-pre-wrap border border-border-subtle">
+        <div className="mt-1 p-2 rounded bg-[#242424] text-xs text-text-muted whitespace-pre-wrap border border-border-subtle">
           {content}
         </div>
       )}
