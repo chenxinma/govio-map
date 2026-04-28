@@ -45,12 +45,14 @@ export function useChat() {
     const ws = new WebSocket(`${protocol}//${window.location.hostname}:${wsPort}/ws`);
 
     ws.onopen = () => {
+      if (wsRef.current !== ws) return;
       console.log("[chat] Connected to /ws");
       setIsConnected(true);
       reconnectAttempts.current = 0;
     };
 
     ws.onclose = () => {
+      if (wsRef.current !== ws) return;
       console.log("[chat] Disconnected from /ws");
       setIsConnected(false);
       wsRef.current = null;
@@ -61,10 +63,12 @@ export function useChat() {
     };
 
     ws.onerror = () => {
+      if (wsRef.current !== ws) return;
       console.warn("[chat] WebSocket error");
     };
 
     ws.onmessage = (event) => {
+      if (wsRef.current !== ws) return;
       try {
         const data: WSEvent = JSON.parse(event.data);
 
