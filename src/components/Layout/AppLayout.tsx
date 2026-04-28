@@ -1,30 +1,29 @@
-import { useState, useCallback } from 'react';
-import Header from './Header';
-import Canvas from '../Canvas/Canvas';
-import ChatPanel from '../Chat/ChatPanel';
-import ResizeDivider from './ResizeDivider';
+import { useState, useCallback } from "react";
+import Header from "./Header";
+import Canvas from "../Canvas/Canvas";
+import ResizeDivider from "./ResizeDivider";
+import ChatPanel from "../Chat/ChatPanel";
+
+const DEFAULT_CHAT_WIDTH = 400;
+const MIN_CHAT_WIDTH = 280;
+const MAX_CHAT_WIDTH = 600;
 
 export default function AppLayout() {
-  const [chatWidth, setChatWidth] = useState(25);
+  const [chatWidth, setChatWidth] = useState(DEFAULT_CHAT_WIDTH);
 
   const handleResize = useCallback((deltaX: number) => {
-    setChatWidth((prev) => {
-      const deltaPercent = (deltaX / window.innerWidth) * 100;
-      return Math.min(50, Math.max(15, prev - deltaPercent));
-    });
+    setChatWidth((prev) => Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, prev + deltaX)));
   }, []);
 
   return (
     <div className="w-full h-screen flex flex-col bg-bg-canvas">
       <Header />
-      <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 min-w-0">
+      <div className="flex-1 overflow-hidden flex">
+        <div className="flex-1 min-w-[400px] overflow-hidden">
           <Canvas />
         </div>
         <ResizeDivider onResize={handleResize} />
-        <div style={{ width: `${chatWidth}%` }} className="min-w-0 flex flex-col">
-          <ChatPanel />
-        </div>
+        <ChatPanel width={chatWidth} />
       </div>
     </div>
   );
