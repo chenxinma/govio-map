@@ -41,7 +41,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
 
 export default function App() {
   useEffect(() => {
-    useCanvasStore.getState().subscribeToCanvas();
+    return useCanvasStore.getState().subscribeToCanvas();
   }, []);
 
   return (

@@ -37,7 +37,7 @@ export function setupWebSocket(server: import("http").Server) {
       const unsubscribe = session.subscribe((event) => {
         try {
         if (ws.readyState !== WebSocket.OPEN) return;
-
+        // console.log(`[ws] session : ${event.type}, role : ${event.type === "message_start" ? event.message.role : ""}`);
         switch (event.type) {
           case "agent_start":
             console.log("[ws] Agent session started");
@@ -59,11 +59,15 @@ export function setupWebSocket(server: import("http").Server) {
             emitFlushed(flushGovioNodes());
             break;
           case "message_start":
-            ws.send(JSON.stringify({ type: "message_start" }));
+            if (event.message.role === "assistant") {
+              ws.send(JSON.stringify({ type: "message_start" }));
+            }
             break;
           case "message_end":
-            ws.send(JSON.stringify({ type: "message_end" }));
-            emitFlushed(flushGovioNodes());
+            if (event.message.role === "assistant") {
+              ws.send(JSON.stringify({ type: "message_end" }));
+              emitFlushed(flushGovioNodes());
+            }
             break;
           case "agent_end":
             console.log("[ws] Agent session ended");

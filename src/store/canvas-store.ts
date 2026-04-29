@@ -27,7 +27,7 @@ interface CanvasStore {
   addSourceTableToCanvas: (tableName: string) => void;
   autoLayout: () => void;
   createGovioNode: (event: CanvasEvent) => void;
-  subscribeToCanvas: () => void;
+  subscribeToCanvas: () => () => void;
 
   openPreviewPanel: (nodeId: string) => void;
   closePreviewPanel: (panelId: string) => void;
@@ -162,7 +162,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   subscribeToCanvas: () => {
     const canvasService = getCanvasService();
-    canvasService.subscribe((event) => {
+    const unsubscribe = canvasService.subscribe((event) => {
       if (event.type === "govio_node_create") {
         try {
           get().createGovioNode(event);
@@ -171,6 +171,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         }
       }
     });
+    return unsubscribe;
   },
 
   openPreviewPanel: (nodeId) => {
