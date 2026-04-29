@@ -41,6 +41,7 @@ interface CanvasStore {
   updateNodeData: (nodeId: string, data: Partial<CanvasNodeData>) => void;
   createManualSQLNode: () => void;
   restoreCanvas: (dataframes: Array<{ dfName: string; [key: string]: unknown }>) => void;
+  observeList: () => Promise<void>;
 }
 
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
@@ -296,5 +297,46 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         columns: (df.columns as Array<{ name: string; nonNull: number; dtype: string }>) || [],
       });
     }
+  },
+
+  observeList: async () => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsPort = parseInt(window.location.port) + 1;
+    const ws = new WebSocket(`${protocol}//${window.location.hostname}:${wsPort}/ws`);
+
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        ws.close();
+        reject(new Error("observe_list timeout"));
+      }, 15000);
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: "observe_list" }));
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "observe_list_result") {
+            clearTimeout(timeout);
+            ws.close();
+            get().restoreCanvas(data.dataframes || []);
+            resolve();
+          } else if (data.type === "error") {
+            clearTimeout(timeout);
+            ws.close();
+            reject(new Error(data.message));
+          }
+        } catch {
+          // ignore non-JSON messages (session_ready, etc.)
+        }
+      };
+
+      ws.onerror = () => {
+        clearTimeout(timeout);
+        ws.close();
+        reject(new Error("WebSocket error"));
+      };
+    });
   },
 }));
