@@ -1,12 +1,12 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
-import { getOrCreateSession } from "./agent.js";
+import { getOrCreateSession, runGovioCli } from "./agent.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, type GovioNodeCreateEvent } from "./govio-node-queue.js";
 
 interface WSMessage {
   type: "prompt" | "steer" | "followUp" | "abort" | "observe_list";
   content?: string;
-  referencedNodes?: Array<{ nodeId: string; label: string; type: string }>;
+  referencedNodes?: Array<{ nodeId: string; label: string; type: string; data?: string }>;
 }
 
 export function setupWebSocket(server: import("http").Server) {
@@ -85,10 +85,11 @@ export function setupWebSocket(server: import("http").Server) {
           switch (msg.type) {
             case "prompt":
               if (msg.content) {
+                const prompt = makePrompt(msg);
                 if (session.isStreaming) {
-                  await session.steer(msg.content);
+                  await session.steer(prompt);
                 } else {
-                  await session.prompt(msg.content);
+                  await session.prompt(prompt);
                 }
               }
               break;
@@ -103,11 +104,7 @@ export function setupWebSocket(server: import("http").Server) {
               break;
             case "observe_list": {
               try {
-                const { execSync } = await import("child_process");
-                const output = execSync("govio-cli observe list", {
-                  encoding: "utf-8",
-                  timeout: 15000,
-                });
+                const output = await runGovioCli("observe list");                
                 const dataframes = JSON.parse(output);
                 ws.send(JSON.stringify({ type: "observe_list_result", dataframes }));
               } catch (listErr) {
@@ -134,6 +131,21 @@ export function setupWebSocket(server: import("http").Server) {
   });
 
   return wss;
+}
+
+function makePrompt(msg:WSMessage):string {
+  let prompt = "";
+  if (msg.referencedNodes) {
+    prompt += "REF:[";
+    for(const ref of msg.referencedNodes) {
+      const s = `{"${ref.label}": "${ref.data}"},`
+      prompt += s;
+    } 
+    prompt += "]\n";
+  }
+  prompt += msg.content;
+  console.log("[ws] prompt: " + prompt);
+  return prompt;
 }
 
 async function handleCanvasConnection(ws: WebSocket) {

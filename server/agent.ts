@@ -5,6 +5,7 @@ import govioCanvasExtension from "./extensions/govio-canvas.js";
 
 
 let session: AgentSession | null = null;
+let govioGovioBaseDir: string | null = null;
 
 export async function getOrCreateSession(): Promise<AgentSession> {
   if (session) return session;
@@ -28,7 +29,7 @@ export async function getOrCreateSession(): Promise<AgentSession> {
   const agentDir = join(homedir(), ".pi", "agent");
   const { skills: allSkills, diagnostics } = loader.getSkills();
   console.log(
-    "Discovered skills:",
+    "Skills:",
     allSkills.map((s) => s.name),
   );
   if (diagnostics.length > 0) {
@@ -37,6 +38,12 @@ export async function getOrCreateSession(): Promise<AgentSession> {
 
   const cwd = process.cwd();
 
+  const _govio_skill = allSkills.filter(s => (s.name === "govio"))[0];
+  if (_govio_skill) {
+    govioGovioBaseDir = _govio_skill.baseDir
+  }
+  await runGovioCli("--help");
+  
   const result = await createAgentSession({
     cwd,
     tools: createCodingTools(cwd),
@@ -51,4 +58,14 @@ export async function getOrCreateSession(): Promise<AgentSession> {
 
 export function getSession(): AgentSession | null {
   return session;
+}
+
+export async function runGovioCli(cmd: string): Promise<string> {
+  const { execSync } = await import("child_process");
+  const output = execSync(`uvx --from ${govioGovioBaseDir}/assets/govio-*.whl govio-cli ${cmd}`, {
+    encoding: "utf-8",
+    timeout: 15000,
+  });
+  console.log(output);
+  return output;
 }

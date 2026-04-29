@@ -223,10 +223,19 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const node = nodes.find((n) => n.id === nodeId);
     if (!node) return;
     const data = node.data as unknown as CanvasNodeData;
+    let ref: string | null = null;
+    switch(data.type) {
+      case "sqlQuery":
+        ref = data.sql;
+        break;
+      case "dataFrame":
+        ref = data.dfName;
+        break;
+    }
     set({
       referencedNodes: [
         ...referencedNodes,
-        { nodeId, label: data.title, type: data.type },
+        { nodeId, label: data.title, type: data.type, data: ref },
       ],
     });
   },

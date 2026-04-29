@@ -69,6 +69,7 @@ export interface ReferencedNode {
   nodeId: string;
   label: string;
   type: NodeType;
+  data?: string | null;
 }
 
 export interface MockTable {
