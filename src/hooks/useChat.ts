@@ -19,6 +19,7 @@ interface WSEvent {
   content?: string;
   toolName?: string;
   success?: boolean;
+  dataframes?: unknown[];
 }
 
 let msgIdCounter = 0;
@@ -30,6 +31,9 @@ export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isObserving, setIsObserving] = useState(false);
+  const isObservingRef = useRef(false);
+  const observeListResolveRef = useRef<((dataframes: unknown[]) => void) | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttempts = useRef(0);
@@ -180,8 +184,22 @@ export function useChat() {
             }
             break;
 
+          case "observe_list_result":
+            isObservingRef.current = false;
+            setIsObserving(false);
+            if (observeListResolveRef.current) {
+              observeListResolveRef.current(data.dataframes || []);
+              observeListResolveRef.current = null;
+            }
+            break;
+
           case "error":
             console.error("[chat] Server error:", data.content);
+            if (isObservingRef.current) {
+              isObservingRef.current = false;
+              setIsObserving(false);
+              observeListResolveRef.current = null;
+            }
             break;
         }
       } catch (err) {
@@ -242,5 +260,29 @@ export function useChat() {
     }
   }, []);
 
-  return { messages, isConnected, isStreaming, send, abort };
+  const observeList = useCallback((): Promise<unknown[]> => {
+    return new Promise((resolve, reject) => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        reject(new Error("WebSocket not connected"));
+        return;
+      }
+      isObservingRef.current = true;
+      setIsObserving(true);
+      observeListResolveRef.current = resolve;
+      ws.send(JSON.stringify({ type: "observe_list" }));
+
+      // Timeout fallback
+      setTimeout(() => {
+        if (isObservingRef.current) {
+          isObservingRef.current = false;
+          setIsObserving(false);
+          observeListResolveRef.current = null;
+          reject(new Error("observe_list timeout"));
+        }
+      }, 15000);
+    });
+  }, []);
+
+  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving };
 }

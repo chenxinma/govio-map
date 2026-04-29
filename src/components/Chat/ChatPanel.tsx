@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback } from "react";
-import { useChat } from "../../hooks/useChat";
+import { useChatContext } from "../../hooks/useChatContext";
 import { useCanvasStore } from "../../store/canvas-store";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
@@ -9,7 +9,7 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ width }: ChatPanelProps) {
-  const { messages, isConnected, isStreaming, send, abort } = useChat();
+  const { messages, isConnected, isStreaming, send, abort } = useChatContext();
   const referencedNodes = useCanvasStore((s) => s.referencedNodes);
   const removeReference = useCanvasStore((s) => s.removeReference);
   const clearReferences = useCanvasStore((s) => s.clearReferences);

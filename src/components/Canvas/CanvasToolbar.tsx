@@ -1,23 +1,26 @@
 import { useState, useCallback } from "react";
 import { Code, RefreshCw, Loader2 } from "lucide-react";
 import { useCanvasStore } from "../../store/canvas-store";
+import { useChatContext } from "../../hooks/useChatContext";
 
 export default function CanvasToolbar() {
   const createManualSQLNode = useCanvasStore((s) => s.createManualSQLNode);
-  const observeList = useCanvasStore((s) => s.observeList);
+  const restoreCanvas = useCanvasStore((s) => s.restoreCanvas);
+  const { observeList } = useChatContext();
   const [isRestoring, setIsRestoring] = useState(false);
 
   const handleRestore = useCallback(async () => {
     if (isRestoring) return;
     setIsRestoring(true);
     try {
-      await observeList();
+      const dataframes = await observeList();
+      restoreCanvas(dataframes as Array<{ dfName: string; [key: string]: unknown }>);
     } catch (err) {
       console.error("[toolbar] observeList failed:", err);
     } finally {
       setIsRestoring(false);
     }
-  }, [isRestoring, observeList]);
+  }, [isRestoring, observeList, restoreCanvas]);
 
   return (
     <div className="absolute top-3 right-3 z-10 flex items-center gap-1 p-1 rounded-lg bg-bg-surface border border-border-default">
