@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback } from "react";
 import { useChat } from "../../hooks/useChat";
+import { useCanvasStore } from "../../store/canvas-store";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
 
@@ -9,6 +10,9 @@ interface ChatPanelProps {
 
 export default function ChatPanel({ width }: ChatPanelProps) {
   const { messages, isConnected, isStreaming, send, abort } = useChat();
+  const referencedNodes = useCanvasStore((s) => s.referencedNodes);
+  const removeReference = useCanvasStore((s) => s.removeReference);
+  const clearReferences = useCanvasStore((s) => s.clearReferences);
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledRef = useRef(false);
 
@@ -18,6 +22,14 @@ export default function ChatPanel({ width }: ChatPanelProps) {
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
     userScrolledRef.current = !atBottom;
   }, []);
+
+  const handleSend = useCallback(
+    (content: string) => {
+      send(content, referencedNodes.length > 0 ? referencedNodes : undefined);
+      clearReferences();
+    },
+    [send, referencedNodes, clearReferences]
+  );
 
   useEffect(() => {
     if (!userScrolledRef.current && scrollRef.current) {
@@ -56,7 +68,14 @@ export default function ChatPanel({ width }: ChatPanelProps) {
       </div>
 
       {/* Input */}
-      <ChatInput onSend={send} onAbort={abort} isStreaming={isStreaming} isConnected={isConnected} />
+      <ChatInput
+        onSend={handleSend}
+        onAbort={abort}
+        isStreaming={isStreaming}
+        isConnected={isConnected}
+        referencedNodes={referencedNodes}
+        onRemoveReference={removeReference}
+      />
     </div>
   );
 }

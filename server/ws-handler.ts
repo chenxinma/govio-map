@@ -4,7 +4,7 @@ import { getOrCreateSession } from "./agent.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, type GovioNodeCreateEvent } from "./govio-node-queue.js";
 
 interface WSMessage {
-  type: "prompt" | "steer" | "followUp" | "abort";
+  type: "prompt" | "steer" | "followUp" | "abort" | "observe_list";
   content?: string;
   referencedNodes?: Array<{ nodeId: string; label: string; type: string }>;
 }
@@ -101,6 +101,23 @@ export function setupWebSocket(server: import("http").Server) {
             case "abort":
               await session.abort();
               break;
+            case "observe_list": {
+              try {
+                const { execSync } = await import("child_process");
+                const output = execSync("govio-cli observe list", {
+                  encoding: "utf-8",
+                  timeout: 15000,
+                });
+                const dataframes = JSON.parse(output);
+                ws.send(JSON.stringify({ type: "observe_list_result", dataframes }));
+              } catch (listErr) {
+                ws.send(JSON.stringify({
+                  type: "error",
+                  message: `observe list failed: ${listErr instanceof Error ? listErr.message : String(listErr)}`,
+                }));
+              }
+              break;
+            }
           }
         } catch (err) {
           ws.send(JSON.stringify({ type: "error", message: String(err) }));

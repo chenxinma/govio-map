@@ -10,6 +10,7 @@ import '@xyflow/react/dist/style.css';
 import { useCanvasStore } from '../../store/canvas-store';
 import { nodeTypes } from '../Nodes';
 import FloatingPreviewPanel from './FloatingPreviewPanel';
+import CanvasToolbar from './CanvasToolbar';
 
 export default function Canvas() {
   const nodes = useCanvasStore((s) => s.nodes);
@@ -37,6 +38,7 @@ export default function Canvas() {
 
   return (
     <div ref={reactFlowWrapper} className="relative w-full h-full">
+      <CanvasToolbar />
       <ReactFlow
         nodes={nodes}
         edges={edges}

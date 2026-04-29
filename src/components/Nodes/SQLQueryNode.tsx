@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useState, useCallback, useRef, useEffect } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Quote } from 'lucide-react';
 import type { SQLQueryNodeData } from '../../types';
@@ -7,6 +7,52 @@ import { useCanvasStore } from '../../store/canvas-store';
 function SQLNode({ data, id }: NodeProps) {
   const nodeData = data as unknown as SQLQueryNodeData;
   const addReference = useCanvasStore((s) => s.addReference);
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  const [isEditing, setIsEditing] = useState(nodeData.sql === '');
+  const [editValue, setEditValue] = useState(nodeData.sql);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (!isEditing) return;
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+  }, [isEditing, editValue]);
+
+  // Focus textarea when entering edit mode
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [isEditing]);
+
+  const handleSave = useCallback(() => {
+    const trimmed = editValue.trim();
+    updateNodeData(id, { sql: trimmed });
+    setIsEditing(false);
+  }, [id, editValue, updateNodeData]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        handleSave();
+      }
+      if (e.key === 'Escape') {
+        setEditValue(nodeData.sql);
+        setIsEditing(false);
+      }
+    },
+    [handleSave, nodeData.sql]
+  );
+
+  const handleDoubleClick = useCallback(() => {
+    setEditValue(nodeData.sql);
+    setIsEditing(true);
+  }, [nodeData.sql]);
+
   const sqlLines = nodeData.sql.split('\n').slice(0, 8);
   const hasMore = nodeData.sql.split('\n').length > 8;
 
@@ -17,10 +63,33 @@ function SQLNode({ data, id }: NodeProps) {
       </div>
 
       <div className="border-t border-border-subtle px-4 py-3">
-        <pre className="text-[11px] text-text-secondary font-mono leading-relaxed whitespace-pre-wrap break-all">
-          {sqlLines.join('\n')}
-          {hasMore && '\n...'}
-        </pre>
+        {isEditing ? (
+          <textarea
+            ref={textareaRef}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={handleKeyDown}
+            placeholder="输入 SQL... (Ctrl+Enter 保存)"
+            className="w-full text-[11px] text-text-secondary font-mono leading-relaxed whitespace-pre-wrap bg-bg-primary border border-brand/30 rounded px-2 py-1.5 resize-none focus:outline-none focus:border-brand/50"
+            rows={3}
+          />
+        ) : (
+          <pre
+            onDoubleClick={handleDoubleClick}
+            className="text-[11px] text-text-secondary font-mono leading-relaxed whitespace-pre-wrap break-all cursor-text"
+            title="双击编辑 SQL"
+          >
+            {nodeData.sql ? (
+              <>
+                {sqlLines.join('\n')}
+                {hasMore && '\n...'}
+              </>
+            ) : (
+              <span className="text-text-dim italic">双击编辑 SQL</span>
+            )}
+          </pre>
+        )}
       </div>
 
       <div className="border-t border-border-subtle px-4 py-2">

@@ -202,7 +202,7 @@ export function useChat() {
     };
   }, [connect]);
 
-  const send = useCallback((content: string) => {
+  const send = useCallback((content: string, referencedNodes?: Array<{ nodeId: string; label: string; type: string }>) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
@@ -213,10 +213,15 @@ export function useChat() {
     };
     setMessages((prev) => [...prev, userMsg]);
 
+    const payload: Record<string, unknown> = { content };
+    if (referencedNodes && referencedNodes.length > 0) {
+      payload.referencedNodes = referencedNodes;
+    }
+
     if (isStreaming) {
-      ws.send(JSON.stringify({ type: "steer", content }));
+      ws.send(JSON.stringify({ type: "steer", ...payload }));
     } else {
-      ws.send(JSON.stringify({ type: "prompt", content }));
+      ws.send(JSON.stringify({ type: "prompt", ...payload }));
     }
   }, [isStreaming]);
 
