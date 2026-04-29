@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Node, Edge, Connection, OnNodesChange, OnEdgesChange } from '@xyflow/react';
 import { addEdge, applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
-import type { CanvasNodeData, DataFrameNodeData } from '../types';
+import type { CanvasNodeData, DataFrameNodeData, ReferencedNode } from '../types';
 import { MOCK_TABLES } from '../data/mock-tables';
 import { nextId } from '../services/mock-ai';
 import { getLayoutedElements } from '../utils/layout';
@@ -32,12 +32,18 @@ interface CanvasStore {
   openPreviewPanel: (nodeId: string) => void;
   closePreviewPanel: (panelId: string) => void;
   movePreviewPanel: (panelId: string, x: number, y: number) => void;
+
+  referencedNodes: ReferencedNode[];
+  addReference: (nodeId: string) => void;
+  removeReference: (nodeId: string) => void;
+  clearReferences: () => void;
 }
 
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
   nodes: [],
   edges: [],
   previewPanels: [],
+  referencedNodes: [],
 
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) });
@@ -205,5 +211,27 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         p.id === panelId ? { ...p, x, y } : p
       ),
     });
+  },
+
+  addReference: (nodeId) => {
+    const { nodes, referencedNodes } = get();
+    if (referencedNodes.some((r) => r.nodeId === nodeId)) return;
+    const node = nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+    const data = node.data as unknown as CanvasNodeData;
+    set({
+      referencedNodes: [
+        ...referencedNodes,
+        { nodeId, label: data.title, type: data.type },
+      ],
+    });
+  },
+
+  removeReference: (nodeId) => {
+    set({ referencedNodes: get().referencedNodes.filter((r) => r.nodeId !== nodeId) });
+  },
+
+  clearReferences: () => {
+    set({ referencedNodes: [] });
   },
 }));
