@@ -37,6 +37,10 @@ interface CanvasStore {
   addReference: (nodeId: string) => void;
   removeReference: (nodeId: string) => void;
   clearReferences: () => void;
+
+  updateNodeData: (nodeId: string, data: Partial<CanvasNodeData>) => void;
+  createManualSQLNode: () => void;
+  restoreCanvas: (dataframes: Array<{ dfName: string; [key: string]: unknown }>) => void;
 }
 
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
@@ -233,5 +237,64 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   clearReferences: () => {
     set({ referencedNodes: [] });
+  },
+
+  updateNodeData: (nodeId, data) => {
+    set({
+      nodes: get().nodes.map((n) =>
+        n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n
+      ),
+    });
+  },
+
+  createManualSQLNode: () => {
+    const { nodes, edges } = get();
+    const nodeId = nextId('sql');
+    const newNode: Node = {
+      id: nodeId,
+      type: 'sqlQuery',
+      position: { x: 0, y: 0 },
+      data: {
+        type: 'sqlQuery',
+        title: 'New Query',
+        createdAt: new Date().toISOString(),
+        sql: '',
+        outputColumns: [],
+      },
+    };
+    const allNodes = [...nodes, newNode];
+    try {
+      const { nodes: layoutedNodes } = getLayoutedElements(allNodes, edges);
+      set({ nodes: layoutedNodes });
+    } catch {
+      newNode.position = { x: 100 + nodes.length * 60, y: 100 + nodes.length * 40 };
+      set({ nodes: allNodes });
+    }
+  },
+
+  restoreCanvas: (dataframes) => {
+    const { nodes } = get();
+    const existingDfNames = new Set(
+      nodes
+        .filter((n) => (n.data as unknown as CanvasNodeData).type === 'dataFrame')
+        .map((n) => (n.data as unknown as { dfName: string }).dfName)
+    );
+
+    const missing = dataframes.filter((df) => !existingDfNames.has(df.dfName));
+    if (missing.length === 0) return;
+
+    for (const df of missing) {
+      get().createGovioNode({
+        type: 'govio_node_create',
+        nodeType: 'dataFrame',
+        title: `DF: ${df.dfName}`,
+        dfName: df.dfName,
+        sourceName: (df.sourceName as string) || '',
+        totalRows: (df.totalRows as number) || 0,
+        totalColumns: (df.totalColumns as number) || 0,
+        memoryUsage: (df.memoryUsage as string) || '0 B',
+        columns: (df.columns as Array<{ name: string; nonNull: number; dtype: string }>) || [],
+      });
+    }
   },
 }));
