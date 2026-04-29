@@ -65,21 +65,6 @@ export interface ReportNodeData {
 
 export type CanvasNodeData = SourceTableNodeData | SQLQueryNodeData | DataFrameNodeData | ReportNodeData;
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-  nodePreviews?: NodePreview[];
-  thinking?: string;
-}
-
-export interface NodePreview {
-  id: string;
-  type: NodeType;
-  label: string;
-}
-
 export interface ReferencedNode {
   nodeId: string;
   label: string;

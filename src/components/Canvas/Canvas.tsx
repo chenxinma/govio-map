@@ -46,8 +46,6 @@ export default function Canvas() {
         onDragOver={onDragOver}
         onDrop={onDrop}
         nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.15 }}
         minZoom={0.1}
         maxZoom={2}
         snapToGrid

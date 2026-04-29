@@ -1,12 +1,11 @@
 import { create } from 'zustand';
 import type { Node, Edge, Connection, OnNodesChange, OnEdgesChange } from '@xyflow/react';
 import { addEdge, applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
-import type { CanvasNodeData, ChatMessage, DataFrameNodeData, ReferencedNode } from '../types';
+import type { CanvasNodeData, DataFrameNodeData } from '../types';
 import { MOCK_TABLES } from '../data/mock-tables';
 import { nextId } from '../services/mock-ai';
 import { getLayoutedElements } from '../utils/layout';
-import { getAIService, type StreamEvent } from '../services/ai-service';
-import { getCanvasService } from '../services/canvas-service';
+import { getCanvasService, type CanvasEvent } from '../services/canvas-service';
 
 export interface PreviewPanel {
   id: string;
@@ -19,27 +18,15 @@ export interface PreviewPanel {
 interface CanvasStore {
   nodes: Node[];
   edges: Edge[];
-  messages: ChatMessage[];
-  referencedNodes: ReferencedNode[];
-  lastReferencedNodes: ReferencedNode[];
   previewPanels: PreviewPanel[];
 
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
   onConnect: (connection: Connection) => void;
 
-  isStreaming: boolean;
-  streamingContent: string;
-  streamingThinking: string;
-
-  addReference: (nodeId: string) => void;
-  removeReference: (nodeId: string) => void;
-  clearReferences: () => void;
-
-  sendMessage: (content: string) => void;
   addSourceTableToCanvas: (tableName: string) => void;
   autoLayout: () => void;
-  createGovioNode: (event: StreamEvent) => void;
+  createGovioNode: (event: CanvasEvent) => void;
   subscribeToCanvas: () => void;
 
   openPreviewPanel: (nodeId: string) => void;
@@ -50,13 +37,7 @@ interface CanvasStore {
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
   nodes: [],
   edges: [],
-  messages: [],
-  referencedNodes: [],
-  lastReferencedNodes: [],
   previewPanels: [],
-  isStreaming: false,
-  streamingContent: "",
-  streamingThinking: "",
 
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) });
@@ -68,112 +49,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   onConnect: (connection) => {
     set({ edges: addEdge(connection, get().edges) });
-  },
-
-  addReference: (nodeId) => {
-    const { nodes, referencedNodes } = get();
-    if (referencedNodes.find((r) => r.nodeId === nodeId)) return;
-    const node = nodes.find((n) => n.id === nodeId);
-    if (!node) return;
-    const data = node.data as unknown as CanvasNodeData;
-    const label = data.type === 'sqlQuery' ? `SQL#${nodeId.split('-')[1]}`
-      : data.type === 'dataFrame' ? `DF#${nodeId.split('-')[1]}`
-      : data.type === 'report' ? data.title
-      : data.title;
-    set({
-      referencedNodes: [...referencedNodes, { nodeId, label, type: data.type }],
-    });
-  },
-
-  removeReference: (nodeId) => {
-    set({ referencedNodes: get().referencedNodes.filter((r) => r.nodeId !== nodeId) });
-  },
-
-  clearReferences: () => {
-    set({ referencedNodes: [] });
-  },
-
-  sendMessage: async (content) => {
-    const { messages, referencedNodes } = get();
-
-    const userMsg: ChatMessage = {
-      id: nextId('msg'),
-      role: 'user',
-      content,
-      timestamp: new Date().toISOString(),
-      nodePreviews: referencedNodes.length > 0
-        ? referencedNodes.map((r) => ({ id: r.nodeId, type: r.type, label: r.label }))
-        : undefined,
-    };
-
-    set({ messages: [...messages, userMsg], referencedNodes: [], lastReferencedNodes: [...referencedNodes] });
-
-    const aiService = getAIService();
-
-    set({ isStreaming: true, streamingContent: "", streamingThinking: "" });
-    let fullContent = "";
-    let thinkingContent = "";
-    let streamingRAF: number | null = null;
-
-    const unsubscribe = aiService.subscribe((event: StreamEvent) => {
-      switch (event.type) {
-        case "text_delta":
-          fullContent += event.content || "";
-          streamingRAF ??= requestAnimationFrame(() => {
-            streamingRAF = null;
-            set({ streamingContent: fullContent });
-          });
-          break;
-        case "thinking_delta":
-          thinkingContent += event.content || "";
-          set({ streamingThinking: thinkingContent });
-          break;
-        case "message_end": {
-          if (streamingRAF != null) { cancelAnimationFrame(streamingRAF); streamingRAF = null; }
-          if (fullContent.trim()) {
-            const aiMsg: ChatMessage = {
-              id: nextId('msg'),
-              role: 'assistant',
-              content: fullContent,
-              timestamp: new Date().toISOString(),
-            };
-            set({
-              messages: [...get().messages, aiMsg],
-              isStreaming: false,
-              streamingContent: "",
-              streamingThinking: "",
-            });
-            unsubscribe();
-          }
-          break;
-        }
-        case "error":
-          if (streamingRAF != null) { cancelAnimationFrame(streamingRAF); streamingRAF = null; }
-          set({ isStreaming: false, streamingContent: "", streamingThinking: "" });
-          unsubscribe();
-          break;
-      }
-    });
-
-    try {
-      await aiService.sendMessage(content, referencedNodes);
-    } catch (err) {
-      if (streamingRAF != null) { cancelAnimationFrame(streamingRAF); streamingRAF = null; }
-      const errMsg: ChatMessage = {
-        id: nextId('msg'),
-        role: 'assistant',
-        content: `**Error:** ${err instanceof Error ? err.message : 'AI service failed'}`,
-        timestamp: new Date().toISOString(),
-      };
-      set({
-        messages: [...get().messages, errMsg],
-        isStreaming: false,
-        streamingContent: "",
-        streamingThinking: "",
-      });
-      unsubscribe();
-    }
-    return;
   },
 
   addSourceTableToCanvas: (tableName) => {

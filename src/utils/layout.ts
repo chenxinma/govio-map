@@ -25,6 +25,9 @@ export function getLayoutedElements(
   edges: Edge[],
   direction: 'TB' | 'LR' = 'LR'
 ): { nodes: Node[]; edges: Edge[] } {
+  // Clear stale state from previous layout calls
+  dagreGraph.nodes().forEach((id) => dagreGraph.removeNode(id));
+
   dagreGraph.setGraph({
     rankdir: direction,
     nodesep: 40,

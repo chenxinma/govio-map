@@ -72,6 +72,32 @@ function extractSqlCodeBlocks(text: string): Array<{ sql: string; outputColumns:
   return blocks;
 }
 
+function extractDataSource(sql: string): string {
+  const match = sql.match(/FROM\s+([\w.]+)/i);
+  if (!match) return "unknown";
+  const parts = match[1].split(".");
+  return parts.length > 1 ? parts[0] : match[1];
+}
+
+function extractTableName(sql: string): string {
+  const match = sql.match(/FROM\s+([\w.]+)/i);
+  if (!match) return "";
+  const parts = match[1].split(".");
+  return parts.length > 1 ? parts[1] : parts[0];
+}
+
+function extractDfName(text: string): string | null {
+  const nameMatch = text.match(/(?:定名|命名|命名为|name(?:d)?\s+(?:as)?|dfName\s*[:=])\s*(df_\w+)/i)
+    || text.match(/(df_\w+)/i);
+  return nameMatch ? nameMatch[1] : null;
+}
+
+let dfCounter = 0;
+function nextDfName(): string {
+  dfCounter++;
+  return `df_query_${dfCounter}`;
+}
+
 function formatCompareResult(parsed: {
   schema?: {
     match?: boolean;
@@ -235,11 +261,28 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
     const sqlBlocks = extractSqlCodeBlocks(text);
 
     for (const block of sqlBlocks) {
+      const dfName = extractDfName(text) || nextDfName();
+      const sourceName = extractDataSource(block.sql);
+      const tableName = extractTableName(block.sql);
+      let columns = block.outputColumns.map((name) => ({
+        name,
+        nonNull: 0,
+        dtype: "unknown",
+      }));
+
+      if (columns.length === 0) {
+        columns = [{ name: tableName ? `${tableName}.*` : "result", nonNull: 0, dtype: "unknown" }];
+      }
+
       pushGovioNode({
-        nodeType: "sqlQuery",
-        title: `SQL Query`,
-        sql: block.sql,
-        outputColumns: block.outputColumns,
+        nodeType: "dataFrame",
+        title: `DF: ${dfName}`,
+        dfName,
+        sourceName,
+        totalRows: 0,
+        totalColumns: columns.length,
+        memoryUsage: "0 B",
+        columns,
       });
     }
   });
