@@ -280,20 +280,25 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         .map((n) => (n.data as unknown as { dfName: string }).dfName)
     );
 
-    const missing = dataframes.filter((df) => !existingDfNames.has(df.dfName));
+    const missing = dataframes.filter((df) => {
+      const name = (df.dfName || df.name) as string;
+      return name && !existingDfNames.has(name);
+    });
     if (missing.length === 0) return;
 
     for (const df of missing) {
+      const dfName = (df.dfName || df.name) as string;
+      const cols = (df.columns || df.column_info || []) as Array<{ name: string; nonNull?: number; dtype: string }>;
       get().createGovioNode({
         type: 'govio_node_create',
         nodeType: 'dataFrame',
-        title: `DF: ${df.dfName}`,
-        dfName: df.dfName,
+        title: `DF: ${dfName}`,
+        dfName,
         sourceName: (df.sourceName as string) || '',
-        totalRows: (df.totalRows as number) || 0,
-        totalColumns: (df.totalColumns as number) || 0,
+        totalRows: (df.totalRows || df.rows as number) || 0,
+        totalColumns: (df.totalColumns as number) || cols.length,
         memoryUsage: (df.memoryUsage as string) || '0 B',
-        columns: (df.columns as Array<{ name: string; nonNull: number; dtype: string }>) || [],
+        columns: cols.map((c) => ({ name: c.name, nonNull: c.nonNull ?? 0, dtype: c.dtype })),
       });
     }
   },

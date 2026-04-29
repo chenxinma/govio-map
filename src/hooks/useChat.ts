@@ -188,7 +188,14 @@ export function useChat() {
             isObservingRef.current = false;
             setIsObserving(false);
             if (observeListResolveRef.current) {
-              observeListResolveRef.current(data.dataframes || []);
+              // Backend may return { dataframes: [...] } or { dataframes: { dataframes: [...] } }
+              const raw = data.dataframes;
+              const list = Array.isArray(raw)
+                ? raw
+                : Array.isArray(raw?.dataframes)
+                  ? raw.dataframes
+                  : [];
+              observeListResolveRef.current(list);
               observeListResolveRef.current = null;
             }
             break;
