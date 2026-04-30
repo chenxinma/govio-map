@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import type { ReferencedNode } from "../types";
 
 export interface ToolCall {
   toolName: string;
@@ -12,6 +13,7 @@ export interface ChatMessage {
   thinking?: string;
   tools?: ToolCall[];
   isStreaming?: boolean;
+  referencedNodes?: ReferencedNode[];
 }
 
 interface WSEvent {
@@ -227,7 +229,7 @@ export function useChat() {
     };
   }, [connect]);
 
-  const send = useCallback((content: string, referencedNodes?: Array<{ nodeId: string; label: string; type: string }>) => {
+  const send = useCallback((content: string, referencedNodes?: ReferencedNode[]) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
@@ -235,6 +237,7 @@ export function useChat() {
       id: nextMsgId(),
       role: "user",
       content,
+      referencedNodes: referencedNodes && referencedNodes.length > 0 ? referencedNodes : undefined,
     };
     setMessages((prev) => [...prev, userMsg]);
 

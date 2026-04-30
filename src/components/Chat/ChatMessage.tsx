@@ -1,8 +1,23 @@
 import { useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ChevronDown, ChevronRight, Wrench, Check, X, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench, Check, X, Loader2, Database, Code, Table2, FileText } from "lucide-react";
 import type { ChatMessage as ChatMessageType, ToolCall } from "../../hooks/useChat";
+import type { ReferencedNode, NodeType } from "../../types";
+
+const NODE_ICONS: Record<NodeType, typeof Database> = {
+  sourceTable: Database,
+  sqlQuery: Code,
+  dataFrame: Table2,
+  report: FileText,
+};
+
+const NODE_COLORS: Record<NodeType, string> = {
+  sourceTable: "text-node-source",
+  sqlQuery: "text-node-sql",
+  dataFrame: "text-node-df",
+  report: "text-node-report",
+};
 
 function ToolPill({ tool }: { tool: ToolCall }) {
   const isSuccess = tool.success === true;
@@ -52,6 +67,25 @@ function ThinkingSection({ content }: { content: string }) {
   );
 }
 
+function ReferenceChips({ nodes }: { nodes: ReferencedNode[] }) {
+  return (
+    <div className="flex flex-wrap gap-1.5 mb-2">
+      {nodes.map((ref) => {
+        const Icon = NODE_ICONS[ref.type] || Database;
+        return (
+          <span
+            key={ref.nodeId}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-[#242424] border border-border-subtle"
+          >
+            <Icon size={10} className={NODE_COLORS[ref.type] || "text-text-muted"} />
+            <span className="text-text-secondary">{ref.label}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ChatMessage({ message }: { message: ChatMessageType }) {
   const isUser = message.role === "user";
 
@@ -65,7 +99,12 @@ export default function ChatMessage({ message }: { message: ChatMessageType }) {
         }`}
       >
         {isUser ? (
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          <>
+            {message.referencedNodes && message.referencedNodes.length > 0 && (
+              <ReferenceChips nodes={message.referencedNodes} />
+            )}
+            <p className="whitespace-pre-wrap">{message.content}</p>
+          </>
         ) : (
           <>
             {message.thinking && <ThinkingSection content={message.thinking} />}
