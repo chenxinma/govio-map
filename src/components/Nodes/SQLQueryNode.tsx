@@ -1,12 +1,13 @@
 import { memo, useState, useCallback, useRef, useEffect } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Quote } from 'lucide-react';
+import { Quote, Trash2 } from 'lucide-react';
 import type { SQLQueryNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
 
 function SQLNode({ data, id }: NodeProps) {
   const nodeData = data as unknown as SQLQueryNodeData;
   const addReference = useCanvasStore((s) => s.addReference);
+  const deleteNodes = useCanvasStore((s) => s.deleteNodes);
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const [isEditing, setIsEditing] = useState(nodeData.sql === '');
   const [editValue, setEditValue] = useState(nodeData.sql);
@@ -110,6 +111,12 @@ function SQLNode({ data, id }: NodeProps) {
         >
           <Quote size={12} />
           <span>引用</span>
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); deleteNodes([id]); }}
+          className="ml-auto flex items-center text-text-muted hover:text-red-400 transition-colors p-1 rounded-md hover:bg-red-400/10"
+        >
+          <Trash2 size={12} />
         </button>
       </div>
 

@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Quote, GitCompare, TrendingUp } from 'lucide-react';
+import { Quote, GitCompare, TrendingUp, Trash2 } from 'lucide-react';
 import type { ReportNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
 
@@ -111,6 +111,7 @@ function parseMarkdown(text: string): React.ReactNode[] {
 function ReportNode({ data, id }: NodeProps) {
   const nodeData = data as unknown as ReportNodeData;
   const addReference = useCanvasStore((s) => s.addReference);
+  const deleteNodes = useCanvasStore((s) => s.deleteNodes);
 
   const icon = nodeData.reportType === 'correlation'
     ? <TrendingUp size={14} className="text-violet-400" />
@@ -147,6 +148,12 @@ function ReportNode({ data, id }: NodeProps) {
         >
           <Quote size={12} />
           <span>引用</span>
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); deleteNodes([id]); }}
+          className="ml-auto flex items-center text-text-muted hover:text-red-400 transition-colors p-1 rounded-md hover:bg-red-400/10"
+        >
+          <Trash2 size={12} />
         </button>
       </div>
 

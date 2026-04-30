@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { Node, Edge, Connection, OnNodesChange, OnEdgesChange } from '@xyflow/react';
 import { addEdge, applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
 import type { CanvasNodeData, DataFrameNodeData, ReferencedNode } from '../types';
@@ -40,11 +41,14 @@ interface CanvasStore {
   clearReferences: () => void;
 
   updateNodeData: (nodeId: string, data: Partial<CanvasNodeData>) => void;
+  deleteNodes: (nodeIds: string[]) => void;
   createManualSQLNode: () => void;
   restoreCanvas: (dataframes: Array<{ name: string; rows?: number; columns?: number; column_info?: Array<{ name: string; nonNull?: number; dtype: string }> }>) => void;
 }
 
-export const useCanvasStore = create<CanvasStore>((set, get) => ({
+export const useCanvasStore = create<CanvasStore>()(
+  persist(
+    (set, get) => ({
   nodes: [],
   edges: [],
   previewPanels: [],
@@ -323,6 +327,16 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     });
   },
 
+  deleteNodes: (nodeIds) => {
+    const idSet = new Set(nodeIds);
+    set({
+      nodes: get().nodes.filter((n) => !idSet.has(n.id)),
+      edges: get().edges.filter((e) => !idSet.has(e.source) && !idSet.has(e.target)),
+      previewPanels: get().previewPanels.filter((p) => !idSet.has(p.nodeId)),
+      referencedNodes: get().referencedNodes.filter((r) => !idSet.has(r.nodeId)),
+    });
+  },
+
   createManualSQLNode: () => {
     const { nodes, edges } = get();
     const nodeId = nextId('sql');
@@ -374,5 +388,14 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       });
     }
   },
-
-}));
+}),
+{
+  name: 'govio-canvas-state',
+  partialize: (state) => ({
+    nodes: state.nodes,
+    edges: state.edges,
+    referencedNodes: state.referencedNodes,
+  }),
+}
+)
+);

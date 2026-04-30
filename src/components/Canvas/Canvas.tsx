@@ -18,6 +18,7 @@ export default function Canvas() {
   const onNodesChange = useCanvasStore((s) => s.onNodesChange);
   const onEdgesChange = useCanvasStore((s) => s.onEdgesChange);
   const onConnect = useCanvasStore((s) => s.onConnect);
+  const deleteNodes = useCanvasStore((s) => s.deleteNodes);
   const previewPanels = useCanvasStore((s) => s.previewPanels);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
@@ -45,6 +46,7 @@ export default function Canvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onNodesDelete={({ nodes: deletedNodes }) => deleteNodes(deletedNodes.map((n) => n.id))}
         onDragOver={onDragOver}
         onDrop={onDrop}
         nodeTypes={nodeTypes}

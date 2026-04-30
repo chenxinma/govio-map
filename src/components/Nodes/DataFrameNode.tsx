@@ -1,12 +1,13 @@
 import { memo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Table2, Quote, Eye } from 'lucide-react';
+import { Table2, Quote, Eye, Trash2 } from 'lucide-react';
 import type { DataFrameNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
 
 function DataFrameNode({ data, id }: NodeProps) {
   const nodeData = data as unknown as DataFrameNodeData;
   const addReference = useCanvasStore((s) => s.addReference);
+  const deleteNodes = useCanvasStore((s) => s.deleteNodes);
   const openPreviewPanel = useCanvasStore((s) => s.openPreviewPanel);
 
   return (
@@ -63,6 +64,12 @@ function DataFrameNode({ data, id }: NodeProps) {
         >
           <Eye size={12} />
           <span>预览</span>
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); deleteNodes([id]); }}
+          className="ml-auto flex items-center text-text-muted hover:text-red-400 transition-colors p-1 rounded-md hover:bg-red-400/10"
+        >
+          <Trash2 size={12} />
         </button>
       </div>
 
