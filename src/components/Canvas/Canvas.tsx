@@ -46,7 +46,7 @@ export default function Canvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodesDelete={({ nodes: deletedNodes }) => deleteNodes(deletedNodes.map((n) => n.id))}
+        onNodesDelete={(deletedNodes) => deleteNodes(deletedNodes.map((n) => n.id))}
         onDragOver={onDragOver}
         onDrop={onDrop}
         nodeTypes={nodeTypes}

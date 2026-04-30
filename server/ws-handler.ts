@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
-import { getOrCreateSession, runGovioCli, agentSetup } from "./agent.js";
+import { getOrCreateSession, runGovioCli } from "./agent.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
 
 interface WSMessage {

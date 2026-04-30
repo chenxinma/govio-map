@@ -14,19 +14,50 @@ function extractTextContent(content: Array<{ type: string; text?: string }>): st
     .join("");
 }
 
+function extractNamedArg(cmd: string, flag: string): string | null {
+  const match = cmd.match(new RegExp(`--${flag}\\s+(\\S+)`));
+  return match ? match[1] : null;
+}
+
 function parseObserveSubcommand(cmd: string): string | null {
   const match = cmd.match(/govio-cli\s+observe\s+(\S+)/);
   return match ? match[1] : null;
 }
 
 function parseLoadArgs(cmd: string): { name: string; datasource: string } | null {
-  const match = cmd.match(/govio-cli\s+observe\s+load\s+(\S+)\s+(\S+)/);
-  return match ? { name: match[1], datasource: match[2] } : null;
+  const name = extractNamedArg(cmd, "name");
+  const datasource = extractNamedArg(cmd, "datasource");
+  if (!name || !datasource) return null;
+  return { name, datasource };
 }
 
-function parseCompareArgs(cmd: string): { source: string; target: string } | null {
-  const match = cmd.match(/govio-cli\s+observe\s+compare\s+(\S+)\s+(\S+)/);
-  return match ? { source: match[1], target: match[2] } : null;
+function parseCompareArgs(cmd: string): { source: string; target: string; joinColumns: string[] } | null {
+  const source = extractNamedArg(cmd, "source");
+  const target = extractNamedArg(cmd, "target");
+  if (!source || !target) return null;
+  const joinColumnsRaw = extractNamedArg(cmd, "join-columns");
+  const joinColumns = joinColumnsRaw ? joinColumnsRaw.split(",") : [];
+  return { source, target, joinColumns };
+}
+
+function parseQueryArgs(cmd: string): { code: string } | null {
+  const match = cmd.match(/--code\s+["'](.+?)["']/);
+  if (!match) {
+    const code = extractNamedArg(cmd, "code");
+    return code ? { code } : null;
+  }
+  return { code: match[1] };
+}
+
+function parseReleaseArgs(cmd: string): { name: string } | null {
+  const name = extractNamedArg(cmd, "name");
+  return name ? { name } : null;
+}
+
+function parseExploreArgs(cmd: string): { dataframes: string[] } | null {
+  const match = cmd.match(/--dataframes\s+((?:\S+\s*)+)/);
+  if (!match) return null;
+  return { dataframes: match[1].trim().split(/\s+/) };
 }
 
 function estimateMemoryUsage(rows: number, cols: number): string {
@@ -70,13 +101,6 @@ function extractSqlCodeBlocks(text: string): Array<{ sql: string; outputColumns:
     }
   }
   return blocks;
-}
-
-function extractDataSource(sql: string): string {
-  const match = sql.match(/FROM\s+([\w.]+)/i);
-  if (!match) return "unknown";
-  const parts = match[1].split(".");
-  return parts.length > 1 ? parts[0] : match[1];
 }
 
 function extractTableName(sql: string): string {
@@ -206,21 +230,53 @@ function handleCompareResult(cmd: string, stdout: string): void {
   }
 }
 
-function handleExploreResult(stdout: string): void {
+function handleExploreResult(cmd: string, stdout: string): void {
+  const args = parseExploreArgs(cmd);
   try {
     const parsed = JSON.parse(stdout);
     if (parsed.success === false) return;
     const relations: Array<Record<string, unknown>> = parsed.relations || [];
     if (relations.length === 0) return;
     const content = formatExploreResult(relations);
-    const sourceRefs = extractExploreSources(relations);
-    // console.log("content:" + stdout);
+    const sourceRefs = args
+      ? args.dataframes.map((df) => ({ label: df }))
+      : extractExploreSources(relations);
     pushGovioNode({
       nodeType: "report",
       title: `Correlation: ${sourceRefs.map((r) => r.label).join(" & ")}`,
       reportType: "correlation",
       content,
       sourceRefs,
+    });
+  } catch {
+    // stdout is not valid JSON
+  }
+}
+
+function handleReleaseResult(cmd: string): void {
+  const args = parseReleaseArgs(cmd);
+  if (!args) return;
+  pushGovioNode({
+    nodeType: "report",
+    title: `Released: ${args.name}`,
+    reportType: "diff",
+    content: `DataFrame \`${args.name}\` has been released from memory.`,
+    sourceRefs: [{ label: args.name }],
+  });
+}
+
+function handleQueryResult(cmd: string, stdout: string): void {
+  const args = parseQueryArgs(cmd);
+  if (!args) return;
+  try {
+    const parsed = JSON.parse(stdout);
+    if (parsed.success === false) return;
+    const columns = (parsed.columns || []).map((name: string) => name);
+    pushGovioNode({
+      nodeType: "sqlQuery",
+      title: `Q: ${args.code.slice(0, 40)}`,
+      sql: args.code,
+      outputColumns: columns.length > 0 ? columns : ["result"],
     });
   } catch {
     // stdout is not valid JSON
@@ -234,10 +290,16 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
     if (event.toolName !== "bash" || event.isError) return;
 
     const cmd = extractBashCommand(event.input);
-    if (!/govio-cli\s+observe/.test(cmd)) return;
 
     if (!Array.isArray(event.content)) return;
     const stdout = extractTextContent(event.content);
+
+    if (/govio-cli\s+query/.test(cmd)) {
+      handleQueryResult(cmd, stdout);
+      return;
+    }
+
+    if (!/govio-cli\s+observe/.test(cmd)) return;
     const subcommand = parseObserveSubcommand(cmd);
 
     switch (subcommand) {
@@ -248,9 +310,11 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         handleCompareResult(cmd, stdout);
         break;
       case "explore":
-        handleExploreResult(stdout);
+        handleExploreResult(cmd, stdout);
         break;
-      // list, show-datasource, release — ignored
+      case "release":
+        handleReleaseResult(cmd);
+        break;
     }
   });
 
@@ -265,7 +329,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
 
     for (const block of sqlBlocks) {
       const dfName = extractDfName(text) || nextDfName();
-      const sourceName = extractDataSource(block.sql);
+      // const sourceName = extractDataSource(block.sql);
       const tableName = extractTableName(block.sql);
       let columns = block.outputColumns.map((name) => ({
         name,
@@ -278,14 +342,10 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
       }
 
       pushGovioNode({
-        nodeType: "dataFrame",
-        title: `DF: ${dfName}`,
-        dfName,
-        sourceName,
-        totalRows: 0,
-        totalColumns: columns.length,
-        memoryUsage: "0 B",
-        columns,
+        nodeType: "sqlQuery",
+        title: `Q: ${tableName || dfName}`,
+        sql: block.sql,
+        outputColumns: block.outputColumns
       });
     }
   });

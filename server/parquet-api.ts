@@ -2,7 +2,7 @@ import { IncomingMessage, ServerResponse } from "http";
 import { existsSync } from "fs";
 import { join } from "path";
 import { asyncBufferFromFile, parquetReadObjects } from "hyparquet";
-import { AsyncBuffer } from "hyparquet/src/types.js";
+import type { AsyncBuffer } from "hyparquet/src/types.js";
 
 const PARQUET_DIR = ".govio/observe/dataframes";
 
@@ -49,7 +49,7 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
       rowEnd: rowLimit,
     });
     
-    const jsonString = JSON.stringify(data, (key, value) => {
+    const jsonString = JSON.stringify(data, (_key, value) => {
       if (typeof value === 'bigint') {
         return value.toString();
       }
