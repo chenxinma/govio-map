@@ -13,6 +13,7 @@ export interface CanvasEvent {
   reportType?: "diff" | "correlation";
   reportContent?: string;
   sourceRefs?: Array<{ label: string }>;
+  referencedNodes?: Array<{ nodeId: string; label: string }>;
 }
 
 export interface CanvasService {

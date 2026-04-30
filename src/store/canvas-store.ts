@@ -32,6 +32,7 @@ interface CanvasStore {
   openPreviewPanel: (nodeId: string) => void;
   closePreviewPanel: (panelId: string) => void;
   movePreviewPanel: (panelId: string, x: number, y: number) => void;
+  updatePreviewPanelData: (panelId: string, previewData: Record<string, unknown>[]) => void;
 
   referencedNodes: ReferencedNode[];
   addReference: (nodeId: string) => void;
@@ -40,7 +41,7 @@ interface CanvasStore {
 
   updateNodeData: (nodeId: string, data: Partial<CanvasNodeData>) => void;
   createManualSQLNode: () => void;
-  restoreCanvas: (dataframes: Array<{ dfName: string; [key: string]: unknown }>) => void;
+  restoreCanvas: (dataframes: Array<{ name: string; rows?: number; columns?: number; column_info?: Array<{ name: string; nonNull?: number; dtype: string }> }>) => void;
 }
 
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
@@ -156,17 +157,58 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         return;
     }
 
+    // Auto-create edges from referenced nodes
+    const newEdges: Edge[] = [];
+    if (event.referencedNodes) {
+      for (const ref of event.referencedNodes) {
+        if (nodes.some((n) => n.id === ref.nodeId)) {
+          newEdges.push({
+            id: `e-${ref.nodeId}-${nodeId}`,
+            source: ref.nodeId,
+            target: nodeId,
+            type: "smoothstep",
+            animated: true,
+            style: { stroke: "#3ecf8e", strokeWidth: 2 },
+          });
+        }
+      }
+    }
+    // For report nodes: also match sourceRefs labels to canvas nodes
+    if (event.nodeType === "report" && event.sourceRefs) {
+      for (const ref of event.sourceRefs) {
+        const matched = nodes.find((n) => {
+          const d = n.data as unknown as CanvasNodeData;
+          return (
+            d.title === ref.label ||
+            ("tableName" in d && d.tableName === ref.label) ||
+            ("dfName" in d && d.dfName === ref.label)
+          );
+        });
+        if (matched && !newEdges.some((e) => e.source === matched.id)) {
+          newEdges.push({
+            id: `e-${matched.id}-${nodeId}`,
+            source: matched.id,
+            target: nodeId,
+            type: "smoothstep",
+            animated: true,
+            style: { stroke: "#3ecf8e", strokeWidth: 2 },
+          });
+        }
+      }
+    }
+
+    const allEdges = [...edges, ...newEdges];
     const allNodes = [...nodes, newNode];
     try {
-      const { nodes: layoutedNodes } = getLayoutedElements(allNodes, edges);
-      set({ nodes: layoutedNodes });
+      const { nodes: layoutedNodes } = getLayoutedElements(allNodes, allEdges);
+      set({ nodes: layoutedNodes, edges: allEdges });
     } catch (err) {
       console.error("[canvas] autoLayout failed, falling back to sequential placement:", err);
       newNode.position = {
         x: 100 + nodes.length * 60,
         y: 100 + nodes.length * 40,
       };
-      set({ nodes: allNodes });
+      set({ nodes: allNodes, edges: allEdges });
     }
   },
 
@@ -190,12 +232,13 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const node = nodes.find((n) => n.id === nodeId);
     if (!node) return;
     const data = node.data as unknown as DataFrameNodeData;
+    const panelId = `preview-${nodeId}`;
     const panelCount = previewPanels.length;
     set({
       previewPanels: [
         ...previewPanels,
         {
-          id: `preview-${nodeId}`,
+          id: panelId,
           nodeId,
           data,
           x: 340 + panelCount * 30,
@@ -203,6 +246,20 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         },
       ],
     });
+
+    // Fetch preview data from backend
+    const apiPort = Number(window.location.port) + 1;
+    fetch(`http://localhost:${apiPort}/api/preview?df=${encodeURIComponent(data.dfName)}&rows=50`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        return res.json();
+      })
+      .then((rows: Record<string, unknown>[]) => {
+        get().updatePreviewPanelData(panelId, rows);
+      })
+      .catch((err) => {
+        console.error(`[preview] Failed to fetch data for ${data.dfName}:`, err);
+      });
   },
 
   closePreviewPanel: (panelId) => {
@@ -213,6 +270,16 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     set({
       previewPanels: get().previewPanels.map((p) =>
         p.id === panelId ? { ...p, x, y } : p
+      ),
+    });
+  },
+
+  updatePreviewPanelData: (panelId, previewData) => {
+    set({
+      previewPanels: get().previewPanels.map((p) =>
+        p.id === panelId
+          ? { ...p, data: { ...p.data, previewData } }
+          : p
       ),
     });
   },
@@ -289,25 +356,20 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         .map((n) => (n.data as unknown as { dfName: string }).dfName)
     );
 
-    const missing = dataframes.filter((df) => {
-      const name = (df.dfName || df.name) as string;
-      return name && !existingDfNames.has(name);
-    });
+    const missing = dataframes.filter((df) => df.name && !existingDfNames.has(df.name));
     if (missing.length === 0) return;
 
     for (const df of missing) {
-      const dfName = (df.dfName || df.name) as string;
-      const rawCols = df.column_info || df.columns;
-      const cols: Array<{ name: string; nonNull?: number; dtype: string }> = Array.isArray(rawCols) ? rawCols : [];
+      const cols = (df.column_info ?? []) as Array<{ name: string; nonNull?: number; dtype: string }>;
       get().createGovioNode({
         type: 'govio_node_create',
         nodeType: 'dataFrame',
-        title: `DF: ${dfName}`,
-        dfName,
-        sourceName: (df.sourceName as string) || '',
-        totalRows: (df.totalRows || df.rows as number) || 0,
-        totalColumns: (df.totalColumns as number) || (typeof df.columns === 'number' ? df.columns : cols.length),
-        memoryUsage: (df.memoryUsage as string) || '0 B',
+        title: `DF: ${df.name}`,
+        dfName: df.name,
+        sourceName: '',
+        totalRows: (df.rows as number) ?? 0,
+        totalColumns: (df.columns as number) ?? cols.length,
+        memoryUsage: '0 B',
         columns: cols.map((c) => ({ name: c.name, nonNull: c.nonNull ?? 0, dtype: c.dtype })),
       });
     }

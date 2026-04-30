@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
-import { getOrCreateSession, runGovioCli } from "./agent.js";
-import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, type GovioNodeCreateEvent } from "./govio-node-queue.js";
+import { getOrCreateSession, runGovioCli, agentSetup } from "./agent.js";
+import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
 
 interface WSMessage {
   type: "prompt" | "steer" | "followUp" | "abort" | "observe_list";
@@ -85,12 +85,14 @@ export function setupWebSocket(server: import("http").Server) {
           switch (msg.type) {
             case "prompt":
               if (msg.content) {
+                setCurrentReferencedNodes(msg.referencedNodes);
                 const prompt = makePrompt(msg);
                 if (session.isStreaming) {
                   await session.steer(prompt);
                 } else {
                   await session.prompt(prompt);
                 }
+                clearCurrentReferencedNodes();
               }
               break;
             case "steer":

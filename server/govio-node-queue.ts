@@ -19,12 +19,27 @@ export interface GovioNodeCreateEvent {
   reportType?: "diff" | "correlation";
   content?: string;
   sourceRefs?: Array<{ label: string }>;
+  // edge sources — referencedNodes from the user's prompt
+  referencedNodes?: Array<{ nodeId: string; label: string }>;
 }
 
 const queue: GovioNodeCreateEvent[] = [];
 const emitter = new EventEmitter();
 
+let currentReferencedNodes: Array<{ nodeId: string; label: string }> | undefined;
+
+export function setCurrentReferencedNodes(refs: Array<{ nodeId: string; label: string }> | undefined): void {
+  currentReferencedNodes = refs;
+}
+
+export function clearCurrentReferencedNodes(): void {
+  currentReferencedNodes = undefined;
+}
+
 export function pushGovioNode(event: GovioNodeCreateEvent): void {
+  if (currentReferencedNodes && currentReferencedNodes.length > 0) {
+    event.referencedNodes = currentReferencedNodes;
+  }
   queue.push(event);
 }
 

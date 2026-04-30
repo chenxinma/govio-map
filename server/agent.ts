@@ -6,11 +6,10 @@ import govioCanvasExtension from "./extensions/govio-canvas.js";
 
 let session: AgentSession | null = null;
 let govioGovioBaseDir: string | null = null;
+let resLoader: DefaultResourceLoader | null = null;
 
-export async function getOrCreateSession(): Promise<AgentSession> {
-  if (session) return session;
-
-  const loader = new DefaultResourceLoader({
+export async function agentSetup() {
+  resLoader = new DefaultResourceLoader({
     extensionFactories: [
       (pi) => { govioCanvasExtension(pi); },
     ],
@@ -24,10 +23,10 @@ export async function getOrCreateSession(): Promise<AgentSession> {
       };
     },
   });
-  await loader.reload();
 
-  const agentDir = join(homedir(), ".pi", "agent");
-  const { skills: allSkills, diagnostics } = loader.getSkills();
+  await resLoader.reload();
+
+  const { skills: allSkills, diagnostics } = resLoader.getSkills();
   console.log(
     "Skills:",
     allSkills.map((s) => s.name),
@@ -36,20 +35,29 @@ export async function getOrCreateSession(): Promise<AgentSession> {
     console.log("Warnings:", diagnostics);
   }
 
-  const cwd = process.cwd();
-
   const _govio_skill = allSkills.filter(s => (s.name === "govio"))[0];
   if (_govio_skill) {
     govioGovioBaseDir = _govio_skill.baseDir
   }
   await runGovioCli("--help");
+  console.log(">>> Server agent ready. <<<");
+}
+
+export async function getOrCreateSession(): Promise<AgentSession> {
+  if (session) return session;
+  
+  if (!resLoader) throw Error("Agent not ready.");
+  await resLoader.reload();
+
+  const agentDir = join(homedir(), ".pi", "agent");
+  const cwd = process.cwd();
   
   const result = await createAgentSession({
     cwd,
     tools: createCodingTools(cwd),
     sessionManager: SessionManager.inMemory(),
     agentDir: agentDir,
-    resourceLoader: loader,
+    resourceLoader: resLoader,
   });
 
   session = result.session;
@@ -66,6 +74,6 @@ export async function runGovioCli(cmd: string): Promise<string> {
     encoding: "utf-8",
     timeout: 15000,
   });
-  console.log(output);
+  console.debug(output);
   return output;
 }

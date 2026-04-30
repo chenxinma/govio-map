@@ -189,7 +189,7 @@ export function useChat() {
             setIsObserving(false);
             if (observeListResolveRef.current) {
               // Backend may return { dataframes: [...] } or { dataframes: { dataframes: [...] } }
-              const raw = data.dataframes;
+              const raw = data.dataframes as unknown[] | { dataframes: unknown[] } | undefined;
               const list = Array.isArray(raw)
                 ? raw
                 : Array.isArray(raw?.dataframes)

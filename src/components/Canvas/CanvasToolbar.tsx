@@ -14,7 +14,7 @@ export default function CanvasToolbar() {
     setIsRestoring(true);
     try {
       const dataframes = await observeList();
-      restoreCanvas(dataframes as Array<{ dfName: string; [key: string]: unknown }>);
+      restoreCanvas(dataframes as Array<{ name: string; rows?: number; columns?: number; column_info?: Array<{ name: string; nonNull?: number; dtype: string }> }>);
     } catch (err) {
       console.error("[toolbar] observeList failed:", err);
     } finally {
