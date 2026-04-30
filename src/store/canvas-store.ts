@@ -148,7 +148,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
             title: event.title || "Report",
             createdAt: now,
             reportType: event.reportType || "diff",
-            content: event.reportContent || "",
+            content: event.content || "",
             sourceRefs: event.sourceRefs || [],
           },
         };

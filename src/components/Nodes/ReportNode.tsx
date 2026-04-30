@@ -119,7 +119,7 @@ function ReportNode({ data, id }: NodeProps) {
   const borderColor = nodeData.reportType === 'correlation'
     ? 'border-l-violet-400'
     : 'border-l-amber-400';
-
+  console.log(nodeData);
   return (
     <div className="w-[380px] rounded-lg border border-border-default bg-bg-card overflow-hidden">
       <div className={`border-l-[3px] ${borderColor} px-4 py-3`}>

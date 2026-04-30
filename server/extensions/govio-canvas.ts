@@ -127,14 +127,16 @@ function formatCompareResult(parsed: {
 function formatExploreResult(relations: Array<Record<string, unknown>>): string {
   const lines: string[] = [];
   lines.push(`## Discovered Relations`);
+  lines.push(`| Source | Target | Similarity |`);
+  lines.push(`|--------|--------|------------|`);
   for (const rel of relations) {
     if (rel.type === "column_similarity") {
       lines.push(
-        `- [Similarity ${(Number(rel.similarity) * 100).toFixed(0)}%] ${rel.table1}.${rel.column1} ~ ${rel.table2}.${rel.column2}`,
+        `| ${rel.table1}.${rel.column1} | ${rel.table2}.${rel.column2} | ${(Number(rel.similarity) * 100).toFixed(0)}% |`,
       );
     } else {
       lines.push(
-        `- [Confidence ${(Number(rel.confidence) * 100).toFixed(0)}%] ${rel.source_table}.${rel.source_column} → ${rel.target_table}.${rel.target_column}`,
+        `| ${rel.source_table}.${rel.source_column} | ${rel.target_table}.${rel.target_column} | ${(Number(rel.confidence) * 100).toFixed(0)}% |`,
       );
     }
   }
@@ -212,6 +214,7 @@ function handleExploreResult(stdout: string): void {
     if (relations.length === 0) return;
     const content = formatExploreResult(relations);
     const sourceRefs = extractExploreSources(relations);
+    // console.log("content:" + stdout);
     pushGovioNode({
       nodeType: "report",
       title: `Correlation: ${sourceRefs.map((r) => r.label).join(" & ")}`,

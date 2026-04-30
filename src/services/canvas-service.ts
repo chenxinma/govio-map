@@ -11,7 +11,7 @@ export interface CanvasEvent {
   memoryUsage?: string;
   columns?: Array<{ name: string; nonNull: number; dtype: string }>;
   reportType?: "diff" | "correlation";
-  reportContent?: string;
+  content?: string;
   sourceRefs?: Array<{ label: string }>;
   referencedNodes?: Array<{ nodeId: string; label: string }>;
 }
