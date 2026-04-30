@@ -1,4 +1,4 @@
-import { getOrCreateSession } from "./agent.js";
+import { getOrCreateSession, agentSetup } from "./agent.js";
 import { parseArgs } from "node:util";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 
@@ -23,6 +23,7 @@ function writeLine(obj: unknown) {
 }
 
 async function main() {
+  await agentSetup();
   const session = await getOrCreateSession();
 
   const unsubscribe = session.subscribe((event) => {
@@ -43,10 +44,10 @@ async function main() {
         }
         break;
       case "tool_execution_start":
-        writeLine({ type: "tool_start", toolName: event.toolName });
+        writeLine({ type: "tool_start", toolName: event.toolName, args: event.args });
         break;
       case "tool_execution_end":
-        writeLine({ type: "tool_end", toolName: event.toolName, success: !event.isError });
+        writeLine({ type: "tool_end", toolName: event.toolName, result: event.result, success: !event.isError });
         break;
       case "message_end":
         if ((event as MessageEvent).message.role === "assistant") {
