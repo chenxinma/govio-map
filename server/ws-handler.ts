@@ -71,6 +71,7 @@ export function setupWebSocket(server: import("http").Server) {
             break;
           case "agent_end":
             console.log("[ws] Agent session ended");
+            ws.send(JSON.stringify({ type: "agent_end" }));
             break;
         }
         } catch (err) {

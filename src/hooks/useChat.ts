@@ -83,8 +83,11 @@ export function useChat() {
             setIsConnected(true);
             break;
 
-          case "message_start":
+          case "agent_start":
             setIsStreaming(true);
+            break;
+
+          case "message_start":
             if (currentAssistantId.current) {
               setMessages((prev) =>
                 prev.map((m) =>
@@ -159,7 +162,6 @@ export function useChat() {
             break;
 
           case "message_end":
-            setIsStreaming(false);
             if (currentAssistantId.current) {
               setMessages((prev) =>
                 prev.map((m) =>
