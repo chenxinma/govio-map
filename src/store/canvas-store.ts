@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Node, Edge, Connection, OnNodesChange, OnEdgesChange } from '@xyflow/react';
-import { addEdge, applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
+import { addEdge, applyNodeChanges, applyEdgeChanges, Position } from '@xyflow/react';
 import type { CanvasNodeData, DataFrameNodeData, ReferencedNode } from '../types';
 import { MOCK_TABLES } from '../data/mock-tables';
 import { nextId } from '../services/mock-ai';
-import { getLayoutedElements } from '../utils/layout';
+import { getLayoutedElements, positionNewNode } from '../utils/layout';
 import { getCanvasService, type CanvasEvent } from '../services/canvas-service';
 
 export interface PreviewPanel {
@@ -67,7 +67,7 @@ export const useCanvasStore = create<CanvasStore>()(
   },
 
   addSourceTableToCanvas: (tableName) => {
-    const { nodes, edges } = get();
+    const { nodes } = get();
     const tableDef = MOCK_TABLES.find((t) => t.tableName === tableName);
     if (!tableDef) return;
     if (nodes.some((n) => {
@@ -79,7 +79,7 @@ export const useCanvasStore = create<CanvasStore>()(
     const newNode: Node = {
       id: tableId,
       type: 'sourceTable',
-      position: { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 },
+      position: { x: 0, y: 0 },
       data: {
         type: 'sourceTable',
         title: tableDef.tableName,
@@ -91,9 +91,8 @@ export const useCanvasStore = create<CanvasStore>()(
       },
     };
 
-    const allNodes = [...nodes, newNode];
-    const { nodes: layoutedNodes } = getLayoutedElements(allNodes, edges);
-    set({ nodes: layoutedNodes });
+    const pos = positionNewNode(nodes, newNode, []);
+    set({ nodes: [...nodes, { ...newNode, position: pos, sourcePosition: Position.Right, targetPosition: Position.Left }] });
   },
 
   autoLayout: () => {
@@ -202,18 +201,9 @@ export const useCanvasStore = create<CanvasStore>()(
     }
 
     const allEdges = [...edges, ...newEdges];
-    const allNodes = [...nodes, newNode];
-    try {
-      const { nodes: layoutedNodes } = getLayoutedElements(allNodes, allEdges);
-      set({ nodes: layoutedNodes, edges: allEdges });
-    } catch (err) {
-      console.error("[canvas] autoLayout failed, falling back to sequential placement:", err);
-      newNode.position = {
-        x: 100 + nodes.length * 60,
-        y: 100 + nodes.length * 40,
-      };
-      set({ nodes: allNodes, edges: allEdges });
-    }
+    const pos = positionNewNode(nodes, newNode, newEdges);
+    const positionedNode = { ...newNode, position: pos, sourcePosition: Position.Right, targetPosition: Position.Left };
+    set({ nodes: [...nodes, positionedNode], edges: allEdges });
   },
 
   subscribeToCanvas: () => {
@@ -338,7 +328,7 @@ export const useCanvasStore = create<CanvasStore>()(
   },
 
   createManualSQLNode: () => {
-    const { nodes, edges } = get();
+    const { nodes } = get();
     const nodeId = nextId('sql');
     const newNode: Node = {
       id: nodeId,
@@ -352,14 +342,8 @@ export const useCanvasStore = create<CanvasStore>()(
         outputColumns: [],
       },
     };
-    const allNodes = [...nodes, newNode];
-    try {
-      const { nodes: layoutedNodes } = getLayoutedElements(allNodes, edges);
-      set({ nodes: layoutedNodes });
-    } catch {
-      newNode.position = { x: 100 + nodes.length * 60, y: 100 + nodes.length * 40 };
-      set({ nodes: allNodes });
-    }
+    const pos = positionNewNode(nodes, newNode, []);
+    set({ nodes: [...nodes, { ...newNode, position: pos, sourcePosition: Position.Right, targetPosition: Position.Left }] });
   },
 
   restoreCanvas: (dataframes) => {
