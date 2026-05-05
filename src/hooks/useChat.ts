@@ -33,6 +33,7 @@ export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const isStreamingRef = useRef(false);
   const [isObserving, setIsObserving] = useState(false);
   const isObservingRef = useRef(false);
   const observeListResolveRef = useRef<((dataframes: unknown[]) => void) | null>(null);
@@ -41,6 +42,7 @@ export function useChat() {
   const reconnectAttempts = useRef(0);
   const currentAssistantId = useRef<string | null>(null);
   const disposedRef = useRef(false);
+  const connectRef = useRef<() => void>(() => {});
 
   const connect = useCallback(() => {
     if (disposedRef.current) return;
@@ -49,6 +51,17 @@ export function useChat() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsPort = parseInt(window.location.port) + 1;
     const ws = new WebSocket(`${protocol}//${window.location.hostname}:${wsPort}/ws`);
+
+    const finalizeCurrent = () => {
+      const id = currentAssistantId.current;
+      if (!id) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === id ? { ...m, isStreaming: false } : m
+        )
+      );
+      currentAssistantId.current = null;
+    };
 
     ws.onopen = () => {
       if (wsRef.current !== ws) return;
@@ -65,7 +78,7 @@ export function useChat() {
       if (disposedRef.current) return;
       const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 10000);
       reconnectAttempts.current += 1;
-      reconnectTimer.current = setTimeout(connect, delay);
+      reconnectTimer.current = setTimeout(connectRef.current, delay);
     };
 
     ws.onerror = () => {
@@ -84,17 +97,13 @@ export function useChat() {
             break;
 
           case "agent_start":
+            isStreamingRef.current = true;
             setIsStreaming(true);
+            finalizeCurrent();
             break;
 
-          case "message_start":
-            if (currentAssistantId.current) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === currentAssistantId.current ? { ...m, isStreaming: false } : m
-                )
-              );
-            }
+          case "message_start": {
+            finalizeCurrent();
             const assistantId = nextMsgId();
             currentAssistantId.current = assistantId;
             setMessages((prev) => [
@@ -108,91 +117,86 @@ export function useChat() {
               },
             ]);
             break;
+          }
 
-          case "thinking_delta":
-            if (data.content && currentAssistantId.current) {
+          case "thinking_delta": {
+            const thinkId = currentAssistantId.current;
+            const chunk = data.content;
+            if (chunk && thinkId) {
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === currentAssistantId.current
-                    ? { ...m, thinking: (m.thinking || "") + data.content }
+                  m.id === thinkId
+                    ? { ...m, thinking: (m.thinking || "") + chunk }
                     : m
                 )
               );
             }
             break;
+          }
 
-          case "text_delta":
-            if (data.content && currentAssistantId.current) {
+          case "text_delta": {
+            const textId = currentAssistantId.current;
+            const chunk = data.content;
+            if (chunk && textId) {
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === currentAssistantId.current
-                    ? { ...m, content: m.content + data.content }
+                  m.id === textId
+                    ? { ...m, content: m.content + chunk }
                     : m
                 )
               );
             }
             break;
+          }
 
-          case "tool_start":
-            if (currentAssistantId.current) {
+          case "tool_start": {
+            const toolStartId = currentAssistantId.current;
+            if (toolStartId) {
+              const toolName = data.toolName || "unknown";
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === currentAssistantId.current
-                    ? { ...m, tools: [...(m.tools || []), { toolName: data.toolName || "unknown", success: undefined }] }
+                  m.id === toolStartId
+                    ? { ...m, tools: [...(m.tools || []), { toolName, success: undefined }] }
                     : m
                 )
               );
             }
             break;
+          }
 
-          case "tool_end":
-            if (currentAssistantId.current) {
+          case "tool_end": {
+            const toolEndId = currentAssistantId.current;
+            if (toolEndId) {
+              const success = data.success ?? false;
               setMessages((prev) =>
                 prev.map((m) => {
-                  if (m.id !== currentAssistantId.current) return m;
+                  if (m.id !== toolEndId) return m;
                   const tools = [...(m.tools || [])];
                   const lastTool = tools.length - 1;
                   if (lastTool >= 0) {
-                    tools[lastTool] = { ...tools[lastTool], success: data.success ?? false };
+                    tools[lastTool] = { ...tools[lastTool], success };
                   }
                   return { ...m, tools };
                 })
               );
             }
             break;
+          }
 
           case "message_end":
-            if (currentAssistantId.current) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === currentAssistantId.current
-                    ? { ...m, isStreaming: false }
-                    : m
-                )
-              );
-              currentAssistantId.current = null;
-            }
+            finalizeCurrent();
             break;
 
           case "agent_end":
+            isStreamingRef.current = false;
             setIsStreaming(false);
-            if (currentAssistantId.current) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === currentAssistantId.current
-                    ? { ...m, isStreaming: false }
-                    : m
-                )
-              );
-              currentAssistantId.current = null;
-            }
+            finalizeCurrent();
             break;
 
           case "observe_list_result":
             isObservingRef.current = false;
             setIsObserving(false);
             if (observeListResolveRef.current) {
-              // Backend may return { dataframes: [...] } or { dataframes: { dataframes: [...] } }
               const raw = data.dataframes as unknown[] | { dataframes: unknown[] } | undefined;
               const list = Array.isArray(raw)
                 ? raw
@@ -222,6 +226,7 @@ export function useChat() {
   }, []);
 
   useEffect(() => {
+    connectRef.current = connect;
     disposedRef.current = false;
     connect();
     return () => {
@@ -230,6 +235,17 @@ export function useChat() {
       wsRef.current?.close();
     };
   }, [connect]);
+
+  const finalizeCurrent = useCallback(() => {
+    const id = currentAssistantId.current;
+    if (!id) return;
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === id ? { ...m, isStreaming: false } : m
+      )
+    );
+    currentAssistantId.current = null;
+  }, []);
 
   const send = useCallback((content: string, referencedNodes?: ReferencedNode[]) => {
     const ws = wsRef.current;
@@ -248,29 +264,21 @@ export function useChat() {
       payload.referencedNodes = referencedNodes;
     }
 
-    if (isStreaming) {
+    if (isStreamingRef.current) {
       ws.send(JSON.stringify({ type: "steer", ...payload }));
     } else {
       ws.send(JSON.stringify({ type: "prompt", ...payload }));
     }
-  }, [isStreaming]);
+  }, []);
 
   const abort = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify({ type: "abort" }));
+    isStreamingRef.current = false;
     setIsStreaming(false);
-    if (currentAssistantId.current) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === currentAssistantId.current
-            ? { ...m, isStreaming: false }
-            : m
-        )
-      );
-      currentAssistantId.current = null;
-    }
-  }, []);
+    finalizeCurrent();
+  }, [finalizeCurrent]);
 
   const observeList = useCallback((): Promise<unknown[]> => {
     return new Promise((resolve, reject) => {
@@ -284,7 +292,6 @@ export function useChat() {
       observeListResolveRef.current = resolve;
       ws.send(JSON.stringify({ type: "observe_list" }));
 
-      // Timeout fallback
       setTimeout(() => {
         if (isObservingRef.current) {
           isObservingRef.current = false;

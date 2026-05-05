@@ -109,17 +109,16 @@ export default function ChatMessage({ message }: { message: ChatMessageType }) {
           <>
             {message.thinking && <ThinkingSection content={message.thinking} />}
             {message.tools && message.tools.length > 0 && <ToolPills tools={message.tools} />}
-            {message.content && (
+            {message.content ? (
               <div className="chat-markdown prose prose-invert prose-sm max-w-none">
                 <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
               </div>
-            )}
-            {message.isStreaming && !message.content && !message.thinking && (
+            ) : message.isStreaming && !message.thinking ? (
               <div className="flex items-center gap-2 text-text-muted text-xs">
                 <Loader2 size={12} className="animate-spin" />
                 <span>思考中...</span>
               </div>
-            )}
+            ) : null}
           </>
         )}
       </div>

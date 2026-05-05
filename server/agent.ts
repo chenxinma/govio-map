@@ -70,7 +70,7 @@ export function getSession(): AgentSession | null {
 
 export async function runGovioCli(cmd: string): Promise<string> {
   const { execSync } = await import("child_process");
-  const output = execSync(`uvx --from ${govioGovioBaseDir}/assets/govio-*.whl govio-cli ${cmd}`, {
+  const output = execSync(`uvx -p 3.13 --from ${govioGovioBaseDir}/assets/govio-0.2.5-py3-none-any.whl govio-cli ${cmd}`, {
     encoding: "utf-8",
     timeout: 15000,
   });

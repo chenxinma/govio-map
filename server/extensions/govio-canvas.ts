@@ -96,6 +96,7 @@ function extractSqlCodeBlocks(text: string): Array<{ sql: string; outputColumns:
   let match;
   while ((match = regex.exec(text)) !== null) {
     const sql = match[1].trim();
+    if (sql.startsWith("MATCH")) continue; // skip Cypher statements
     if (sql) {
       blocks.push({ sql, outputColumns: extractSelectColumns(sql) });
     }
