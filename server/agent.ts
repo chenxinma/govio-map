@@ -5,7 +5,6 @@ import govioCanvasExtension from "./extensions/govio-canvas.js";
 
 
 let session: AgentSession | null = null;
-let govioGovioBaseDir: string | null = null;
 let resLoader: DefaultResourceLoader | null = null;
 
 export async function agentSetup() {
@@ -33,11 +32,6 @@ export async function agentSetup() {
   );
   if (diagnostics.length > 0) {
     console.log("Warnings:", diagnostics);
-  }
-
-  const _govio_skill = allSkills.filter(s => (s.name === "govio"))[0];
-  if (_govio_skill) {
-    govioGovioBaseDir = _govio_skill.baseDir
   }
   await runGovioCli("--help");
   console.log(">>> Server agent ready. <<<");
@@ -70,7 +64,7 @@ export function getSession(): AgentSession | null {
 
 export async function runGovioCli(cmd: string): Promise<string> {
   const { execSync } = await import("child_process");
-  const output = execSync(`uvx -p 3.13 --from ${govioGovioBaseDir}/assets/govio-0.2.5-py3-none-any.whl govio-cli ${cmd}`, {
+  const output = execSync(`govio-cli ${cmd}`, {
     encoding: "utf-8",
     timeout: 15000,
   });

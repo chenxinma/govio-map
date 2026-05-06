@@ -266,24 +266,6 @@ function handleReleaseResult(cmd: string): void {
   });
 }
 
-function handleQueryResult(cmd: string, stdout: string): void {
-  const args = parseQueryArgs(cmd);
-  if (!args) return;
-  try {
-    const parsed = JSON.parse(stdout);
-    if (parsed.success === false) return;
-    const columns = (parsed.columns || []).map((name: string) => name);
-    pushGovioNode({
-      nodeType: "sqlQuery",
-      title: `Q: ${args.code.slice(0, 40)}`,
-      sql: args.code,
-      outputColumns: columns.length > 0 ? columns : ["result"],
-    });
-  } catch {
-    // stdout is not valid JSON
-  }
-}
-
 // ── Extension Entry ────────────────────────────────────────────────
 
 export default function govioCanvasExtension(pi: ExtensionAPI): void {
@@ -294,11 +276,6 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
 
     if (!Array.isArray(event.content)) return;
     const stdout = extractTextContent(event.content);
-
-    if (/govio-cli\s+query/.test(cmd)) {
-      handleQueryResult(cmd, stdout);
-      return;
-    }
 
     if (!/govio-cli\s+observe/.test(cmd)) return;
     const subcommand = parseObserveSubcommand(cmd);
@@ -314,7 +291,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         handleExploreResult(cmd, stdout);
         break;
       case "release":
-        handleReleaseResult(cmd);
+        // handleReleaseResult(cmd);
         break;
     }
   });
