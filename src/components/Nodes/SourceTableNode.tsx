@@ -1,6 +1,6 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Database, Quote, Trash2 } from 'lucide-react';
+import { Database, Quote, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { SourceTableNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
 
@@ -8,8 +8,9 @@ function SourceTableNode({ data, id }: NodeProps) {
   const nodeData = data as unknown as SourceTableNodeData;
   const addReference = useCanvasStore((s) => s.addReference);
   const deleteNodes = useCanvasStore((s) => s.deleteNodes);
-  const visibleFields = nodeData.schema.slice(0, 6);
-  const remaining = nodeData.schema.length - 6;
+  const [expanded, setExpanded] = useState(false);
+  const visibleFields = expanded ? nodeData.fields : nodeData.fields.slice(0, 6);
+  const remaining = nodeData.fields.length - 6;
 
   return (
     <div className="w-[280px] rounded-lg border border-border-default bg-bg-card overflow-hidden">
@@ -39,8 +40,23 @@ function SourceTableNode({ data, id }: NodeProps) {
             <span className="text-text-dim font-mono text-[11px]">{field.type}</span>
           </div>
         ))}
-        {remaining > 0 && (
-          <div className="text-[11px] text-text-muted mt-1">+{remaining} more fields</div>
+        {remaining > 0 && !expanded && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
+            className="flex items-center gap-1 text-[11px] text-text-muted hover:text-brand transition-colors mt-1"
+          >
+            <ChevronDown size={12} />
+            <span>+{remaining} more fields</span>
+          </button>
+        )}
+        {expanded && remaining > 0 && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
+            className="flex items-center gap-1 text-[11px] text-text-muted hover:text-brand transition-colors mt-1"
+          >
+            <ChevronUp size={12} />
+            <span>Collapse</span>
+          </button>
         )}
       </div>
 
