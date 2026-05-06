@@ -5,7 +5,9 @@
       "Bash(npx tsc *)",
       "Bash(rtk grep *)",
       "Bash(rtk tsc *)",
-      "Bash(rtk git *)"
+      "Bash(rtk git *)",
+      "Bash(rtk ls *)",
+      "Bash(rtk npx *)"
     ]
   }
 }

@@ -4,7 +4,7 @@ import type { Node, Edge, Connection, OnNodesChange, OnEdgesChange } from '@xyfl
 import { addEdge, applyNodeChanges, applyEdgeChanges, Position } from '@xyflow/react';
 import type { CanvasNodeData, DataFrameNodeData, ReferencedNode } from '../types';
 import { MOCK_TABLES } from '../data/mock-tables';
-import { nextId } from '../services/mock-ai';
+import { nextId, syncCountersFromNodes } from '../services/mock-ai';
 import { getLayoutedElements, positionNewNode } from '../utils/layout';
 import { getCanvasService, type CanvasEvent } from '../services/canvas-service';
 
@@ -398,6 +398,11 @@ export const useCanvasStore = create<CanvasStore>()(
     edges: state.edges,
     referencedNodes: state.referencedNodes,
   }),
+  onRehydrateStorage: () => (state) => {
+    if (state?.nodes) {
+      syncCountersFromNodes(state.nodes);
+    }
+  },
 }
 )
 );
