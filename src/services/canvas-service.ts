@@ -1,6 +1,6 @@
 export interface CanvasEvent {
   type: "govio_node_create";
-  nodeType: "sqlQuery" | "dataFrame" | "report";
+  nodeType: "sqlQuery" | "dataFrame" | "report" | "sourceTable";
   title: string;
   sql?: string;
   outputColumns?: string[];
@@ -13,6 +13,9 @@ export interface CanvasEvent {
   reportType?: "diff" | "correlation";
   content?: string;
   sourceRefs?: Array<{ label: string }>;
+  tableName?: string;
+  database?: string;
+  fields?: Array<{ name: string; type: string; nullable: boolean; description?: string; isPrimaryKey?: boolean; isForeignKey?: boolean; references?: { table: string; field: string } }>;
   referencedNodes?: Array<{ nodeId: string; label: string }>;
 }
 

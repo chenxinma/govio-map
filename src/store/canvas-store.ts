@@ -85,7 +85,7 @@ export const useCanvasStore = create<CanvasStore>()(
         title: tableDef.tableName,
         tableName: tableDef.tableName,
         database: tableDef.database,
-        schema: tableDef.fields,
+        fields: tableDef.fields,
         rowCount: tableDef.rowCount,
         createdAt: new Date().toISOString(),
       },
@@ -153,6 +153,21 @@ export const useCanvasStore = create<CanvasStore>()(
             reportType: event.reportType || "diff",
             content: event.content || "",
             sourceRefs: event.sourceRefs || [],
+          },
+        };
+        break;
+      case "sourceTable":
+        newNode = {
+          id: nodeId,
+          type: "sourceTable",
+          position: { x: 0, y: 0 },
+          data: {
+            type: "sourceTable",
+            title: event.title || event.tableName || "Table",
+            createdAt: now,
+            tableName: event.tableName || "",
+            database: event.database || "",
+            fields: event.fields || [],
           },
         };
         break;
@@ -291,6 +306,9 @@ export const useCanvasStore = create<CanvasStore>()(
         break;
       case "dataFrame":
         ref = data.dfName;
+        break;
+      case "sourceTable":
+        ref = JSON.stringify({full_table_name: data.tableName, fields: data.fields});
         break;
     }
     set({

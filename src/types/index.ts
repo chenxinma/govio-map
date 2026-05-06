@@ -17,7 +17,7 @@ export interface SourceTableNodeData {
   createdAt: string;
   tableName: string;
   database: string;
-  schema: TableField[];
+  fields: TableField[];
   rowCount?: number;
   [key: string]: unknown;
 }

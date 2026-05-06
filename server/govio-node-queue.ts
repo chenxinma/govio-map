@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
 
-export type GovioNodeType = "sqlQuery" | "dataFrame" | "report";
+export type GovioNodeType = "sqlQuery" | "dataFrame" | "report" | "sourceTable";
 
 export interface GovioNodeCreateEvent {
   nodeType: GovioNodeType;
@@ -19,6 +19,10 @@ export interface GovioNodeCreateEvent {
   reportType?: "diff" | "correlation";
   content?: string;
   sourceRefs?: Array<{ label: string }>;
+  // sourceTable
+  tableName?: string;
+  database?: string;
+  fields?: Array<{ name: string; type: string; description?: string; references?: { table: string; field: string } }>;
   // edge sources — referencedNodes from the user's prompt
   referencedNodes?: Array<{ nodeId: string; label: string }>;
 }

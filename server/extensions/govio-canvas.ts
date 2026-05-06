@@ -1,4 +1,5 @@
 import { pushGovioNode } from "../govio-node-queue.js";
+import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -40,19 +41,10 @@ function parseCompareArgs(cmd: string): { source: string; target: string; joinCo
   return { source, target, joinColumns };
 }
 
-function parseQueryArgs(cmd: string): { code: string } | null {
-  const match = cmd.match(/--code\s+["'](.+?)["']/);
-  if (!match) {
-    const code = extractNamedArg(cmd, "code");
-    return code ? { code } : null;
-  }
-  return { code: match[1] };
-}
-
-function parseReleaseArgs(cmd: string): { name: string } | null {
-  const name = extractNamedArg(cmd, "name");
-  return name ? { name } : null;
-}
+// function parseReleaseArgs(cmd: string): { name: string } | null {
+//   const name = extractNamedArg(cmd, "name");
+//   return name ? { name } : null;
+// }
 
 function parseExploreArgs(cmd: string): { dataframes: string[] } | null {
   const match = cmd.match(/--dataframes\s+((?:\S+\s*)+)/);
@@ -254,21 +246,58 @@ function handleExploreResult(cmd: string, stdout: string): void {
   }
 }
 
-function handleReleaseResult(cmd: string): void {
-  const args = parseReleaseArgs(cmd);
-  if (!args) return;
-  pushGovioNode({
-    nodeType: "report",
-    title: `Released: ${args.name}`,
-    reportType: "diff",
-    content: `DataFrame \`${args.name}\` has been released from memory.`,
-    sourceRefs: [{ label: args.name }],
-  });
-}
+// function handleReleaseResult(cmd: string): void {
+//   const args = parseReleaseArgs(cmd);
+//   if (!args) return;
+//   pushGovioNode({
+//     nodeType: "report",
+//     title: `Released: ${args.name}`,
+//     reportType: "diff",
+//     content: `DataFrame \`${args.name}\` has been released from memory.`,
+//     sourceRefs: [{ label: args.name }],
+//   });
+// }
 
 // ── Extension Entry ────────────────────────────────────────────────
 
 export default function govioCanvasExtension(pi: ExtensionAPI): void {
+  pi.registerTool({
+    name: "govio_create_source_table",
+    label: "Govio Source Table",
+    description: "Create a source table node on the canvas with column schema information. Call this after querying a PhysicalTable's column structure via govio-cli query.",
+    parameters: Type.Object({
+      tableName: Type.String({ description: "Physical table name `full_table_name`" }),
+      database: Type.Optional(Type.String({ description: "Database name" })),
+      fields: Type.Array(
+        Type.Object({
+          name: Type.String({ description: "Column name `column`" }),
+          type: Type.String({ description: "Column data type `dtype`" }),
+          description: Type.Optional(Type.String({ description: "Column description or label `name`" })),
+          references: Type.Optional(
+            Type.Object({
+              table: Type.String({ description: "Referenced table name" }),
+              field: Type.String({ description: "Referenced column name" }),
+            })
+          ),
+        }),
+        { description: "Column definitions of the table" }
+      ),
+    }),
+    execute: async (_toolCallId, params, _signal, _onUpdate, _ctx) => {
+      pushGovioNode({
+        nodeType: "sourceTable",
+        title: params.tableName,
+        tableName: params.tableName,
+        database: params.database || "",
+        fields: params.fields,
+      });
+      return {
+        content: [{ type: "text", text: `Created source table node: ${params.tableName} (${params.fields.length} fields)` }],
+        details: {},
+      };
+    },
+  });
+
   pi.on("tool_result", (event) => {
     if (event.toolName !== "bash" || event.isError) return;
 
