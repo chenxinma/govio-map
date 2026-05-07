@@ -1,6 +1,13 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Send, Square, Database, Code, Table2, FileText, X } from "lucide-react";
 import type { ReferencedNode, NodeType } from "../../types";
+import type { ChatMessage } from "../../hooks/useChat";
+import type { Node, Edge } from "@xyflow/react";
+import { useCommands } from "../../commands/useCommands";
+import { filterCommands } from "../../commands/registry";
+import { exportSession } from "../../commands/export-session";
+import CommandSuggestion from "../../commands/CommandSuggestion";
+import type { SlashCommand, CommandContext } from "../../commands/types";
 
 const NODE_ICONS: Record<NodeType, typeof Database> = {
   sourceTable: Database,
@@ -23,6 +30,11 @@ interface ChatInputProps {
   isConnected: boolean;
   referencedNodes?: ReferencedNode[];
   onRemoveReference?: (nodeId: string) => void;
+  clearMessages?: () => void;
+  clearCanvas?: () => void;
+  messages?: ChatMessage[];
+  nodes?: Node[];
+  edges?: Edge[];
 }
 
 export default function ChatInput({
@@ -32,9 +44,56 @@ export default function ChatInput({
   isConnected,
   referencedNodes = [],
   onRemoveReference,
+  clearMessages = () => {},
+  clearCanvas = () => {},
+  messages = [],
+  nodes = [],
+  edges = [],
 }: ChatInputProps) {
   const [value, setValue] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const addSystemMessage = useCallback((_content: string) => {
+    // System messages are visual-only; the store handles display
+  }, []);
+
+  const ctx: CommandContext = useMemo(
+    () => ({
+      clearMessages,
+      clearCanvas,
+      exportSession: () => exportSession(messages, nodes, edges),
+      addSystemMessage,
+    }),
+    [clearMessages, clearCanvas, messages, nodes, edges, addSystemMessage]
+  );
+
+  const { commands, execute } = useCommands(ctx);
+
+  const filteredCommands = useMemo(() => {
+    if (!value.startsWith("/")) return [];
+    return filterCommands(commands, value);
+  }, [value, commands]);
+
+  useEffect(() => {
+    setShowSuggestions(value.startsWith("/") && filteredCommands.length > 0);
+    setSelectedIndex(0);
+  }, [value, filteredCommands.length]);
+
+  const handleSelect = useCallback(
+    (command: SlashCommand) => {
+      if (command.category === "builtin") {
+        execute(command);
+        setValue("");
+      } else if (command.prompt) {
+        setValue(command.prompt);
+      }
+      setShowSuggestions(false);
+      textareaRef.current?.focus();
+    },
+    [execute]
+  );
 
   const handleSend = useCallback(() => {
     const trimmed = value.trim();
@@ -48,12 +107,34 @@ export default function ChatInput({
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (showSuggestions) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSelectedIndex((i) => Math.min(i + 1, filteredCommands.length - 1));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSelectedIndex((i) => Math.max(i - 1, 0));
+          return;
+        }
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          handleSelect(filteredCommands[selectedIndex]);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setShowSuggestions(false);
+          return;
+        }
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
       }
     },
-    [handleSend]
+    [showSuggestions, filteredCommands, selectedIndex, handleSelect, handleSend]
   );
 
   useEffect(() => {
@@ -91,13 +172,23 @@ export default function ChatInput({
         </div>
       )}
 
-      {/* Input row */}
-      <div className="flex gap-2">
+      {/* Input row with suggestion dropdown */}
+      <div className="relative flex gap-2">
+        <CommandSuggestion
+          commands={filteredCommands}
+          selectedIndex={selectedIndex}
+          onSelect={handleSelect}
+          onHover={setSelectedIndex}
+        />
         <textarea
           ref={textareaRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={onKeyDown}
+          onBlur={() => {
+            // Delay closing so click events on suggestions can fire
+            setTimeout(() => setShowSuggestions(false), 150);
+          }}
           placeholder={isConnected ? "输入消息... (Enter 发送, Shift+Enter 换行)" : "未连接到服务器..."}
           disabled={!isConnected}
           rows={1}

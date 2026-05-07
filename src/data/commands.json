@@ -1,0 +1,4 @@
+[
+  { "name": "sql", "description": "生成SELECT SQL语句", "prompt": "请生成一个SELECT SQL语句" },
+  { "name": "analyze", "description": "分析数据质量", "prompt": "请分析当前数据的质量" }
+]

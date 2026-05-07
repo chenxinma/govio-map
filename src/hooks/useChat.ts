@@ -280,6 +280,11 @@ export function useChat() {
     finalizeCurrent();
   }, [finalizeCurrent]);
 
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+    msgIdCounter = 0;
+  }, []);
+
   const observeList = useCallback((): Promise<unknown[]> => {
     return new Promise((resolve, reject) => {
       const ws = wsRef.current;
@@ -303,5 +308,5 @@ export function useChat() {
     });
   }, []);
 
-  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving };
+  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages };
 }

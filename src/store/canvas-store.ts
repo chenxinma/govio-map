@@ -42,6 +42,7 @@ interface CanvasStore {
 
   updateNodeData: (nodeId: string, data: Partial<CanvasNodeData>) => void;
   deleteNodes: (nodeIds: string[]) => void;
+  clearCanvas: () => void;
   createManualSQLNode: () => void;
   restoreCanvas: (dataframes: Array<{ name: string; rows?: number; columns?: number; column_info?: Array<{ name: string; nonNull?: number; dtype: string }> }>) => void;
 }
@@ -342,6 +343,15 @@ export const useCanvasStore = create<CanvasStore>()(
       edges: get().edges.filter((e) => !idSet.has(e.source) && !idSet.has(e.target)),
       previewPanels: get().previewPanels.filter((p) => !idSet.has(p.nodeId)),
       referencedNodes: get().referencedNodes.filter((r) => !idSet.has(r.nodeId)),
+    });
+  },
+
+  clearCanvas: () => {
+    set({
+      nodes: [],
+      edges: [],
+      previewPanels: [],
+      referencedNodes: [],
     });
   },
 

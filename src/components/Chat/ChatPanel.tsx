@@ -9,7 +9,7 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ width }: ChatPanelProps) {
-  const { messages, isConnected, isStreaming, send, abort } = useChatContext();
+  const { messages, isConnected, isStreaming, send, abort, clearMessages } = useChatContext();
   const referencedNodes = useCanvasStore((s) => s.referencedNodes);
   const removeReference = useCanvasStore((s) => s.removeReference);
   const clearReferences = useCanvasStore((s) => s.clearReferences);
@@ -75,6 +75,11 @@ export default function ChatPanel({ width }: ChatPanelProps) {
         isConnected={isConnected}
         referencedNodes={referencedNodes}
         onRemoveReference={removeReference}
+        clearMessages={clearMessages}
+        clearCanvas={useCanvasStore.getState().clearCanvas}
+        messages={messages}
+        nodes={useCanvasStore.getState().nodes}
+        edges={useCanvasStore.getState().edges}
       />
     </div>
   );
