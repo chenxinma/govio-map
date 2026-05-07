@@ -39,7 +39,7 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
     return true;
   }
 
-  console.log("Read data: " + parquetPath);
+  // console.log("Read data: " + parquetPath);
   let responsed = false;
   try {
     const file: AsyncBuffer = await asyncBufferFromFile(parquetPath)

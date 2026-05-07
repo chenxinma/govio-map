@@ -147,7 +147,7 @@ function makePrompt(msg:WSMessage):string {
     prompt += "]\n";
   }
   prompt += msg.content;
-  console.log("[ws] prompt: " + prompt);
+  console.debug("[ws] prompt: " + prompt);
   return prompt;
 }
 

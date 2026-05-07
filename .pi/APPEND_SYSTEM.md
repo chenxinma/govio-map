@@ -1,0 +1,3 @@
+# 画布展示
+
+当通过govio查询到物理表的具体表结构后，可以使用govio_create_source_table工具将表结构展示到画布上。

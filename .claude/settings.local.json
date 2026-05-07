@@ -7,7 +7,11 @@
       "Bash(rtk tsc *)",
       "Bash(rtk git *)",
       "Bash(rtk ls *)",
-      "Bash(rtk npx *)"
+      "Bash(rtk npx *)",
+      "Bash(rtk read *)",
+      "Bash(git checkout *)",
+      "Bash(rtk find *)",
+      "Bash(git merge *)"
     ]
   }
 }
