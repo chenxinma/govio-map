@@ -141,36 +141,52 @@ function formatCompareResult(parsed: {
   return lines.join("\n");
 }
 
-function formatExploreResult(relations: Array<Record<string, unknown>>): string {
+function formatExploreResult(parsed: {
+  foreign_keys?: Array<{ source_table: string; source_column: string; target_table: string; target_column: string; confidence: number }>;
+  column_similarities?: Array<{ table1: string; column1: string; table2: string; column2: string; similarity: number }>;
+}): string {
   const lines: string[] = [];
-  lines.push(`## Discovered Relations`);
-  lines.push(`| Source | Target | Similarity |`);
-  lines.push(`|--------|--------|------------|`);
-  for (const rel of relations) {
-    if (rel.type === "column_similarity") {
+  if (parsed.foreign_keys?.length) {
+    lines.push(`## Foreign Keys`);
+    lines.push(`| Source | Target | Confidence |`);
+    lines.push(`|--------|--------|------------|`);
+    for (const fk of parsed.foreign_keys) {
       lines.push(
-        `| ${rel.table1}.${rel.column1} | ${rel.table2}.${rel.column2} | ${(Number(rel.similarity) * 100).toFixed(0)}% |`,
+        `| ${fk.source_table}.${fk.source_column} | ${fk.target_table}.${fk.target_column} | ${(fk.confidence * 100).toFixed(0)}% |`,
       );
-    } else {
+    }
+  }
+  if (parsed.column_similarities?.length) {
+    lines.push(``);
+    lines.push(`## Column Similarities`);
+    lines.push(`| Column A | Column B | Similarity |`);
+    lines.push(`|----------|----------|------------|`);
+    for (const sim of parsed.column_similarities) {
       lines.push(
-        `| ${rel.source_table}.${rel.source_column} | ${rel.target_table}.${rel.target_column} | ${(Number(rel.confidence) * 100).toFixed(0)}% |`,
+        `| ${sim.table1}.${sim.column1} | ${sim.table2}.${sim.column2} | ${(sim.similarity * 100).toFixed(0)}% |`,
       );
     }
   }
   return lines.join("\n");
 }
 
-function extractExploreSources(relations: Array<Record<string, unknown>>): Array<{ label: string }> {
+function extractExploreSources(parsed: {
+  foreign_keys?: Array<{ source_table: string; target_table: string }>;
+  column_similarities?: Array<{ table1: string; table2: string }>;
+}): Array<{ label: string }> {
   const seen = new Set<string>();
   const refs: Array<{ label: string }> = [];
-  for (const rel of relations) {
-    const t1 = (rel.table1 ?? rel.source_table) as string;
-    const t2 = (rel.table2 ?? rel.target_table) as string;
-    for (const t of [t1, t2]) {
-      if (t && !seen.has(t)) {
-        seen.add(t);
-        refs.push({ label: t });
-      }
+  const tables: string[] = [];
+  for (const fk of parsed.foreign_keys ?? []) {
+    tables.push(fk.source_table, fk.target_table);
+  }
+  for (const sim of parsed.column_similarities ?? []) {
+    tables.push(sim.table1, sim.table2);
+  }
+  for (const t of tables) {
+    if (t && !seen.has(t)) {
+      seen.add(t);
+      refs.push({ label: t });
     }
   }
   return refs;
@@ -228,12 +244,13 @@ function handleExploreResult(cmd: string, stdout: string): void {
   try {
     const parsed = JSON.parse(stdout);
     if (parsed.success === false) return;
-    const relations: Array<Record<string, unknown>> = parsed.relations || [];
-    if (relations.length === 0) return;
-    const content = formatExploreResult(relations);
+    const foreignKeys = parsed.foreign_keys || [];
+    const columnSimilarities = parsed.column_similarities || [];
+    if (foreignKeys.length === 0 && columnSimilarities.length === 0) return;
+    const content = formatExploreResult(parsed);
     const sourceRefs = args
       ? args.dataframes.map((df) => ({ label: df }))
-      : extractExploreSources(relations);
+      : extractExploreSources(parsed);
     pushGovioNode({
       nodeType: "report",
       title: `Correlation: ${sourceRefs.map((r) => r.label).join(" & ")}`,
