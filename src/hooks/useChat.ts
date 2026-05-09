@@ -287,14 +287,15 @@ export function useChat() {
 
   const clearSession = useCallback(() => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    if (isStreamingRef.current) {
-      ws.send(JSON.stringify({ type: "abort" }));
-      isStreamingRef.current = false;
-      setIsStreaming(false);
-      finalizeCurrent();
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      if (isStreamingRef.current) {
+        ws.send(JSON.stringify({ type: "abort" }));
+        isStreamingRef.current = false;
+        setIsStreaming(false);
+        finalizeCurrent();
+      }
+      ws.send(JSON.stringify({ type: "clear" }));
     }
-    ws.send(JSON.stringify({ type: "clear" }));
     clearMessages();
   }, [clearMessages, finalizeCurrent]);
 
