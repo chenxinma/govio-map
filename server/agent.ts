@@ -62,6 +62,10 @@ export function getSession(): AgentSession | null {
   return session;
 }
 
+export function resetSession() {
+  session = null;
+}
+
 export async function runGovioCli(cmd: string): Promise<string> {
   const { execSync } = await import("child_process");
   const output = execSync(`govio-cli ${cmd}`, {
