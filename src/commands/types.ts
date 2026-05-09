@@ -9,6 +9,7 @@ export interface SlashCommand {
 export interface CommandContext {
   clearMessages: () => void;
   clearCanvas: () => void;
+  clearSession: () => void;
   exportSession: () => void;
   addSystemMessage: (content: string) => void;
 }

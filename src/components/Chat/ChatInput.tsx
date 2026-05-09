@@ -32,6 +32,7 @@ interface ChatInputProps {
   onRemoveReference?: (nodeId: string) => void;
   clearMessages?: () => void;
   clearCanvas?: () => void;
+  clearSession?: () => void;
   messages?: ChatMessage[];
   nodes?: Node[];
   edges?: Edge[];
@@ -46,6 +47,7 @@ export default function ChatInput({
   onRemoveReference,
   clearMessages = () => {},
   clearCanvas = () => {},
+  clearSession = () => {},
   messages = [],
   nodes = [],
   edges = [],
@@ -63,10 +65,11 @@ export default function ChatInput({
     () => ({
       clearMessages,
       clearCanvas,
+      clearSession,
       exportSession: () => exportSession(messages, nodes, edges),
       addSystemMessage,
     }),
-    [clearMessages, clearCanvas, messages, nodes, edges, addSystemMessage]
+    [clearMessages, clearCanvas, clearSession, messages, nodes, edges, addSystemMessage]
   );
 
   const { commands, execute } = useCommands(ctx);

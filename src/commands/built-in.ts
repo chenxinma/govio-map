@@ -1,8 +1,7 @@
 import type { SlashCommand, CommandContext } from "./types";
 
 function handleClear(ctx: CommandContext) {
-  ctx.clearMessages();
-  ctx.addSystemMessage("已清理会话上下文");
+  ctx.clearSession();
 }
 
 function handleClearCanvas(ctx: CommandContext) {
