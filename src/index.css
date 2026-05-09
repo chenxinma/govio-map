@@ -72,8 +72,8 @@ html, body, #root {
   to { stroke-dashoffset: 0; }
 }
 .react-flow__edge.selected .react-flow__edge-path {
-  stroke: #00c573;
-  stroke-width: 3;
+  stroke: #00c573 !important;
+  stroke-width: 3 !important;
 }
 
 .react-flow__handle {
