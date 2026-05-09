@@ -300,7 +300,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         { description: "Column definitions of the table" }
       ),
     }),
-    execute: async (_toolCallId, params, _signal, _onUpdate, _ctx) => {
+    execute: async (_toolCallId, params) => {
       pushGovioNode({
         nodeType: "sourceTable",
         title: params.tableName,
