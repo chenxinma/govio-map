@@ -285,6 +285,19 @@ export function useChat() {
     msgIdCounter = 0;
   }, []);
 
+  const clearSession = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (isStreamingRef.current) {
+      ws.send(JSON.stringify({ type: "abort" }));
+      isStreamingRef.current = false;
+      setIsStreaming(false);
+      finalizeCurrent();
+    }
+    ws.send(JSON.stringify({ type: "clear" }));
+    clearMessages();
+  }, [clearMessages, finalizeCurrent]);
+
   const observeList = useCallback((): Promise<unknown[]> => {
     return new Promise((resolve, reject) => {
       const ws = wsRef.current;
@@ -308,5 +321,5 @@ export function useChat() {
     });
   }, []);
 
-  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages };
+  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages, clearSession };
 }
