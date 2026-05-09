@@ -11,7 +11,8 @@
       "Bash(rtk read *)",
       "Bash(git checkout *)",
       "Bash(rtk find *)",
-      "Bash(git merge *)"
+      "Bash(git merge *)",
+      "Bash(rtk npm *)"
     ]
   }
 }
