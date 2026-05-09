@@ -1,10 +1,10 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
-import { getOrCreateSession, runGovioCli } from "./agent.js";
+import { getOrCreateSession, resetSession, runGovioCli } from "./agent.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
 
 interface WSMessage {
-  type: "prompt" | "steer" | "followUp" | "abort" | "observe_list";
+  type: "prompt" | "steer" | "followUp" | "abort" | "observe_list" | "clear";
   content?: string;
   referencedNodes?: Array<{ nodeId: string; label: string; type: string; data?: string }>;
 }
@@ -28,16 +28,10 @@ export function setupWebSocket(server: import("http").Server) {
     }
   });
 
-  wss.on("connection", async (ws: WebSocket) => {
-    try {
-      const session = await getOrCreateSession();
-
-      ws.send(JSON.stringify({ type: "session_ready", sessionId: session.sessionId }));
-
-      const unsubscribe = session.subscribe((event) => {
-        try {
+  function subscribeToSession(s: Awaited<ReturnType<typeof getOrCreateSession>>, ws: WebSocket) {
+    return s.subscribe((event) => {
+      try {
         if (ws.readyState !== WebSocket.OPEN) return;
-        // console.log(`[ws] session : ${event.type}, role : ${event.type === "message_start" ? event.message.role : ""}`);
         switch (event.type) {
           case "agent_start":
             console.log("[ws] Agent session started");
@@ -74,10 +68,17 @@ export function setupWebSocket(server: import("http").Server) {
             ws.send(JSON.stringify({ type: "agent_end" }));
             break;
         }
-        } catch (err) {
-          console.error("[ws] Subscribe callback error:", err);
-        }
-      });
+      } catch (err) {
+        console.error("[ws] Subscribe callback error:", err);
+      }
+    });
+  }
+
+  wss.on("connection", async (ws: WebSocket) => {
+    try {
+      let session = await getOrCreateSession();
+      let unsubscribe = subscribeToSession(session, ws);
+      ws.send(JSON.stringify({ type: "session_ready", sessionId: session.sessionId }));
 
       ws.on("message", async (data: Buffer) => {
         try {
@@ -107,7 +108,7 @@ export function setupWebSocket(server: import("http").Server) {
               break;
             case "observe_list": {
               try {
-                const output = await runGovioCli("observe list");                
+                const output = await runGovioCli("observe list");
                 const dataframes = JSON.parse(output);
                 ws.send(JSON.stringify({ type: "observe_list_result", dataframes }));
               } catch (listErr) {
@@ -116,6 +117,15 @@ export function setupWebSocket(server: import("http").Server) {
                   message: `observe list failed: ${listErr instanceof Error ? listErr.message : String(listErr)}`,
                 }));
               }
+              break;
+            }
+            case "clear": {
+              unsubscribe();
+              resetSession();
+              const newSession = await getOrCreateSession();
+              session = newSession;
+              unsubscribe = subscribeToSession(newSession, ws);
+              ws.send(JSON.stringify({ type: "session_ready", sessionId: newSession.sessionId }));
               break;
             }
           }
