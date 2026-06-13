@@ -12,7 +12,10 @@
       "Bash(git checkout *)",
       "Bash(rtk find *)",
       "Bash(git merge *)",
-      "Bash(rtk npm *)"
+      "Bash(rtk npm *)",
+      "Bash(rtk cat *)",
+      "Bash(zip *)",
+      "Bash(rtk du *)"
     ]
   }
 }
