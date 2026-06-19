@@ -15,7 +15,16 @@
       "Bash(rtk npm *)",
       "Bash(rtk cat *)",
       "Bash(zip *)",
-      "Bash(rtk du *)"
+      "Bash(rtk du *)",
+      "Bash(/bin/ls *)",
+      "Bash(/bin/grep -rn \"registerTool\\\\|on\\(\" /home/macx/work/nodejs/govio-map/node_modules/@mariozechner/pi-coding-agent/dist/index.d.ts)",
+      "Bash(/bin/cat *)",
+      "Bash(/bin/grep -n \"BashToolCallEvent\\\\|BashSpawnHook\\\\|UserBashEvent\\\\|tool_call\\\\|tool_execution\\\\|ToolCallEventResult\\\\|wrapRegisteredTool\\\\|registerTool\\\\|ExtensionAPI\" /home/macx/work/nodejs/govio-map/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)",
+      "Bash(/bin/grep -n \"ExtensionHandler\\\\|ToolCallEventResult\\\\|ToolCallEvent\\\\b\" /home/macx/work/nodejs/govio-map/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)",
+      "Bash(/bin/grep -n \"ExtensionContext\\\\b\\\\|sessionId\" /home/macx/work/nodejs/govio-map/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)",
+      "Bash(rtk lint *)",
+      "Bash(node *)",
+      "Bash(timeout 12 npx vite build)"
     ]
   }
 }
