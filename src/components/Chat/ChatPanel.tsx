@@ -3,13 +3,14 @@ import { useChatContext } from "../../hooks/useChatContext";
 import { useCanvasStore } from "../../store/canvas-store";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
+import PermissionCard from "./PermissionCard";
 
 interface ChatPanelProps {
   width: number;
 }
 
 export default function ChatPanel({ width }: ChatPanelProps) {
-  const { messages, isConnected, isStreaming, send, abort, clearMessages, clearSession } = useChatContext();
+  const { messages, isConnected, isStreaming, send, abort, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission } = useChatContext();
   const referencedNodes = useCanvasStore((s) => s.referencedNodes);
   const removeReference = useCanvasStore((s) => s.removeReference);
   const clearReferences = useCanvasStore((s) => s.clearReferences);
@@ -35,7 +36,7 @@ export default function ChatPanel({ width }: ChatPanelProps) {
     if (!userScrolledRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, pendingPermission]);
 
   return (
     <div
@@ -65,6 +66,13 @@ export default function ChatPanel({ width }: ChatPanelProps) {
         {messages.map((msg) => (
           <ChatMessage key={msg.id} message={msg} />
         ))}
+        {pendingPermission && (
+          <PermissionCard
+            pending={pendingPermission}
+            onRespond={respondPermission}
+            onAcceptAll={acceptAllPermission}
+          />
+        )}
       </div>
 
       {/* Input */}

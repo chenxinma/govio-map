@@ -1,6 +1,16 @@
 import { pushGovioNode } from "../govio-node-queue.js";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { isToolCallEventType } from "@mariozechner/pi-coding-agent";
+import { permissionManager } from "../permission-manager.js";
+
+const OBSERVE_LOAD_RE = /\bgovio-cli\s+observe\s+load\b/;
+const OUTPUT_FLAG_RE = /(?:^|\s|=)(?:-o|--output)(?=\s|=|$)/;
+
+export function shouldAskPermission(cmd: string): boolean {
+  if (!OBSERVE_LOAD_RE.test(cmd)) return false;
+  return OUTPUT_FLAG_RE.test(cmd);
+}
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -313,6 +323,20 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         details: {},
       };
     },
+  });
+
+  pi.on("tool_call", async (event) => {
+    if (!isToolCallEventType("bash", event)) return;
+    const cmd = event.input.command;
+    if (!shouldAskPermission(cmd)) return;
+    if (permissionManager.isAcceptAll()) return;
+
+    const result = await permissionManager.requestPermission(cmd);
+    if (result.decision === "allow") return;
+    const reason = result.decision === "edit" && result.editedCommand
+      ? `用户将该命令修改为：\n\`\`\`bash\n${result.editedCommand}\n\`\`\`\n请改用此命令执行。`
+      : result.reason || "用户拒绝执行该命令";
+    return { block: true, reason };
   });
 
   pi.on("tool_result", (event) => {
