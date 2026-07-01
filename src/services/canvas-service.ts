@@ -1,6 +1,6 @@
 export interface CanvasEvent {
   type: "govio_node_create";
-  nodeType: "sqlQuery" | "dataFrame" | "report" | "sourceTable";
+  nodeType: "sqlQuery" | "dataFrame" | "report" | "sourceTable" | "chart";
   title: string;
   sql?: string;
   outputColumns?: string[];
@@ -17,6 +17,12 @@ export interface CanvasEvent {
   database?: string;
   fields?: Array<{ name: string; type: string; nullable: boolean; description?: string; isPrimaryKey?: boolean; isForeignKey?: boolean; references?: { table: string; field: string } }>;
   referencedNodes?: Array<{ nodeId: string; label: string }>;
+  // chart
+  imageBase64?: string;
+  chartType?: "bar" | "line";
+  sourceDf?: string;
+  xColumn?: string;
+  yColumn?: string;
 }
 
 export interface CanvasService {

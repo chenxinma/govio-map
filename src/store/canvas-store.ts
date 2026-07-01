@@ -173,6 +173,23 @@ export const useCanvasStore = create<CanvasStore>()(
           },
         };
         break;
+      case "chart":
+        newNode = {
+          id: nodeId,
+          type: "chart",
+          position: { x: 0, y: 0 },
+          data: {
+            type: "chart",
+            title: event.title || "Chart",
+            createdAt: now,
+            chartType: event.chartType || "bar",
+            sourceDf: event.sourceDf || "",
+            xColumn: event.xColumn || "",
+            yColumn: event.yColumn || "",
+            imageBase64: event.imageBase64 || "",
+          },
+        };
+        break;
       default:
         return;
     }

@@ -3,10 +3,12 @@ import SourceTableNode from './SourceTableNode';
 import SQLQueryNode from './SQLQueryNode';
 import DataFrameNode from './DataFrameNode';
 import ReportNode from './ReportNode';
+import ChartNode from './ChartNode';
 
 export const nodeTypes: NodeTypes = {
   sourceTable: SourceTableNode,
   sqlQuery: SQLQueryNode,
   dataFrame: DataFrameNode,
   report: ReportNode,
+  chart: ChartNode,
 };

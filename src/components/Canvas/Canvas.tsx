@@ -75,6 +75,7 @@ export default function Canvas() {
               case 'sqlQuery': return 'hsl(152, 58%, 52%)';
               case 'dataFrame': return 'hsl(25, 75%, 55%)';
               case 'report': return 'hsl(270, 60%, 70%)';
+              case 'chart': return 'hsl(200, 70%, 55%)';
               default: return '#898989';
             }
           }}

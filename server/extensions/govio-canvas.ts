@@ -1,3 +1,4 @@
+import { readFileSync } from "fs";
 import { pushGovioNode } from "../govio-node-queue.js";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -26,7 +27,9 @@ function extractTextContent(content: Array<{ type: string; text?: string }>): st
 }
 
 function extractNamedArg(cmd: string, flag: string): string | null {
-  const match = cmd.match(new RegExp(`--${flag}\\s+(\\S+)`));
+  // Match --flag <value> or -f <value> (single-letter short form)
+  const re = new RegExp(`(?:--${flag}|(?<![\\w-])-${flag[0]}\\b)[=\\s]+(\\S+)`);
+  const match = cmd.match(re);
   return match ? match[1] : null;
 }
 
@@ -60,6 +63,17 @@ function parseExploreArgs(cmd: string): { dataframes: string[] } | null {
   const match = cmd.match(/--dataframes\s+((?:\S+\s*)+)/);
   if (!match) return null;
   return { dataframes: match[1].trim().split(/\s+/) };
+}
+
+function parseChartArgs(cmd: string): { name: string; chartType: "bar" | "line"; x: string; y: string; output: string } | null {
+  const name = extractNamedArg(cmd, "name");
+  const chartType = extractNamedArg(cmd, "type") as "bar" | "line" | null;
+  const x = extractNamedArg(cmd, "x");
+  const y = extractNamedArg(cmd, "y");
+  const output = extractNamedArg(cmd, "output");
+  if (!name || !chartType || !x || !y || !output) return null;
+  if (chartType !== "bar" && chartType !== "line") return null;
+  return { name, chartType, x, y, output };
 }
 
 function estimateMemoryUsage(rows: number, cols: number): string {
@@ -273,6 +287,37 @@ function handleExploreResult(cmd: string, stdout: string): void {
   }
 }
 
+function handleChartResult(cmd: string, stdout: string): void {
+  const args = parseChartArgs(cmd);
+  if (!args) {
+    console.error("[chart] parseChartArgs failed for cmd:", cmd);
+    return;
+  }
+  try {
+    const parsed = JSON.parse(stdout);
+    if (parsed.success === false) {
+      console.error("[chart] govio-cli returned success=false:", parsed.error);
+      return;
+    }
+    const outputPath: string = parsed.output;
+    console.log("[chart] reading PNG from:", outputPath);
+    const imageBuffer = readFileSync(outputPath);
+    const imageBase64 = imageBuffer.toString("base64");
+    console.log("[chart] PNG read OK, base64 length:", imageBase64.length);
+    pushGovioNode({
+      nodeType: "chart",
+      title: `Chart: ${args.name} (${args.chartType})`,
+      imageBase64,
+      chartType: args.chartType,
+      sourceDf: args.name,
+      xColumn: args.x,
+      yColumn: args.y,
+    });
+  } catch (err) {
+    console.error("[chart] handleChartResult failed:", err);
+  }
+}
+
 // function handleReleaseResult(cmd: string): void {
 //   const args = parseReleaseArgs(cmd);
 //   if (!args) return;
@@ -349,6 +394,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
 
     if (!/govio-cli\s+observe/.test(cmd)) return;
     const subcommand = parseObserveSubcommand(cmd);
+    console.log("[govio-canvas] tool_result subcommand:", subcommand, "cmd:", cmd.slice(0, 120));
 
     switch (subcommand) {
       case "load":
@@ -359,6 +405,9 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         break;
       case "explore":
         handleExploreResult(cmd, stdout);
+        break;
+      case "chart":
+        handleChartResult(cmd, stdout);
         break;
       case "release":
         // handleReleaseResult(cmd);

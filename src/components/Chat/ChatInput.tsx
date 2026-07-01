@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { Send, Square, Database, Code, Table2, FileText, X } from "lucide-react";
+import { Send, Square, Database, Code, Table2, FileText, BarChart3, X } from "lucide-react";
 import type { ReferencedNode, NodeType } from "../../types";
 import type { ChatMessage } from "../../hooks/useChat";
 import type { Node, Edge } from "@xyflow/react";
@@ -14,6 +14,7 @@ const NODE_ICONS: Record<NodeType, typeof Database> = {
   sqlQuery: Code,
   dataFrame: Table2,
   report: FileText,
+  chart: BarChart3,
 };
 
 const NODE_COLORS: Record<NodeType, string> = {
@@ -21,6 +22,7 @@ const NODE_COLORS: Record<NodeType, string> = {
   sqlQuery: "text-node-sql",
   dataFrame: "text-node-df",
   report: "text-node-report",
+  chart: "text-node-chart",
 };
 
 interface ChatInputProps {
