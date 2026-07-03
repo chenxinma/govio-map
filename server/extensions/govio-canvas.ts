@@ -65,16 +65,6 @@ function parseExploreArgs(cmd: string): { dataframes: string[] } | null {
   return { dataframes: match[1].trim().split(/\s+/) };
 }
 
-function parseChartArgs(cmd: string): { name: string; chartType: "bar" | "line"; x: string; y: string; output: string } | null {
-  const name = extractNamedArg(cmd, "name");
-  const chartType = extractNamedArg(cmd, "type") as "bar" | "line" | null;
-  const x = extractNamedArg(cmd, "x");
-  const y = extractNamedArg(cmd, "y");
-  const output = extractNamedArg(cmd, "output");
-  if (!name || !chartType || !x || !y || !output) return null;
-  if (chartType !== "bar" && chartType !== "line") return null;
-  return { name, chartType, x, y, output };
-}
 
 function estimateMemoryUsage(rows: number, cols: number): string {
   const bytes = rows * cols * 8;
@@ -287,36 +277,6 @@ function handleExploreResult(cmd: string, stdout: string): void {
   }
 }
 
-function handleChartResult(cmd: string, stdout: string): void {
-  const args = parseChartArgs(cmd);
-  if (!args) {
-    console.error("[chart] parseChartArgs failed for cmd:", cmd);
-    return;
-  }
-  try {
-    const parsed = JSON.parse(stdout);
-    if (parsed.success === false) {
-      console.error("[chart] govio-cli returned success=false:", parsed.error);
-      return;
-    }
-    const outputPath: string = parsed.output;
-    console.log("[chart] reading PNG from:", outputPath);
-    const imageBuffer = readFileSync(outputPath);
-    const imageBase64 = imageBuffer.toString("base64");
-    console.log("[chart] PNG read OK, base64 length:", imageBase64.length);
-    pushGovioNode({
-      nodeType: "chart",
-      title: `Chart: ${args.name} (${args.chartType})`,
-      imageBase64,
-      chartType: args.chartType,
-      sourceDf: args.name,
-      xColumn: args.x,
-      yColumn: args.y,
-    });
-  } catch (err) {
-    console.error("[chart] handleChartResult failed:", err);
-  }
-}
 
 // function handleReleaseResult(cmd: string): void {
 //   const args = parseReleaseArgs(cmd);
@@ -370,6 +330,43 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
     },
   });
 
+  pi.registerTool({
+    name: "govio_show_chart",
+    label: "Govio Chart",
+    description: "Show a chart node on the canvas. Call `govio-cli observe chart ...` first to generate the PNG, then pass the output path here.",
+    parameters: Type.Object({
+      name: Type.String({ description: "Source DataFrame name" }),
+      chartType: Type.Union([Type.Literal("bar"), Type.Literal("line")], { description: "Chart type" }),
+      x: Type.String({ description: "X-axis column name" }),
+      y: Type.String({ description: "Y-axis column name" }),
+      outputPath: Type.String({ description: "Path to the generated PNG file from govio-cli observe chart output" }),
+    }),
+    execute: async (_toolCallId, params) => {
+      try {
+        const imageBuffer = readFileSync(params.outputPath);
+        const imageBase64 = imageBuffer.toString("base64");
+        pushGovioNode({
+          nodeType: "chart",
+          title: `Chart: ${params.name} (${params.chartType})`,
+          imageBase64,
+          chartType: params.chartType,
+          sourceDf: params.name,
+          xColumn: params.x,
+          yColumn: params.y,
+        });
+        return {
+          content: [{ type: "text", text: `Created chart node: ${params.name} (${params.chartType})` }],
+          details: {},
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: `Failed to create chart: ${err instanceof Error ? err.message : String(err)}` }],
+          details: {},
+        };
+      }
+    },
+  });
+
   pi.on("tool_call", async (event) => {
     if (!isToolCallEventType("bash", event)) return;
     const cmd = event.input.command;
@@ -405,9 +402,6 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         break;
       case "explore":
         handleExploreResult(cmd, stdout);
-        break;
-      case "chart":
-        handleChartResult(cmd, stdout);
         break;
       case "release":
         // handleReleaseResult(cmd);
