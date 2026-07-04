@@ -24,7 +24,8 @@
       "Bash(/bin/grep -n \"ExtensionContext\\\\b\\\\|sessionId\" /home/macx/work/nodejs/govio-map/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)",
       "Bash(rtk lint *)",
       "Bash(node *)",
-      "Bash(timeout 12 npx vite build)"
+      "Bash(timeout 12 npx vite build)",
+      "Bash(rtk gh *)"
     ]
   }
 }
