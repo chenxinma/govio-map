@@ -16,12 +16,21 @@ export interface ChatMessage {
   referencedNodes?: ReferencedNode[];
 }
 
+export interface PendingPermission {
+  requestId: string;
+  command: string;
+}
+
+export type PermissionDecision = "allow" | "deny" | "edit";
+
 interface WSEvent {
   type: string;
   content?: string;
   toolName?: string;
   success?: boolean;
   dataframes?: unknown[];
+  requestId?: string;
+  command?: string;
 }
 
 let msgIdCounter = 0;
@@ -37,6 +46,7 @@ export function useChat() {
   const [isObserving, setIsObserving] = useState(false);
   const isObservingRef = useRef(false);
   const observeListResolveRef = useRef<((dataframes: unknown[]) => void) | null>(null);
+  const [pendingPermission, setPendingPermission] = useState<PendingPermission | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttempts = useRef(0);
@@ -208,6 +218,12 @@ export function useChat() {
             }
             break;
 
+          case "tool_permission_request":
+            if (data.requestId && data.command) {
+              setPendingPermission({ requestId: data.requestId, command: data.command });
+            }
+            break;
+
           case "error":
             console.error("[chat] Server error:", data.content);
             if (isObservingRef.current) {
@@ -277,6 +293,7 @@ export function useChat() {
     ws.send(JSON.stringify({ type: "abort" }));
     isStreamingRef.current = false;
     setIsStreaming(false);
+    setPendingPermission(null);
     finalizeCurrent();
   }, [finalizeCurrent]);
 
@@ -296,8 +313,38 @@ export function useChat() {
       }
       ws.send(JSON.stringify({ type: "clear" }));
     }
+    setPendingPermission(null);
     clearMessages();
   }, [clearMessages, finalizeCurrent]);
+
+  const respondPermission = useCallback((decision: PermissionDecision, editedCommand?: string) => {
+    const ws = wsRef.current;
+    const pending = pendingPermission;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !pending) return;
+    const payload: Record<string, unknown> = {
+      type: "tool_permission_response",
+      requestId: pending.requestId,
+      decision,
+    };
+    if (decision === "edit" && editedCommand) {
+      payload.editedCommand = editedCommand;
+    }
+    ws.send(JSON.stringify(payload));
+    setPendingPermission(null);
+  }, [pendingPermission]);
+
+  const acceptAllPermission = useCallback(() => {
+    const ws = wsRef.current;
+    const pending = pendingPermission;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !pending) return;
+    ws.send(JSON.stringify({
+      type: "tool_permission_response",
+      requestId: pending.requestId,
+      decision: "allow",
+    }));
+    ws.send(JSON.stringify({ type: "permission_accept_all" }));
+    setPendingPermission(null);
+  }, [pendingPermission]);
 
   const observeList = useCallback((): Promise<unknown[]> => {
     return new Promise((resolve, reject) => {
@@ -322,5 +369,5 @@ export function useChat() {
     });
   }, []);
 
-  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages, clearSession };
+  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission };
 }

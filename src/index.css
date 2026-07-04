@@ -24,6 +24,7 @@
   --color-node-source: hsl(270, 60%, 60%);
   --color-node-sql: hsl(152, 58%, 52%);
   --color-node-df: hsl(25, 75%, 55%);
+  --color-node-chart: hsl(200, 70%, 55%);
 
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'Source Code Pro', 'Menlo', monospace;

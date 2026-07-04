@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ChevronDown, ChevronRight, Wrench, Check, X, Loader2, Database, Code, Table2, FileText } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench, Check, X, Loader2, Database, Code, Table2, FileText, BarChart3 } from "lucide-react";
 import type { ChatMessage as ChatMessageType, ToolCall } from "../../hooks/useChat";
 import type { ReferencedNode, NodeType } from "../../types";
 
@@ -10,6 +10,7 @@ const NODE_ICONS: Record<NodeType, typeof Database> = {
   sqlQuery: Code,
   dataFrame: Table2,
   report: FileText,
+  chart: BarChart3,
 };
 
 const NODE_COLORS: Record<NodeType, string> = {
@@ -17,6 +18,7 @@ const NODE_COLORS: Record<NodeType, string> = {
   sqlQuery: "text-node-sql",
   dataFrame: "text-node-df",
   report: "text-node-report",
+  chart: "text-node-chart",
 };
 
 function ToolPill({ tool }: { tool: ToolCall }) {

@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
 
-export type GovioNodeType = "sqlQuery" | "dataFrame" | "report" | "sourceTable";
+export type GovioNodeType = "sqlQuery" | "dataFrame" | "report" | "sourceTable" | "chart";
 
 export interface GovioNodeCreateEvent {
   nodeType: GovioNodeType;
@@ -23,6 +23,12 @@ export interface GovioNodeCreateEvent {
   tableName?: string;
   database?: string;
   fields?: Array<{ name: string; type: string; description?: string; references?: { table: string; field: string } }>;
+  // chart
+  imageBase64?: string;
+  chartType?: "bar" | "line";
+  sourceDf?: string;
+  xColumn?: string;
+  yColumn?: string;
   // edge sources — referencedNodes from the user's prompt
   referencedNodes?: Array<{ nodeId: string; label: string }>;
 }

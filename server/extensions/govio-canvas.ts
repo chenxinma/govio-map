@@ -1,6 +1,17 @@
+import { readFileSync } from "fs";
 import { pushGovioNode } from "../govio-node-queue.js";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { isToolCallEventType } from "@mariozechner/pi-coding-agent";
+import { permissionManager } from "../permission-manager.js";
+
+const OBSERVE_LOAD_RE = /\bgovio-cli\s+observe\s+load\b/;
+const OUTPUT_FLAG_RE = /(?:^|\s|=)(?:-o|--output)(?=\s|=|$)/;
+
+export function shouldAskPermission(cmd: string): boolean {
+  if (!OBSERVE_LOAD_RE.test(cmd)) return false;
+  return OUTPUT_FLAG_RE.test(cmd);
+}
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -16,7 +27,9 @@ function extractTextContent(content: Array<{ type: string; text?: string }>): st
 }
 
 function extractNamedArg(cmd: string, flag: string): string | null {
-  const match = cmd.match(new RegExp(`--${flag}\\s+(\\S+)`));
+  // Match --flag <value> or -f <value> (single-letter short form)
+  const re = new RegExp(`(?:--${flag}|(?<![\\w-])-${flag[0]}\\b)[=\\s]+(\\S+)`);
+  const match = cmd.match(re);
   return match ? match[1] : null;
 }
 
@@ -51,6 +64,7 @@ function parseExploreArgs(cmd: string): { dataframes: string[] } | null {
   if (!match) return null;
   return { dataframes: match[1].trim().split(/\s+/) };
 }
+
 
 function estimateMemoryUsage(rows: number, cols: number): string {
   const bytes = rows * cols * 8;
@@ -263,6 +277,7 @@ function handleExploreResult(cmd: string, stdout: string): void {
   }
 }
 
+
 // function handleReleaseResult(cmd: string): void {
 //   const args = parseReleaseArgs(cmd);
 //   if (!args) return;
@@ -315,6 +330,57 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
     },
   });
 
+  pi.registerTool({
+    name: "govio_show_chart",
+    label: "Govio Chart",
+    description: "Show a chart node on the canvas. Call `govio-cli observe chart ...` first to generate the PNG, then pass the output path here.",
+    parameters: Type.Object({
+      name: Type.String({ description: "Source DataFrame name" }),
+      chartType: Type.Union([Type.Literal("bar"), Type.Literal("line")], { description: "Chart type" }),
+      x: Type.String({ description: "X-axis column name" }),
+      y: Type.String({ description: "Y-axis column name" }),
+      outputPath: Type.String({ description: "Path to the generated PNG file from govio-cli observe chart output" }),
+    }),
+    execute: async (_toolCallId, params) => {
+      try {
+        const imageBuffer = readFileSync(params.outputPath);
+        const imageBase64 = imageBuffer.toString("base64");
+        pushGovioNode({
+          nodeType: "chart",
+          title: `Chart: ${params.name} (${params.chartType})`,
+          imageBase64,
+          chartType: params.chartType,
+          sourceDf: params.name,
+          xColumn: params.x,
+          yColumn: params.y,
+        });
+        return {
+          content: [{ type: "text", text: `Created chart node: ${params.name} (${params.chartType})` }],
+          details: {},
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: `Failed to create chart: ${err instanceof Error ? err.message : String(err)}` }],
+          details: {},
+        };
+      }
+    },
+  });
+
+  pi.on("tool_call", async (event) => {
+    if (!isToolCallEventType("bash", event)) return;
+    const cmd = event.input.command;
+    if (!shouldAskPermission(cmd)) return;
+    if (permissionManager.isAcceptAll()) return;
+
+    const result = await permissionManager.requestPermission(cmd);
+    if (result.decision === "allow") return;
+    const reason = result.decision === "edit" && result.editedCommand
+      ? `用户将该命令修改为：\n\`\`\`bash\n${result.editedCommand}\n\`\`\`\n请改用此命令执行。`
+      : result.reason || "用户拒绝执行该命令";
+    return { block: true, reason };
+  });
+
   pi.on("tool_result", (event) => {
     if (event.toolName !== "bash" || event.isError) return;
 
@@ -325,6 +391,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
 
     if (!/govio-cli\s+observe/.test(cmd)) return;
     const subcommand = parseObserveSubcommand(cmd);
+    console.log("[govio-canvas] tool_result subcommand:", subcommand, "cmd:", cmd.slice(0, 120));
 
     switch (subcommand) {
       case "load":

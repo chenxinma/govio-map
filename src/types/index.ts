@@ -8,7 +8,7 @@ export interface TableField {
   references?: { table: string; field: string };
 }
 
-export type NodeType = 'sourceTable' | 'sqlQuery' | 'dataFrame' | 'report';
+export type NodeType = 'sourceTable' | 'sqlQuery' | 'dataFrame' | 'report' | 'chart';
 
 export interface SourceTableNodeData {
   type: 'sourceTable';
@@ -63,7 +63,21 @@ export interface ReportNodeData {
   [key: string]: unknown;
 }
 
-export type CanvasNodeData = SourceTableNodeData | SQLQueryNodeData | DataFrameNodeData | ReportNodeData;
+export type ChartType = 'bar' | 'line';
+
+export interface ChartNodeData {
+  type: 'chart';
+  title: string;
+  createdAt: string;
+  chartType: ChartType;
+  sourceDf: string;
+  xColumn: string;
+  yColumn: string;
+  imageBase64: string;
+  [key: string]: unknown;
+}
+
+export type CanvasNodeData = SourceTableNodeData | SQLQueryNodeData | DataFrameNodeData | ReportNodeData | ChartNodeData;
 
 export interface ReferencedNode {
   nodeId: string;

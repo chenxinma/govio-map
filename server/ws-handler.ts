@@ -2,11 +2,16 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
 import { getOrCreateSession, resetSession, runGovioCli } from "./agent.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
+import { permissionManager, type PermissionDecision } from "./permission-manager.js";
 
 interface WSMessage {
-  type: "prompt" | "steer" | "followUp" | "abort" | "observe_list" | "clear";
+  type: "prompt" | "steer" | "followUp" | "abort" | "observe_list" | "clear" | "tool_permission_response" | "permission_accept_all";
   content?: string;
   referencedNodes?: Array<{ nodeId: string; label: string; type: string; data?: string }>;
+  requestId?: string;
+  decision?: PermissionDecision;
+  editedCommand?: string;
+  reason?: string;
 }
 
 export function setupWebSocket(server: import("http").Server) {
@@ -29,7 +34,7 @@ export function setupWebSocket(server: import("http").Server) {
   });
 
   function subscribeToSession(s: Awaited<ReturnType<typeof getOrCreateSession>>, ws: WebSocket) {
-    return s.subscribe((event) => {
+    const unsubSession = s.subscribe((event) => {
       try {
         if (ws.readyState !== WebSocket.OPEN) return;
         switch (event.type) {
@@ -72,6 +77,24 @@ export function setupWebSocket(server: import("http").Server) {
         console.error("[ws] Subscribe callback error:", err);
       }
     });
+
+    const unsubPermission = permissionManager.onRequest((req) => {
+      try {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({
+          type: "tool_permission_request",
+          requestId: req.requestId,
+          command: req.command,
+        }));
+      } catch (err) {
+        console.error("[ws] Permission push error:", err);
+      }
+    });
+
+    return () => {
+      unsubSession();
+      unsubPermission();
+    };
   }
 
   wss.on("connection", async (ws: WebSocket) => {
@@ -105,6 +128,7 @@ export function setupWebSocket(server: import("http").Server) {
               break;
             case "abort":
               await session.abort();
+              permissionManager.denyPending("用户中止");
               break;
             case "observe_list": {
               try {
@@ -121,11 +145,26 @@ export function setupWebSocket(server: import("http").Server) {
             }
             case "clear": {
               unsubscribe();
+              permissionManager.clearAll();
               resetSession();
               const newSession = await getOrCreateSession();
               session = newSession;
               unsubscribe = subscribeToSession(newSession, ws);
               ws.send(JSON.stringify({ type: "session_ready", sessionId: newSession.sessionId }));
+              break;
+            }
+            case "tool_permission_response": {
+              if (msg.requestId && msg.decision) {
+                permissionManager.resolve(msg.requestId, {
+                  decision: msg.decision,
+                  editedCommand: msg.editedCommand,
+                  reason: msg.reason,
+                });
+              }
+              break;
+            }
+            case "permission_accept_all": {
+              permissionManager.setAcceptAll(true);
               break;
             }
           }

@@ -14,7 +14,11 @@ export async function agentSetup() {
     ],
     skillsOverride: (current) => {
       const filteredSkills = current.skills.filter(
-        (s) => s.name.includes("browser") || s.name.includes("search") || s.name.includes("govio") || s.name.includes("observe"),
+        (s) => s.name.includes("browser") || 
+        s.name.includes("search") ||
+         s.name.includes("govio") || 
+         s.name.includes("eda") ||
+         s.name.includes("observe"),
       );
       return {
         skills: [...filteredSkills],
