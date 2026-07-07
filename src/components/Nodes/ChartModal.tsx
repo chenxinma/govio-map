@@ -30,7 +30,7 @@ export default function ChartModal({ config, title, onClose }: Props) {
       },
     };
     try {
-      chartRef.current = new Chart(canvasRef.current, modalConfig as Parameters<typeof Chart>[1]);
+      chartRef.current = new Chart(canvasRef.current, modalConfig as ConstructorParameters<typeof Chart>[1]) as Chart;
     } catch (err) {
       console.error('[ChartModal] chart render failed:', err);
       setHasError(true);

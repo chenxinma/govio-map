@@ -1,4 +1,4 @@
-import { pushGovioNode } from "../govio-node-queue.js";
+import { pushGovioNode, type GovioNodeCreateEvent } from "../govio-node-queue.js";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { isToolCallEventType } from "@mariozechner/pi-coding-agent";
@@ -356,7 +356,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         nodeType: "chart",
         title: params.title,
         sourceDf: params.sourceDf,
-        config: params.config,
+        config: params.config as GovioNodeCreateEvent["config"],
       });
       return {
         content: [{ type: "text", text: `Created chart node: ${params.title} (${params.config.type})` }],
