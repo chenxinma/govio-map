@@ -18,11 +18,19 @@ export interface CanvasEvent {
   fields?: Array<{ name: string; type: string; nullable: boolean; description?: string; isPrimaryKey?: boolean; isForeignKey?: boolean; references?: { table: string; field: string } }>;
   referencedNodes?: Array<{ nodeId: string; label: string }>;
   // chart
-  imageBase64?: string;
-  chartType?: "bar" | "line";
+  config?: {
+    type: string;
+    data: {
+      labels?: string[];
+      datasets: Array<{
+        label: string;
+        data: number[] | Array<{ x: number; y: number }>;
+        [key: string]: unknown;
+      }>;
+    };
+    options?: Record<string, unknown>;
+  };
   sourceDf?: string;
-  xColumn?: string;
-  yColumn?: string;
 }
 
 export interface CanvasService {
