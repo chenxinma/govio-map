@@ -1,4 +1,3 @@
-import { readFileSync } from "fs";
 import { pushGovioNode } from "../govio-node-queue.js";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -333,37 +332,36 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "govio_show_chart",
     label: "Govio Chart",
-    description: "Show a chart node on the canvas. Call `govio-cli observe chart ...` first to generate the PNG, then pass the output path here.",
+    description: "Show a chart node on the canvas with a chart.js config. Call govio-cli to fetch data first, then pass the chart.js configuration object. Refer to the chart-selector skill for chart type selection and config templates.",
     parameters: Type.Object({
-      name: Type.String({ description: "Source DataFrame name" }),
-      chartType: Type.Union([Type.Literal("bar"), Type.Literal("line")], { description: "Chart type" }),
-      x: Type.String({ description: "X-axis column name" }),
-      y: Type.String({ description: "Y-axis column name" }),
-      outputPath: Type.String({ description: "Path to the generated PNG file from govio-cli observe chart output" }),
+      title: Type.String({ description: "Chart node title, e.g. \"Chart: df_sales (bar)\"" }),
+      sourceDf: Type.Optional(Type.String({ description: "Source DataFrame name, shown in node header" })),
+      config: Type.Object({
+        type: Type.String({ description: "Chart.js chart type: \"bar\" | \"line\" | \"pie\" | \"doughnut\" | \"scatter\"" }),
+        data: Type.Object({
+          labels: Type.Optional(Type.Array(Type.String(), { description: "Category labels (required for bar/line/pie/doughnut, omit for scatter)" })),
+          datasets: Type.Array(
+            Type.Object({
+              label: Type.String({ description: "Dataset label shown in legend" }),
+              data: Type.Array(Type.Unknown(), { description: "Data values: number[] for bar/line/pie, [{x,y}] for scatter" }),
+            }),
+            { description: "Data series array" }
+          ),
+        }),
+        options: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Chart.js options object (scales, plugins, etc.)" })),
+      }),
     }),
     execute: async (_toolCallId, params) => {
-      try {
-        const imageBuffer = readFileSync(params.outputPath);
-        const imageBase64 = imageBuffer.toString("base64");
-        pushGovioNode({
-          nodeType: "chart",
-          title: `Chart: ${params.name} (${params.chartType})`,
-          imageBase64,
-          chartType: params.chartType,
-          sourceDf: params.name,
-          xColumn: params.x,
-          yColumn: params.y,
-        });
-        return {
-          content: [{ type: "text", text: `Created chart node: ${params.name} (${params.chartType})` }],
-          details: {},
-        };
-      } catch (err) {
-        return {
-          content: [{ type: "text", text: `Failed to create chart: ${err instanceof Error ? err.message : String(err)}` }],
-          details: {},
-        };
-      }
+      pushGovioNode({
+        nodeType: "chart",
+        title: params.title,
+        sourceDf: params.sourceDf,
+        config: params.config,
+      });
+      return {
+        content: [{ type: "text", text: `Created chart node: ${params.title} (${params.config.type})` }],
+        details: {},
+      };
     },
   });
 
