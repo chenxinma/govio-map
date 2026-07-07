@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { Chart, registerables } from 'chart.js';
@@ -16,16 +16,24 @@ interface Props {
 export default function ChartModal({ config, title, onClose }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<Chart | null>(null);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     if (!canvasRef.current) return;
-    const modalConfig: ChartConfig = structuredClone(config);
-    modalConfig.options = {
-      ...(config.options ?? {}),
-      responsive: true,
-      maintainAspectRatio: false,
+    const modalConfig: ChartConfig = {
+      ...config,
+      options: {
+        ...(config.options ?? {}),
+        responsive: true,
+        maintainAspectRatio: false,
+      },
     };
-    chartRef.current = new Chart(canvasRef.current, modalConfig as Parameters<typeof Chart>[1]);
+    try {
+      chartRef.current = new Chart(canvasRef.current, modalConfig as Parameters<typeof Chart>[1]);
+    } catch (err) {
+      console.error('[ChartModal] chart render failed:', err);
+      setHasError(true);
+    }
     return () => {
       chartRef.current?.destroy();
       chartRef.current = null;
@@ -59,9 +67,15 @@ export default function ChartModal({ config, title, onClose }: Props) {
           </button>
         </div>
         <div className="p-4 flex-1 min-h-0">
-          <ChartErrorBoundary>
-            <canvas ref={canvasRef} className="w-full h-[520px]" />
-          </ChartErrorBoundary>
+          {hasError ? (
+            <div className="flex items-center justify-center h-full text-xs text-text-muted">
+              图表配置错误
+            </div>
+          ) : (
+            <ChartErrorBoundary>
+              <canvas ref={canvasRef} className="w-full h-[520px]" />
+            </ChartErrorBoundary>
+          )}
         </div>
       </div>
     </div>,
