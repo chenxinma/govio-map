@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { Chart, registerables } from 'chart.js';
 import type { ChartConfig } from '../../types';
-import { ChartErrorBoundary } from './ChartErrorBoundary';
 
 Chart.register(...registerables);
 
@@ -20,6 +19,7 @@ export default function ChartModal({ config, title, onClose }: Props) {
 
   useEffect(() => {
     if (!canvasRef.current) return;
+    setHasError(false);
     const modalConfig: ChartConfig = {
       ...config,
       options: {
@@ -66,15 +66,12 @@ export default function ChartModal({ config, title, onClose }: Props) {
             <X size={16} />
           </button>
         </div>
-        <div className="p-4 flex-1 min-h-0">
-          {hasError ? (
-            <div className="flex items-center justify-center h-full text-xs text-text-muted">
+        <div className="p-4 flex-1 min-h-0 relative">
+          <canvas ref={canvasRef} className={`w-full h-[520px] ${hasError ? 'hidden' : ''}`} />
+          {hasError && (
+            <div className="absolute inset-0 flex items-center justify-center text-xs text-text-muted">
               图表配置错误
             </div>
-          ) : (
-            <ChartErrorBoundary>
-              <canvas ref={canvasRef} className="w-full h-[520px]" />
-            </ChartErrorBoundary>
           )}
         </div>
       </div>
