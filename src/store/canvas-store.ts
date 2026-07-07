@@ -182,11 +182,8 @@ export const useCanvasStore = create<CanvasStore>()(
             type: "chart",
             title: event.title || "Chart",
             createdAt: now,
-            chartType: event.chartType || "bar",
             sourceDf: event.sourceDf || "",
-            xColumn: event.xColumn || "",
-            yColumn: event.yColumn || "",
-            imageBase64: event.imageBase64 || "",
+            config: event.config || { type: "bar", data: { labels: [], datasets: [] } },
           },
         };
         break;
