@@ -17,6 +17,7 @@ export default function ChartModal({ config, title, onClose }: Props) {
   const chartRef = useRef<Chart | null>(null);
   const [hasError, setHasError] = useState(false);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- effect synchronizes chart.js lifecycle; hasError reflects constructor failures */
   useEffect(() => {
     if (!canvasRef.current) return;
     setHasError(false);
@@ -39,6 +40,7 @@ export default function ChartModal({ config, title, onClose }: Props) {
       chartRef.current = null;
     };
   }, [config]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
