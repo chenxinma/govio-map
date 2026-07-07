@@ -14,6 +14,7 @@
     "@dagrejs/dagre": "^3.0.0",
     "@mariozechner/pi-coding-agent": "^0.67.68",
     "@xyflow/react": "^12.10.2",
+    "chart.js": "^4.5.1",
     "dagre": "^0.8.5",
     "hyparquet": "^1.25.6",
     "lucide-react": "^1.8.0",
