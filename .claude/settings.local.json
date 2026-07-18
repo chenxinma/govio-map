@@ -25,7 +25,9 @@
       "Bash(rtk lint *)",
       "Bash(node *)",
       "Bash(timeout 12 npx vite build)",
-      "Bash(rtk gh *)"
+      "Bash(rtk gh *)",
+      "Bash(npm install *)",
+      "Bash(rtk proxy *)"
     ]
   }
 }

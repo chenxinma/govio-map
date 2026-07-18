@@ -37,7 +37,7 @@ export async function agentSetup() {
   if (diagnostics.length > 0) {
     console.log("Warnings:", diagnostics);
   }
-  await runGovioCli("--help");
+  await runGovioCli("-V");
   console.log(">>> Server agent ready. <<<");
 }
 
