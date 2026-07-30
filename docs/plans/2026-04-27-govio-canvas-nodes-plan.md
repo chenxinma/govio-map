@@ -137,7 +137,7 @@ Helper functions needed:
 - extractAssistantText(message) -> string
 
 Import from "../govio-node-queue.js": pushGovioNode, GovioNodeCreateEvent
-Import from "@mariozechner/pi-coding-agent": ExtensionAPI
+Import from "@earendil-works/pi-coding-agent": ExtensionAPI
 Export default function govioCanvasExtension(pi: ExtensionAPI): void
 
 **Step 2:** Verify TypeScript compiles

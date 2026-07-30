@@ -17,7 +17,7 @@
 
 **Step 1: 安装 pi-coding-agent 和 ws**
 
-Run: `npm install @mariozechner/pi-coding-agent ws`
+Run: `npm install @earendil-works/pi-coding-agent ws`
 Expected: 安装成功，package.json 新增两个依赖
 
 **Step 2: 安装 ws 类型定义**
@@ -27,7 +27,7 @@ Expected: 安装成功
 
 **Step 3: 验证安装**
 
-Run: `npm ls @mariozechner/pi-coding-agent ws`
+Run: `npm ls @earendil-works/pi-coding-agent ws`
 Expected: 显示已安装的版本
 
 ---
@@ -45,7 +45,7 @@ Expected: 目录创建成功
 **Step 2: 编写 agent.ts**
 
 ```typescript
-import { createAgentSession, SessionManager, readOnlyTools, type AgentSession } from "@mariozechner/pi-coding-agent";
+import { createAgentSession, SessionManager, readOnlyTools, type AgentSession } from "@earendil-works/pi-coding-agent";
 
 let session: AgentSession | null = null;
 

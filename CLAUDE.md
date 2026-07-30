@@ -66,7 +66,7 @@ ANTHROPIC_API_KEY=sk-ant-xxxxx
 
 ## Technical Stack
 
-React 18 + TypeScript, Vite, @xyflow/react (ReactFlow), Zustand, @dagrejs/dagre, Tailwind CSS v4, @mariozechner/pi-coding-agent, WebSocket (ws)
+React 18 + TypeScript, Vite, @xyflow/react (ReactFlow), Zustand, @dagrejs/dagre, Tailwind CSS v4, /pi-coding-agent, WebSocket (ws)
 
 <!-- rtk-instructions v2 -->
 # RTK (Rust Token Killer) - Token-Optimized Commands

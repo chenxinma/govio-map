@@ -1,7 +1,7 @@
 import { pushGovioNode, type GovioNodeCreateEvent } from "../govio-node-queue.js";
-import { Type } from "@sinclair/typebox";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { isToolCallEventType } from "@mariozechner/pi-coding-agent";
+import { Type } from "typebox";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import { permissionManager } from "../permission-manager.js";
 
 const OBSERVE_LOAD_RE = /\bgovio-cli\s+observe\s+load\b/;

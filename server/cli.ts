@@ -1,9 +1,9 @@
 import { getOrCreateSession, agentSetup } from "./agent.js";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { parseArgs } from "node:util";
 import { createWriteStream, type WriteStream } from "node:fs";
-import type { AgentEvent } from "@mariozechner/pi-agent-core";
 
-type MessageEvent = Extract<AgentEvent, { type: "message_start" | "message_end" }>;
+type MessageEvent = Extract<AgentSessionEvent, { type: "message_start" | "message_end" }>;
 
 const { values } = parseArgs({
   options: {
