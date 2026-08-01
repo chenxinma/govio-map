@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Govio Map is an infinite canvas data governance tool. Users issue natural language commands to generate SQL queries, DataFrames, and reports that appear as nodes on a canvas with directed edges representing data lineage.
+Govio Map is an infinite canvas data governance tool. Users issue natural language commands that drive an AI agent (pi-coding-agent) to generate SQL queries, DataFrames, reports, and charts that appear as nodes on a canvas with directed edges representing data lineage.
 
 ```
 Tables ──▶ SQL ──▶ DataFrame ──▶ Report
@@ -22,30 +22,31 @@ npm run preview  # Preview production build
 ## Architecture
 
 ### Data Flow
-1. User sends message via `ChatPanel` → `useCanvasStore.sendMessage()`
-2. If WebSocket connected + no node refs: streams via `ai-service.ts` (pi-coding-agent)
-3. Otherwise: `mock-ai.ts` generates fixed responses based on pattern matching
-4. New nodes/edges are created and auto-layouted via `dagre`
+1. User sends message via `ChatPanel` → `useChat.send()` over WS `/ws`
+2. `server/ws-handler.ts` prepends referenced-node context and calls pi `session.prompt()` (or `session.steer()` while streaming)
+3. pi events stream back; the `govio-canvas` extension parses tool results / `message_end` into `GovioNodeCreateEvent`s, flushed over WS `/canvas`
+4. `canvas-service` -> `canvas-store.createGovioNode()` creates nodes + auto-edges, positioned via `positionNewNode` (dagre)
 
 ### State Management (`src/store/canvas-store.ts`)
-Single Zustand store owns all canvas state: nodes, edges, messages, referenced nodes, preview panels.
+Single Zustand store owns canvas state: nodes, edges, referenced nodes, preview panels (persists to localStorage `govio-canvas-state`). Chat messages live in `useChat`.
 
 ### Node Types (`src/types/index.ts`)
 - `sourceTable`: Database table with schema (purple left border)
 - `sqlQuery`: SQL statement (green left border)
 - `dataFrame`: pandas-style dataframe info (orange left border)
-- `report`: diff or correlation analysis (amber/purple left border)
+- `report`: diff or correlation analysis (amber/violet left border)
+- `chart`: chart.js visualization (blue left border)
 
 ### Backend (`server/index.ts`)
-Vite plugin that runs WebSocket server for pi-coding-agent sessions. Auto-fallback to Mock mode if not connected.
+Vite plugin (`server/index.ts`) runs HTTP + WebSocket on port 5174: `/ws` (chat), `/canvas` (node stream), `/api/preview` (parquet). `server/agent.ts` manages an in-memory pi `AgentSession` with the `govio-canvas` extension. Requires `govio-cli` on PATH; no mock fallback (disconnected state disables input).
 
 ### Key Files
-- `src/components/Canvas/Canvas.tsx` — ReactFlow canvas with drag/drop, connections
-- `src/components/Nodes/*.tsx` — Custom node components with handles
-- `src/services/ai-service.ts` — WebSocket client + mock fallback
-- `src/services/mock-ai.ts` — Rule-based response generation
-- `src/data/mock-tables.ts` — 8 mock business tables with schemas
-- `src/utils/layout.ts` — Dagre auto-layout for directed graphs
+- `server/index.ts` — Vite plugin: HTTP + WS server on port 5174 (`/ws`, `/canvas`, `/api/preview`)
+- `server/agent.ts` / `server/extensions/govio-canvas.ts` — pi AgentSession + govio tools & event hooks
+- `server/ws-handler.ts` / `server/permission-manager.ts` — WS handling, event forwarding, permission flow
+- `src/hooks/useChat.ts` / `src/services/canvas-service.ts` — /ws & /canvas clients
+- `src/store/canvas-store.ts` / `src/components/Nodes/*.tsx` — Zustand canvas state + nodes (incl. chart.js)
+- `src/commands/` / `src/utils/layout.ts` — slash-command system + dagre layout
 
 ## Design System
 
@@ -58,7 +59,7 @@ Light "Green Deck" variant (Spotify-inspired); see docs/green-deck-DESIGN.md. To
 
 ## Environment Variables
 
-Create `.env` with at least one AI provider:
+Create `.env` with at least one AI provider. Also requires `govio-cli` on PATH (external CLI, validated at backend startup):
 ```bash
 ANTHROPIC_API_KEY=sk-ant-xxxxx
 # or OPENAI_API_KEY, GEMINI_API_KEY, MISTRAL_API_KEY
@@ -66,7 +67,7 @@ ANTHROPIC_API_KEY=sk-ant-xxxxx
 
 ## Technical Stack
 
-React 18 + TypeScript, Vite, @xyflow/react (ReactFlow), Zustand, @dagrejs/dagre, Tailwind CSS v4, /pi-coding-agent, WebSocket (ws)
+React 19 + TypeScript, Vite, @xyflow/react (ReactFlow), Zustand, @dagrejs/dagre, Tailwind CSS v4, chart.js, @earendil-works/pi-coding-agent, hyparquet, WebSocket (ws)
 
 <!-- rtk-instructions v2 -->
 # RTK (Rust Token Killer) - Token-Optimized Commands
