@@ -22,7 +22,7 @@
 | 布局 | @dagrejs/dagre |
 | 样式 | Tailwind CSS 4 |
 | 图标 | Lucide React |
-| AI Agent | @mariozechner/pi-coding-agent |
+| AI Agent | @earendil-works/pi-coding-agent |
 | 通信 | WebSocket (ws) |
 | 数据预览 | hyparquet (parquet 文件读取) |
 

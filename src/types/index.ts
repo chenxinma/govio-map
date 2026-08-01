@@ -63,17 +63,25 @@ export interface ReportNodeData {
   [key: string]: unknown;
 }
 
-export type ChartType = 'bar' | 'line';
+export interface ChartConfig {
+  type: string;
+  data: {
+    labels?: string[];
+    datasets: Array<{
+      label: string;
+      data: number[] | Array<{ x: number; y: number }>;
+      [key: string]: unknown;
+    }>;
+  };
+  options?: Record<string, unknown>;
+}
 
 export interface ChartNodeData {
   type: 'chart';
   title: string;
   createdAt: string;
-  chartType: ChartType;
-  sourceDf: string;
-  xColumn: string;
-  yColumn: string;
-  imageBase64: string;
+  sourceDf?: string;
+  config: ChartConfig;
   [key: string]: unknown;
 }
 

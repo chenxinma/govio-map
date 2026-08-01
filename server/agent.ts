@@ -1,27 +1,30 @@
-import { createAgentSession, SessionManager, createCodingTools, DefaultResourceLoader, type AgentSession } from "@mariozechner/pi-coding-agent";
-import { homedir } from "os";
-import { join } from "path";
+import { createAgentSession, SessionManager, DefaultResourceLoader, getAgentDir, type AgentSession } from "@earendil-works/pi-coding-agent";
 import govioCanvasExtension from "./extensions/govio-canvas.js";
 
 
 let session: AgentSession | null = null;
 let resLoader: DefaultResourceLoader | null = null;
 
+const cwd = process.cwd();
+
 export async function agentSetup() {
   resLoader = new DefaultResourceLoader({
+    cwd,
+    agentDir: getAgentDir(),
     extensionFactories: [
       (pi) => { govioCanvasExtension(pi); },
     ],
     skillsOverride: (current) => {
       const filteredSkills = current.skills.filter(
-        (s) => s.name.includes("browser") || 
-        s.name.includes("search") ||
-         s.name.includes("govio") || 
-         s.name.includes("eda") ||
-         s.name.includes("observe"),
+        (s) =>
+          s.name.includes("browser") ||
+          s.name.includes("search") ||
+          s.name.includes("govio") ||
+          s.name.includes("eda") ||
+          s.name.includes("observe"),
       );
       return {
-        skills: [...filteredSkills],
+        skills: filteredSkills,
         diagnostics: current.diagnostics,
       };
     },
@@ -37,28 +40,21 @@ export async function agentSetup() {
   if (diagnostics.length > 0) {
     console.log("Warnings:", diagnostics);
   }
-  await runGovioCli("--help");
+  await runGovioCli("-V");
   console.log(">>> Server agent ready. <<<");
 }
 
 export async function getOrCreateSession(): Promise<AgentSession> {
   if (session) return session;
-  
   if (!resLoader) throw Error("Agent not ready.");
-  await resLoader.reload();
 
-  const agentDir = join(homedir(), ".pi", "agent");
-  const cwd = process.cwd();
-  
-  const result = await createAgentSession({
+  const { session: newSession } = await createAgentSession({
     cwd,
-    tools: createCodingTools(cwd),
-    sessionManager: SessionManager.inMemory(),
-    agentDir: agentDir,
     resourceLoader: resLoader,
+    sessionManager: SessionManager.inMemory(),
   });
 
-  session = result.session;
+  session = newSession;
   return session;
 }
 
@@ -67,6 +63,7 @@ export function getSession(): AgentSession | null {
 }
 
 export function resetSession() {
+  session?.dispose();
   session = null;
 }
 

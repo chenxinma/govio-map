@@ -44,7 +44,7 @@ export default function CommandSuggestion({
           {cmd.category === "builtin" ? (
             <Terminal size={14} className="text-brand flex-shrink-0" />
           ) : (
-            <Sparkles size={14} className="text-amber-400 flex-shrink-0" />
+            <Sparkles size={14} className="text-warning flex-shrink-0" />
           )}
           <span className="font-medium">/{cmd.name}</span>
           <span className="text-text-muted text-xs truncate">{cmd.description}</span>

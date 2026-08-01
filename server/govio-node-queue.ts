@@ -24,11 +24,19 @@ export interface GovioNodeCreateEvent {
   database?: string;
   fields?: Array<{ name: string; type: string; description?: string; references?: { table: string; field: string } }>;
   // chart
-  imageBase64?: string;
-  chartType?: "bar" | "line";
+  config?: {
+    type: string;
+    data: {
+      labels?: string[];
+      datasets: Array<{
+        label: string;
+        data: number[] | Array<{ x: number; y: number }>;
+        [key: string]: unknown;
+      }>;
+    };
+    options?: Record<string, unknown>;
+  };
   sourceDf?: string;
-  xColumn?: string;
-  yColumn?: string;
   // edge sources — referencedNodes from the user's prompt
   referencedNodes?: Array<{ nodeId: string; label: string }>;
 }

@@ -2,7 +2,7 @@
 
 ## 目标
 
-将 `@mariozechner/pi-coding-agent` SDK 集成到 govio-map 项目，替换现有 mock AI，实现基于 WebSocket 的实时 Chat 交互。
+将 `@earendil-works/pi-coding-agent` SDK 集成到 govio-map 项目，替换现有 mock AI，实现基于 WebSocket 的实时 Chat 交互。
 
 ## 架构方案
 

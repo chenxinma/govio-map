@@ -182,11 +182,8 @@ export const useCanvasStore = create<CanvasStore>()(
             type: "chart",
             title: event.title || "Chart",
             createdAt: now,
-            chartType: event.chartType || "bar",
             sourceDf: event.sourceDf || "",
-            xColumn: event.xColumn || "",
-            yColumn: event.yColumn || "",
-            imageBase64: event.imageBase64 || "",
+            config: event.config || { type: "bar", data: { labels: [], datasets: [] } },
           },
         };
         break;
@@ -205,7 +202,7 @@ export const useCanvasStore = create<CanvasStore>()(
             target: nodeId,
             type: "smoothstep",
             animated: true,
-            style: { stroke: "#3ecf8e", strokeWidth: 2 },
+            style: { stroke: "#1db954", strokeWidth: 2 },
           });
         }
       }
@@ -228,7 +225,7 @@ export const useCanvasStore = create<CanvasStore>()(
             target: nodeId,
             type: "smoothstep",
             animated: true,
-            style: { stroke: "#3ecf8e", strokeWidth: 2 },
+            style: { stroke: "#1db954", strokeWidth: 2 },
           });
         }
       }

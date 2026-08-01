@@ -6,7 +6,7 @@
 
 **Architecture:** Client sends a `{ type: "clear" }` WebSocket message. Server unsubscribes from the old session, nulls it out, creates a fresh `AgentSession`, resubscribes the WebSocket, and responds with `session_ready`. Frontend clears messages immediately.
 
-**Tech Stack:** TypeScript, React (useCallback/useState/useRef), WebSocket (ws), @mariozechner/pi-coding-agent
+**Tech Stack:** TypeScript, React (useCallback/useState/useRef), WebSocket (ws), @earendil-works/pi-coding-agent
 
 ---
 
