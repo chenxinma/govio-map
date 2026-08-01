@@ -38,7 +38,7 @@ export default function NodeFindBar() {
       if (!node) return;
       const w = node.measured?.width ?? node.width ?? 0;
       const h = node.measured?.height ?? node.height ?? 0;
-      const pos = node.positionAbsolute ?? node.position;
+      const pos = node.position;
       const x = pos.x + w / 2;
       const y = pos.y + h / 2;
       const zoom = Math.max(getZoom(), 1);
