@@ -47,7 +47,7 @@ export default function ChatPanel({ width }: ChatPanelProps) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle flex-shrink-0">
         <span className="text-sm font-medium text-text-primary">对话</span>
         <div className="flex items-center gap-1.5">
-          <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-brand" : "bg-red-400"}`} />
+          <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-brand" : "bg-error"}`} />
           <span className="text-xs text-text-muted">{isConnected ? "已连接" : "未连接"}</span>
         </div>
       </div>

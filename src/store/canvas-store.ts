@@ -202,7 +202,7 @@ export const useCanvasStore = create<CanvasStore>()(
             target: nodeId,
             type: "smoothstep",
             animated: true,
-            style: { stroke: "#3ecf8e", strokeWidth: 2 },
+            style: { stroke: "#1db954", strokeWidth: 2 },
           });
         }
       }
@@ -225,7 +225,7 @@ export const useCanvasStore = create<CanvasStore>()(
             target: nodeId,
             type: "smoothstep",
             animated: true,
-            style: { stroke: "#3ecf8e", strokeWidth: 2 },
+            style: { stroke: "#1db954", strokeWidth: 2 },
           });
         }
       }

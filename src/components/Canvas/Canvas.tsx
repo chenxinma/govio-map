@@ -63,11 +63,11 @@ export default function Canvas() {
         defaultEdgeOptions={{
           type: 'smoothstep',
           animated: true,
-          style: { stroke: '#3ecf8e', strokeWidth: 2 },
+          style: { stroke: '#1db954', strokeWidth: 2 },
         }}
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2e2e2e" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#e0e0e0" />
         <Controls
           showInteractive={false}
           className="!bg-bg-surface !border-border-default !rounded-lg"
@@ -80,10 +80,10 @@ export default function Canvas() {
               case 'dataFrame': return 'hsl(25, 75%, 55%)';
               case 'report': return 'hsl(270, 60%, 70%)';
               case 'chart': return 'hsl(200, 70%, 55%)';
-              default: return '#898989';
+              default: return '#a7a7a7';
             }
           }}
-          maskColor="rgba(23, 23, 23, 0.8)"
+          maskColor="rgba(0, 0, 0, 0.08)"
           className="!bg-bg-primary !border-border-default !rounded-lg"
         />
       </ReactFlow>

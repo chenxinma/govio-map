@@ -202,7 +202,7 @@ export default function ChatInput({
         {isStreaming ? (
           <button
             onClick={onAbort}
-            className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500/30 transition-colors"
+            className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-error/20 border border-error/40 text-error hover:bg-error/30 transition-colors"
             title="停止"
           >
             <Square size={14} />

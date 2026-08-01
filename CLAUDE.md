@@ -49,12 +49,12 @@ Vite plugin that runs WebSocket server for pi-coding-agent sessions. Auto-fallba
 
 ## Design System
 
-Dark theme based on Supabase:
-- Background: `#171717` (page), `#0f0f0f` (buttons)
-- Brand green: `#3ecf8e` (edges, accents)
-- Text: `#fafafa` (primary), `#b4b4b4` (secondary), `#898989` (muted)
-- Borders define depth: `#242424` → `#2e2e2e` → `#363636`
-- No shadows — borders only
+Light "Green Deck" variant (Spotify-inspired); see docs/green-deck-DESIGN.md. Tokens in src/index.css (@theme):
+- Background: `#f5f5f5` (page/canvas), `#ffffff` (cards/messages), `#f0f0f0` (surfaces/inputs)
+- Brand green: `#1DB954` (edges, accents), hover `#1ED760`
+- Text: `#121212` (primary), `#535353` (secondary), `#727272` (muted), `#a7a7a7` (dim)
+- Borders: `#ececec` (subtle) → `#d4d4d4` (default) → `#b3b3b3` (prominent) → `#a3a3a3` (light)
+- Semantic: warning `#F59B23`, error `#E22134`, success `#1DB954`; fonts DM Sans + JetBrains Mono (Google Fonts); elevation via surface brightness (lighter = higher)
 
 ## Environment Variables
 

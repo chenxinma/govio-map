@@ -27,12 +27,12 @@ function ToolPill({ tool }: { tool: ToolCall }) {
   const isRunning = tool.success === undefined;
 
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-[#242424] border border-border-subtle text-text-secondary">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-[#f0f0f0] border border-border-subtle text-text-secondary">
       <Wrench size={10} />
       <span>{tool.toolName}</span>
       {isRunning && <Loader2 size={10} className="animate-spin" />}
       {isSuccess && <Check size={10} className="text-brand" />}
-      {isFail && <X size={10} className="text-red-400" />}
+      {isFail && <X size={10} className="text-error" />}
     </span>
   );
 }
@@ -61,7 +61,7 @@ function ThinkingSection({ content }: { content: string }) {
         <span>Thinking</span>
       </button>
       {open && (
-        <div className="mt-1 p-2 rounded bg-[#242424] text-xs text-text-muted whitespace-pre-wrap border border-border-subtle">
+        <div className="mt-1 p-2 rounded bg-[#f0f0f0] text-xs text-text-muted whitespace-pre-wrap border border-border-subtle">
           {content}
         </div>
       )}
@@ -77,7 +77,7 @@ function ReferenceChips({ nodes }: { nodes: ReferencedNode[] }) {
         return (
           <span
             key={ref.nodeId}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-[#242424] border border-border-subtle"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-[#f0f0f0] border border-border-subtle"
           >
             <Icon size={10} className={NODE_COLORS[ref.type] || "text-text-muted"} />
             <span className="text-text-secondary">{ref.label}</span>

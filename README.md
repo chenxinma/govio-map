@@ -139,9 +139,9 @@ src/
 
 ## 设计规范
 
-暗色主题，基于 Supabase 设计系统：
+亮色主题 "Green Deck"（Spotify 风格），完整规范见 `docs/green-deck-DESIGN.md`：
 
-- 背景：`#171717`，最深 `#0f0f0f`
-- 品牌色：`#3ecf8e`（绿色，仅用于标识和连线）
-- 层级区分通过边框颜色（`#242424` → `#2e2e2e` → `#363636`），不用 box-shadow
-- 字重仅用 400（正文）和 500（交互元素）
+- 背景：`#f5f5f5`（页面/画布），`#ffffff`（卡片/消息），`#f0f0f0`（表面/输入框）
+- 品牌色：`#1DB954`（绿色，用于标识、连线和高亮），hover `#1ED760`
+- 层级区分通过边框颜色（`#ececec` → `#d4d4d4` → `#b3b3b3`），不用 box-shadow
+- 字体：DM Sans（正文）+ JetBrains Mono（代码），从 Google Fonts 加载

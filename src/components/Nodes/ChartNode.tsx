@@ -38,7 +38,7 @@ function ChartNode({ data, id }: NodeProps) {
     <div className="w-[420px] rounded-lg border border-border-default bg-bg-card overflow-hidden">
       <div className="border-l-[3px] border-l-node-chart px-4 py-3">
         <div className="flex items-center gap-2 mb-1">
-          <BarChart3 size={14} className="text-sky-400" />
+          <BarChart3 size={14} className="text-node-chart" />
           <span className="text-sm font-medium text-text-primary">{nodeData.title}</span>
         </div>
         {nodeData.sourceDf && (
@@ -84,7 +84,7 @@ function ChartNode({ data, id }: NodeProps) {
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); deleteNodes([id]); }}
-          className="ml-auto flex items-center text-text-muted hover:text-red-400 transition-colors p-1 rounded-md hover:bg-red-400/10"
+          className="ml-auto flex items-center text-text-muted hover:text-error transition-colors p-1 rounded-md hover:bg-error/10"
         >
           <Trash2 size={12} />
         </button>

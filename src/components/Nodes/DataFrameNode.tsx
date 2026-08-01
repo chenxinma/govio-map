@@ -67,7 +67,7 @@ function DataFrameNode({ data, id }: NodeProps) {
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); deleteNodes([id]); }}
-          className="ml-auto flex items-center text-text-muted hover:text-red-400 transition-colors p-1 rounded-md hover:bg-red-400/10"
+          className="ml-auto flex items-center text-text-muted hover:text-error transition-colors p-1 rounded-md hover:bg-error/10"
         >
           <Trash2 size={12} />
         </button>
