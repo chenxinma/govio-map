@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   Controls,
   MiniMap,
@@ -11,6 +12,7 @@ import { useCanvasStore } from '../../store/canvas-store';
 import { nodeTypes } from '../Nodes';
 import FloatingPreviewPanel from './FloatingPreviewPanel';
 import CanvasToolbar from './CanvasToolbar';
+import NodeFindBar from './NodeFindBar';
 
 export default function Canvas() {
   const nodes = useCanvasStore((s) => s.nodes);
@@ -40,7 +42,9 @@ export default function Canvas() {
 
   return (
     <div ref={reactFlowWrapper} className="relative w-full h-full">
+      <ReactFlowProvider>
       <CanvasToolbar />
+      <NodeFindBar />
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -87,6 +91,7 @@ export default function Canvas() {
       {previewPanels.map((panel) => (
         <FloatingPreviewPanel key={panel.id} panel={panel} />
       ))}
+      </ReactFlowProvider>
     </div>
   );
 }
