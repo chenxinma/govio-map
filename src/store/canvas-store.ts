@@ -124,7 +124,16 @@ export const useCanvasStore = create<CanvasStore>()(
           },
         };
         break;
-      case "dataFrame":
+      case "dataFrame": {
+        // `observe load` auto-creates a node and `govio_show_dataframe` may be
+        // called for the same df - dedupe by dfName so we never render two
+        // nodes for one DataFrame.
+        const dupDf = nodes.find(
+          (n) =>
+            (n.data as unknown as CanvasNodeData).type === "dataFrame" &&
+            (n.data as unknown as DataFrameNodeData).dfName === (event.dfName || ""),
+        );
+        if (dupDf) return;
         newNode = {
           id: nodeId,
           type: "dataFrame",
@@ -143,6 +152,7 @@ export const useCanvasStore = create<CanvasStore>()(
           },
         };
         break;
+      }
       case "report":
         newNode = {
           id: nodeId,
@@ -207,8 +217,8 @@ export const useCanvasStore = create<CanvasStore>()(
         }
       }
     }
-    // For report nodes: also match sourceRefs labels to canvas nodes
-    if (event.nodeType === "report" && event.sourceRefs) {
+    // For report & dataFrame nodes: match sourceRefs labels to canvas nodes
+    if ((event.nodeType === "report" || event.nodeType === "dataFrame") && event.sourceRefs) {
       for (const ref of event.sourceRefs) {
         const matched = nodes.find((n) => {
           const d = n.data as unknown as CanvasNodeData;

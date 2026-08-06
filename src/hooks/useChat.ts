@@ -51,6 +51,11 @@ export function useChat() {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttempts = useRef(0);
   const currentAssistantId = useRef<string | null>(null);
+  // Whether the current bubble has received body text (text_delta). Thinking-only
+  // bubbles (no body text yet) are reusable so consecutive thinking segments merge
+  // into one bubble instead of stacking up.
+  const currentHasText = useRef(false);
+  const reusableThinkingId = useRef<string | null>(null);
   const disposedRef = useRef(false);
   const connectRef = useRef<() => void>(() => {});
 
@@ -64,13 +69,18 @@ export function useChat() {
 
     const finalizeCurrent = () => {
       const id = currentAssistantId.current;
-      if (!id) return;
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === id ? { ...m, isStreaming: false } : m
-        )
-      );
-      currentAssistantId.current = null;
+      if (id) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === id ? { ...m, isStreaming: false } : m
+          )
+        );
+        currentAssistantId.current = null;
+      }
+      // Ending a turn (agent_start/agent_end) must not carry thinking over to a
+      // new turn, so drop the reusable bubble and reset the body-text flag.
+      currentHasText.current = false;
+      reusableThinkingId.current = null;
     };
 
     ws.onopen = () => {
@@ -113,19 +123,34 @@ export function useChat() {
             break;
 
           case "message_start": {
-            finalizeCurrent();
-            const assistantId = nextMsgId();
-            currentAssistantId.current = assistantId;
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: assistantId,
-                role: "assistant",
-                content: "",
-                tools: [],
-                isStreaming: true,
-              },
-            ]);
+            const reusable = reusableThinkingId.current;
+            if (reusable) {
+              // The previous message was thinking-only (no body text): keep
+              // accumulating in the same bubble rather than opening a new one.
+              currentAssistantId.current = reusable;
+              currentHasText.current = false;
+              reusableThinkingId.current = null;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === reusable ? { ...m, isStreaming: true } : m
+                )
+              );
+            } else {
+              finalizeCurrent();
+              const assistantId = nextMsgId();
+              currentAssistantId.current = assistantId;
+              currentHasText.current = false;
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: assistantId,
+                  role: "assistant",
+                  content: "",
+                  tools: [],
+                  isStreaming: true,
+                },
+              ]);
+            }
             break;
           }
 
@@ -148,6 +173,7 @@ export function useChat() {
             const textId = currentAssistantId.current;
             const chunk = data.content;
             if (chunk && textId) {
+              currentHasText.current = true;
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === textId
@@ -193,9 +219,23 @@ export function useChat() {
             break;
           }
 
-          case "message_end":
-            finalizeCurrent();
+          case "message_end": {
+            const id = currentAssistantId.current;
+            if (id) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === id ? { ...m, isStreaming: false } : m
+                )
+              );
+              // A thinking-only bubble (no body text yet) stays reusable so the
+              // next message_start merges into it. Once body text was emitted the
+              // bubble is complete and the next message opens a fresh one.
+              reusableThinkingId.current = currentHasText.current ? null : id;
+              currentAssistantId.current = null;
+              currentHasText.current = false;
+            }
             break;
+          }
 
           case "agent_end":
             isStreamingRef.current = false;
@@ -254,13 +294,16 @@ export function useChat() {
 
   const finalizeCurrent = useCallback(() => {
     const id = currentAssistantId.current;
-    if (!id) return;
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === id ? { ...m, isStreaming: false } : m
-      )
-    );
-    currentAssistantId.current = null;
+    if (id) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === id ? { ...m, isStreaming: false } : m
+        )
+      );
+      currentAssistantId.current = null;
+    }
+    currentHasText.current = false;
+    reusableThinkingId.current = null;
   }, []);
 
   const send = useCallback((content: string, referencedNodes?: ReferencedNode[]) => {
@@ -300,6 +343,9 @@ export function useChat() {
   const clearMessages = useCallback(() => {
     setMessages([]);
     msgIdCounter = 0;
+    currentAssistantId.current = null;
+    currentHasText.current = false;
+    reusableThinkingId.current = null;
   }, []);
 
   const clearSession = useCallback(() => {

@@ -32,16 +32,23 @@ function extractNamedArg(cmd: string, flag: string): string | null {
   return match ? match[1] : null;
 }
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function parseObserveSubcommand(cmd: string): string | null {
   const match = cmd.match(/govio-cli\s+observe\s+(\S+)/);
   return match ? match[1] : null;
 }
 
-function parseLoadArgs(cmd: string): { name: string; datasource: string } | null {
+function parseLoadArgs(cmd: string): { name: string; datasource: string | null; memory: boolean } | null {
   const name = extractNamedArg(cmd, "name");
+  if (!name) return null;
   const datasource = extractNamedArg(cmd, "datasource");
-  if (!name || !datasource) return null;
-  return { name, datasource };
+  const memory = /(?:^|\s)--memory(?=\s|$)/.test(cmd);
+  // --datasource and --memory are mutually exclusive; one must be present
+  if (!datasource && !memory) return null;
+  return { name, datasource, memory };
 }
 
 function parseCompareArgs(cmd: string): { source: string; target: string; joinColumns: string[] } | null {
@@ -218,15 +225,28 @@ function handleLoadResult(cmd: string, stdout: string): void {
       nonNull: parsed.rows || 0,
       dtype: c.dtype,
     }));
+    // --datasource loads come from a DB; --memory loads derive from upstream
+    // DataFrames, whose names are reported back as `source_tables`.
+    const sourceName = args.datasource ?? (args.memory ? "memory" : "");
+    // --memory injects ALL loaded DataFrames into DuckDB, so `source_tables`
+    // lists every loaded df - not just those this SQL actually references.
+    // Filter to names that appear in the SQL so lineage edges stay precise.
+    const sourceRefs =
+      args.memory && Array.isArray(parsed.source_tables) && parsed.source_tables.length > 0
+        ? parsed.source_tables
+            .filter((t: string) => new RegExp(`\\b${escapeRegex(t)}\\b`).test(cmd))
+            .map((t: string) => ({ label: t }))
+        : undefined;
     pushGovioNode({
       nodeType: "dataFrame",
       title: `DF: ${args.name}`,
       dfName: args.name,
-      sourceName: args.datasource,
+      sourceName,
       totalRows: parsed.rows || 0,
       totalColumns: parsed.columns || columns.length,
       memoryUsage: estimateMemoryUsage(parsed.rows || 0, parsed.columns || columns.length),
       columns,
+      ...(sourceRefs ? { sourceRefs } : {}),
     });
   } catch {
     // stdout is not valid JSON
@@ -360,6 +380,68 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
       });
       return {
         content: [{ type: "text", text: `Created chart node: ${params.title} (${params.config.type})` }],
+        details: {},
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "govio_show_dataframe",
+    label: "Govio DataFrame",
+    description:
+      "Show an already-loaded ObserveStore DataFrame as a previewable DataFrame node on the canvas. Use this when the user asks to display/show/加载 a DataFrame onto the canvas, or to surface a DataFrame that was loaded without a canvas node. Fetches the schema from the store via `govio-cli observe info --name` (no data rows). Do NOT use govio_create_source_table for DataFrames — that creates a non-previewable source-table node.",
+    parameters: Type.Object({
+      dfName: Type.String({ description: "DataFrame name (the `--name` used with `observe load`)" }),
+      title: Type.Optional(Type.String({ description: "Node title, e.g. 'DF: channel_country_cartesian'" })),
+      sourceName: Type.Optional(Type.String({ description: "Source label: datasource name for --datasource loads, or 'memory' for --memory loads" })),
+    }),
+    execute: async (_toolCallId, params) => {
+      // dfName is interpolated into a shell command — restrict to safe identifiers.
+      if (!/^[A-Za-z0-9_]+$/.test(params.dfName)) {
+        return {
+          content: [{ type: "text", text: `Invalid dfName '${params.dfName}': only letters, digits and underscores are allowed.` }],
+          details: {},
+        };
+      }
+      let rows = 0;
+      let cols = 0;
+      let columns: Array<{ name: string; dtype: string; nonNull: number }> = [];
+      try {
+        const { runGovioCli } = await import("../agent.js");
+        // --rows 0 avoids pulling sample data (schema only).
+        const out = await runGovioCli(`observe info --name ${params.dfName} --rows 0`);
+        const info = JSON.parse(out);
+        if (!info || info.success === false) {
+          return {
+            content: [{ type: "text", text: `DataFrame '${params.dfName}' not found in ObserveStore (${info?.error ?? "unknown error"}). Load it first via 'govio-cli observe load'.` }],
+            details: {},
+          };
+        }
+        rows = info.rows || 0;
+        cols = info.columns || 0;
+        columns = (info.schema || []).map((c: { column: string; dtype: string }) => ({
+          name: c.column,
+          dtype: c.dtype,
+          nonNull: rows,
+        }));
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: `Failed to fetch schema for '${params.dfName}': ${err instanceof Error ? err.message : String(err)}` }],
+          details: {},
+        };
+      }
+      pushGovioNode({
+        nodeType: "dataFrame",
+        title: params.title || `DF: ${params.dfName}`,
+        dfName: params.dfName,
+        sourceName: params.sourceName || "",
+        totalRows: rows,
+        totalColumns: cols,
+        memoryUsage: estimateMemoryUsage(rows, cols),
+        columns,
+      });
+      return {
+        content: [{ type: "text", text: `Created DataFrame node: ${params.dfName} (${rows} rows × ${cols} cols)` }],
         details: {},
       };
     },
