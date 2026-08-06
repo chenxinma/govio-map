@@ -5,9 +5,10 @@ import govioCanvasExtension from "./extensions/govio-canvas.js";
 let session: AgentSession | null = null;
 let resLoader: DefaultResourceLoader | null = null;
 
-const cwd = process.cwd();
-
 export async function agentSetup() {
+  // Resolve cwd at call time so the Electron main process can chdir()
+  // before the agent boots (module-level evaluation would be too early).
+  const cwd = process.cwd();
   resLoader = new DefaultResourceLoader({
     cwd,
     agentDir: getAgentDir(),
@@ -49,7 +50,7 @@ export async function getOrCreateSession(): Promise<AgentSession> {
   if (!resLoader) throw Error("Agent not ready.");
 
   const { session: newSession } = await createAgentSession({
-    cwd,
+    cwd: process.cwd(),
     resourceLoader: resLoader,
     sessionManager: SessionManager.inMemory(),
   });
