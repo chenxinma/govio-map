@@ -133,7 +133,38 @@ export const useCanvasStore = create<CanvasStore>()(
             (n.data as unknown as CanvasNodeData).type === "dataFrame" &&
             (n.data as unknown as DataFrameNodeData).dfName === (event.dfName || ""),
         );
-        if (dupDf) return;
+        if (dupDf) {
+          // Duplicate dfName — still create edges from sourceRefs so lineage is
+          // preserved (e.g. after restoreCanvas or govio_show_dataframe created
+          // the node without sourceRefs).
+          if (event.sourceRefs && event.sourceRefs.length > 0) {
+            set((state) => {
+              const addEdges: Edge[] = [];
+              for (const ref of event.sourceRefs!) {
+                const sourceNode = state.nodes.find((n) => {
+                  const d = n.data as unknown as CanvasNodeData;
+                  return (
+                    d.title === ref.label ||
+                    ("tableName" in d && d.tableName === ref.label) ||
+                    ("dfName" in d && d.dfName === ref.label)
+                  );
+                });
+                if (sourceNode && !state.edges.some((e) => e.id === `e-${sourceNode.id}-${dupDf.id}`)) {
+                  addEdges.push({
+                    id: `e-${sourceNode.id}-${dupDf.id}`,
+                    source: sourceNode.id,
+                    target: dupDf.id,
+                    type: "smoothstep",
+                    animated: true,
+                    style: { stroke: "#1db954", strokeWidth: 2 },
+                  });
+                }
+              }
+              return addEdges.length > 0 ? { edges: [...state.edges, ...addEdges] } : {};
+            });
+          }
+          return;
+        }
         newNode = {
           id: nodeId,
           type: "dataFrame",
@@ -217,8 +248,8 @@ export const useCanvasStore = create<CanvasStore>()(
         }
       }
     }
-    // For report & dataFrame nodes: match sourceRefs labels to canvas nodes
-    if ((event.nodeType === "report" || event.nodeType === "dataFrame") && event.sourceRefs) {
+    // Match sourceRefs labels to canvas nodes for any node type that carries them
+    if (event.sourceRefs) {
       for (const ref of event.sourceRefs) {
         const matched = nodes.find((n) => {
           const d = n.data as unknown as CanvasNodeData;

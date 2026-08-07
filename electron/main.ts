@@ -18,6 +18,10 @@ function setupFileLogging(logDir: string) {
   }
   const logPath = join(logDir, "govio.log");
   const stream = createWriteStream(logPath, { flags: "a" });
+  stream.on("error", () => {
+    // Prevent unhandled 'error' events from crashing the app when the
+    // log directory becomes unavailable (disk full, permissions changed).
+  });
 
   const stamp = () => new Date().toISOString();
   const fmt = (args: unknown[]) =>
@@ -44,6 +48,10 @@ function setupFileLogging(logDir: string) {
 
   process.on("uncaughtException", (err) => {
     stream.write(`[${stamp()}] [uncaughtException] ${err.stack || String(err)}\n`);
+    // After an uncaught exception the process is in undefined behaviour
+    // territory.  Log the error for post-mortem analysis and exit cleanly
+    // so Electron can restart the app.
+    process.exit(1);
   });
   process.on("unhandledRejection", (reason) => {
     stream.write(`[${stamp()}] [unhandledRejection] ${inspect(reason)}\n`);

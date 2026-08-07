@@ -69,11 +69,17 @@ export function resetSession() {
 }
 
 export async function runGovioCli(cmd: string): Promise<string> {
-  const { execSync } = await import("child_process");
-  const output = execSync(`govio-cli ${cmd}`, {
-    encoding: "utf-8",
-    timeout: 15000,
+  const { execFile } = await import("child_process");
+  const args = cmd.split(/\s+/);
+  return new Promise((resolve, reject) => {
+    execFile("govio-cli", args, { encoding: "utf-8", timeout: 15000 }, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`[govio-cli] ${cmd} failed:`, stderr || error.message);
+        reject(error);
+      } else {
+        console.debug(stdout);
+        resolve(stdout);
+      }
+    });
   });
-  console.debug(output);
-  return output;
 }

@@ -59,6 +59,24 @@ export function useChat() {
   const disposedRef = useRef(false);
   const connectRef = useRef<() => void>(() => {});
 
+  const finalizeCurrent = useCallback(() => {
+    const id = currentAssistantId.current;
+    if (id) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === id ? { ...m, isStreaming: false } : m
+        )
+      );
+      currentAssistantId.current = null;
+    }
+    // Ending a turn (agent_start/agent_end) must not carry thinking over to a
+    // new turn, so drop the reusable bubble and reset the body-text flag.
+    currentHasText.current = false;
+    reusableThinkingId.current = null;
+  }, []);
+  const finalizeRef = useRef(finalizeCurrent);
+  finalizeRef.current = finalizeCurrent;
+
   const connect = useCallback(() => {
     if (disposedRef.current) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -66,22 +84,6 @@ export function useChat() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsPort = parseInt(window.location.port) + 1;
     const ws = new WebSocket(`${protocol}//${window.location.hostname}:${wsPort}/ws`);
-
-    const finalizeCurrent = () => {
-      const id = currentAssistantId.current;
-      if (id) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === id ? { ...m, isStreaming: false } : m
-          )
-        );
-        currentAssistantId.current = null;
-      }
-      // Ending a turn (agent_start/agent_end) must not carry thinking over to a
-      // new turn, so drop the reusable bubble and reset the body-text flag.
-      currentHasText.current = false;
-      reusableThinkingId.current = null;
-    };
 
     ws.onopen = () => {
       if (wsRef.current !== ws) return;
@@ -119,7 +121,7 @@ export function useChat() {
           case "agent_start":
             isStreamingRef.current = true;
             setIsStreaming(true);
-            finalizeCurrent();
+            finalizeRef.current();
             break;
 
           case "message_start": {
@@ -136,7 +138,7 @@ export function useChat() {
                 )
               );
             } else {
-              finalizeCurrent();
+              finalizeRef.current();
               const assistantId = nextMsgId();
               currentAssistantId.current = assistantId;
               currentHasText.current = false;
@@ -240,7 +242,7 @@ export function useChat() {
           case "agent_end":
             isStreamingRef.current = false;
             setIsStreaming(false);
-            finalizeCurrent();
+            finalizeRef.current();
             break;
 
           case "observe_list_result":
@@ -291,20 +293,6 @@ export function useChat() {
       wsRef.current?.close();
     };
   }, [connect]);
-
-  const finalizeCurrent = useCallback(() => {
-    const id = currentAssistantId.current;
-    if (id) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === id ? { ...m, isStreaming: false } : m
-        )
-      );
-      currentAssistantId.current = null;
-    }
-    currentHasText.current = false;
-    reusableThinkingId.current = null;
-  }, []);
 
   const send = useCallback((content: string, referencedNodes?: ReferencedNode[]) => {
     const ws = wsRef.current;

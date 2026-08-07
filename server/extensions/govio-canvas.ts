@@ -46,8 +46,12 @@ function parseLoadArgs(cmd: string): { name: string; datasource: string | null; 
   if (!name) return null;
   const datasource = extractNamedArg(cmd, "datasource");
   const memory = /(?:^|\s)--memory(?=\s|$)/.test(cmd);
-  // --datasource and --memory are mutually exclusive; one must be present
+  // --datasource and --memory are mutually exclusive; one must be present.
+  // If both are provided, prefer --memory (the more specific intent).
   if (!datasource && !memory) return null;
+  if (datasource && memory) {
+    return { name, datasource: null, memory: true };
+  }
   return { name, datasource, memory };
 }
 
@@ -72,6 +76,17 @@ function parseExploreArgs(cmd: string): { dataframes: string[] } | null {
 }
 
 
+function mapColumnInfo(
+  columns: Array<{ name?: string; column?: string; col?: string; dtype: string }>,
+  totalRows: number,
+): Array<{ name: string; dtype: string; nonNull: number }> {
+  return columns.map((c) => ({
+    name: c.name ?? c.column ?? c.col ?? "unknown",
+    dtype: c.dtype,
+    nonNull: totalRows,
+  }));
+}
+
 function estimateMemoryUsage(rows: number, cols: number): string {
   const bytes = rows * cols * 8;
   if (bytes < 1024) return `${bytes} B`;
@@ -80,10 +95,7 @@ function estimateMemoryUsage(rows: number, cols: number): string {
 }
 
 function extractAssistantText(message: { content: Array<{ type: string; text?: string }> }): string {
-  return message.content
-    .filter((c): c is { type: "text"; text: string } => c.type === "text" && typeof c.text === "string")
-    .map((c) => c.text)
-    .join("");
+  return extractTextContent(message.content);
 }
 
 function extractSelectColumns(sql: string): string[] {
@@ -217,24 +229,26 @@ function extractExploreSources(parsed: {
 function handleLoadResult(cmd: string, stdout: string): void {
   const args = parseLoadArgs(cmd);
   if (!args) return;
+  // Validate dfName to prevent injection into downstream commands or display issues.
+  if (!/^[A-Za-z0-9_]+$/.test(args.name)) return;
   try {
     const parsed = JSON.parse(stdout);
     if (parsed.success === false) return;
-    const columns = (parsed.column_info || []).map((c: { name: string; dtype: string }) => ({
-      name: c.name,
-      nonNull: parsed.rows || 0,
-      dtype: c.dtype,
-    }));
+    const columns = mapColumnInfo(parsed.column_info || [], parsed.rows || 0);
     // --datasource loads come from a DB; --memory loads derive from upstream
     // DataFrames, whose names are reported back as `source_tables`.
     const sourceName = args.datasource ?? (args.memory ? "memory" : "");
     // --memory injects ALL loaded DataFrames into DuckDB, so `source_tables`
     // lists every loaded df - not just those this SQL actually references.
     // Filter to names that appear in the SQL so lineage edges stay precise.
+    // Extract only the SQL portion from the command to avoid false matches
+    // against --name or other flag values.
+    const sqlMatch = cmd.match(/--sql\s+"([^"]*)"/);
+    const sqlText = sqlMatch ? sqlMatch[1] : cmd;
     const sourceRefs =
       args.memory && Array.isArray(parsed.source_tables) && parsed.source_tables.length > 0
         ? parsed.source_tables
-            .filter((t: string) => new RegExp(`\\b${escapeRegex(t)}\\b`).test(cmd))
+            .filter((t: string) => new RegExp(`\\b${escapeRegex(t)}\\b`).test(sqlText))
             .map((t: string) => ({ label: t }))
         : undefined;
     pushGovioNode({
@@ -274,6 +288,7 @@ function handleCompareResult(cmd: string, stdout: string): void {
 
 function handleExploreResult(cmd: string, stdout: string): void {
   const args = parseExploreArgs(cmd);
+  if (!args) return;
   try {
     const parsed = JSON.parse(stdout);
     if (parsed.success === false) return;
@@ -419,11 +434,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         }
         rows = info.rows || 0;
         cols = info.columns || 0;
-        columns = (info.schema || []).map((c: { column: string; dtype: string }) => ({
-          name: c.column,
-          dtype: c.dtype,
-          nonNull: rows,
-        }));
+        columns = mapColumnInfo(info.schema || [], rows);
       } catch (err) {
         return {
           content: [{ type: "text", text: `Failed to fetch schema for '${params.dfName}': ${err instanceof Error ? err.message : String(err)}` }],
