@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { ReferencedNode } from "../types";
+import type { ModelsConfig } from "../types/models-config";
 
 export interface ToolCall {
   toolName: string;
@@ -31,6 +32,7 @@ interface WSEvent {
   dataframes?: unknown[];
   requestId?: string;
   command?: string;
+  config?: ModelsConfig;
 }
 
 let msgIdCounter = 0;
@@ -47,6 +49,8 @@ export function useChat() {
   const isObservingRef = useRef(false);
   const observeListResolveRef = useRef<((dataframes: unknown[]) => void) | null>(null);
   const [pendingPermission, setPendingPermission] = useState<PendingPermission | null>(null);
+  const [needsConfig, setNeedsConfig] = useState(false);
+  const [modelsConfig, setModelsConfig] = useState<ModelsConfig | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttempts = useRef(0);
@@ -75,7 +79,9 @@ export function useChat() {
     reusableThinkingId.current = null;
   }, []);
   const finalizeRef = useRef(finalizeCurrent);
-  finalizeRef.current = finalizeCurrent;
+  useEffect(() => {
+    finalizeRef.current = finalizeCurrent;
+  }, [finalizeCurrent]);
 
   const connect = useCallback(() => {
     if (disposedRef.current) return;
@@ -116,6 +122,7 @@ export function useChat() {
         switch (data.type) {
           case "session_ready":
             setIsConnected(true);
+            setNeedsConfig(false);
             break;
 
           case "agent_start":
@@ -266,6 +273,20 @@ export function useChat() {
             }
             break;
 
+          case "config_required":
+            setNeedsConfig(true);
+            break;
+
+          case "models_config":
+            if (data.config) {
+              setModelsConfig(data.config);
+            }
+            break;
+
+          case "config_saved":
+            setNeedsConfig(false);
+            break;
+
           case "error":
             console.error("[chat] Server error:", data.content);
             if (isObservingRef.current) {
@@ -403,5 +424,23 @@ export function useChat() {
     });
   }, []);
 
-  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission };
+  const getModelsConfig = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "get_models_config" }));
+  }, []);
+
+  const saveModelsConfig = useCallback((config: ModelsConfig) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "save_models_config", config }));
+  }, []);
+
+  const saveApiKey = useCallback((apiKey: string) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "save_models_config", apiKey }));
+  }, []);
+
+  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission, needsConfig, modelsConfig, getModelsConfig, saveModelsConfig, saveApiKey };
 }
