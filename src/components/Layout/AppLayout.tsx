@@ -3,6 +3,7 @@ import Header from "./Header";
 import Canvas from "../Canvas/Canvas";
 import ResizeDivider from "./ResizeDivider";
 import ChatPanel from "../Chat/ChatPanel";
+import ConfigModal from "../ConfigModal";
 import { useChat } from "../../hooks/useChat";
 import { ChatContext } from "../../hooks/useChatContext";
 
@@ -30,6 +31,15 @@ export default function AppLayout() {
           <ChatPanel width={chatWidth} />
         </div>
       </div>
+      {chat.needsConfig && (
+        <ConfigModal
+          onSave={chat.saveApiKey}
+          onCancel={() => {
+            // User cancelled the startup prompt. The chat remains disabled
+            // until they open settings and provide a valid key.
+          }}
+        />
+      )}
     </ChatContext.Provider>
   );
 }

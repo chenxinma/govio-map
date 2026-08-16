@@ -3,16 +3,23 @@ import type { IncomingMessage } from "http";
 import { getOrCreateSession, resetSession, runGovioCli } from "./agent.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
 import { permissionManager, type PermissionDecision } from "./permission-manager.js";
+import { isAgentConfigNeeded, completeAgentSetup } from "./backend.js";
+import { readModelsConfig, writeModelsConfig, createDefaultModelsConfig } from "./models-config.js";
+import type { ModelsConfig } from "../src/types/models-config.js";
 
 interface WSMessage {
-  type: "prompt" | "steer" | "followUp" | "abort" | "observe_list" | "clear" | "tool_permission_response" | "permission_accept_all";
+  type: "prompt" | "steer" | "followUp" | "abort" | "observe_list" | "clear" | "tool_permission_response" | "permission_accept_all" | "get_models_config" | "save_models_config";
   content?: string;
   referencedNodes?: Array<{ nodeId: string; label: string; type: string; data?: string }>;
   requestId?: string;
   decision?: PermissionDecision;
   editedCommand?: string;
   reason?: string;
+  config?: ModelsConfig;
+  apiKey?: string;
 }
+
+type SessionInstance = Awaited<ReturnType<typeof getOrCreateSession>>;
 
 export function setupWebSocket(server: import("http").Server) {
   const wss = new WebSocketServer({ noServer: true });
@@ -33,7 +40,7 @@ export function setupWebSocket(server: import("http").Server) {
     }
   });
 
-  function subscribeToSession(s: Awaited<ReturnType<typeof getOrCreateSession>>, ws: WebSocket) {
+  function subscribeToSession(s: SessionInstance, ws: WebSocket) {
     const unsubSession = s.subscribe((event) => {
       try {
         if (ws.readyState !== WebSocket.OPEN) return;
@@ -97,77 +104,185 @@ export function setupWebSocket(server: import("http").Server) {
     };
   }
 
+  async function sendModelsConfig(ws: WebSocket): Promise<void> {
+    try {
+      const config = await readModelsConfig();
+      ws.send(JSON.stringify({ type: "models_config", config }));
+    } catch (err) {
+      ws.send(JSON.stringify({
+        type: "error",
+        message: `Failed to read models config: ${err instanceof Error ? err.message : String(err)}`,
+      }));
+    }
+  }
+
+  async function handleSaveModelsConfig(ws: WebSocket, msg: WSMessage): Promise<void> {
+    try {
+      if (msg.apiKey) {
+        // First-time setup path: frontend only supplies an API key.
+        await createDefaultModelsConfig(msg.apiKey);
+      } else if (msg.config) {
+        await writeModelsConfig(msg.config);
+      } else {
+        ws.send(JSON.stringify({ type: "error", message: "save_models_config requires apiKey or config" }));
+        return;
+      }
+
+      ws.send(JSON.stringify({ type: "config_saved" }));
+    } catch (err) {
+      ws.send(JSON.stringify({
+        type: "error",
+        message: `Failed to save models config: ${err instanceof Error ? err.message : String(err)}`,
+      }));
+    }
+  }
+
+  async function restartAgentSession(): Promise<SessionInstance> {
+    if (isAgentConfigNeeded()) {
+      await completeAgentSetup();
+    } else {
+      resetSession();
+    }
+    return getOrCreateSession();
+  }
+
+  function handleNormalMessage(
+    msg: WSMessage,
+    ws: WebSocket,
+    ctx: { session: SessionInstance; unsubscribe: () => void }
+  ) {
+    const { session, unsubscribe } = ctx;
+
+    switch (msg.type) {
+      case "prompt":
+        if (msg.content) {
+          setCurrentReferencedNodes(msg.referencedNodes);
+          const prompt = makePrompt(msg);
+          if (session.isStreaming) {
+            session.steer(prompt).finally(clearCurrentReferencedNodes);
+          } else {
+            session.prompt(prompt).finally(clearCurrentReferencedNodes);
+          }
+        }
+        break;
+      case "steer":
+        if (msg.content) session.steer(msg.content);
+        break;
+      case "followUp":
+        if (msg.content) session.followUp(msg.content);
+        break;
+      case "abort":
+        session.abort();
+        permissionManager.denyPending("用户中止");
+        break;
+      case "observe_list": {
+        runGovioCli("observe list")
+          .then((output) => {
+            const dataframes = JSON.parse(output);
+            ws.send(JSON.stringify({ type: "observe_list_result", dataframes }));
+          })
+          .catch((listErr) => {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: `observe list failed: ${listErr instanceof Error ? listErr.message : String(listErr)}`,
+            }));
+          });
+        break;
+      }
+      case "clear": {
+        unsubscribe();
+        permissionManager.clearAll();
+        resetSession();
+        getOrCreateSession().then((newSession) => {
+          ctx.session = newSession;
+          ctx.unsubscribe = subscribeToSession(newSession, ws);
+          ws.send(JSON.stringify({ type: "session_ready", sessionId: newSession.sessionId }));
+        });
+        break;
+      }
+      case "tool_permission_response": {
+        if (msg.requestId && msg.decision) {
+          permissionManager.resolve(msg.requestId, {
+            decision: msg.decision,
+            editedCommand: msg.editedCommand,
+            reason: msg.reason,
+          });
+        }
+        break;
+      }
+      case "permission_accept_all": {
+        permissionManager.setAcceptAll(true);
+        break;
+      }
+      case "get_models_config": {
+        sendModelsConfig(ws);
+        break;
+      }
+      case "save_models_config": {
+        handleSaveModelsConfig(ws, msg).then(() => {
+          unsubscribe();
+          restartAgentSession().then((newSession) => {
+            ctx.session = newSession;
+            ctx.unsubscribe = subscribeToSession(newSession, ws);
+            ws.send(JSON.stringify({ type: "session_ready", sessionId: newSession.sessionId }));
+          });
+        });
+        break;
+      }
+    }
+  }
+
   wss.on("connection", async (ws: WebSocket) => {
     try {
-      let session = await getOrCreateSession();
-      let unsubscribe = subscribeToSession(session, ws);
+      if (isAgentConfigNeeded()) {
+        ws.send(JSON.stringify({ type: "config_required" }));
+
+        ws.on("message", async (data: Buffer) => {
+          try {
+            const msg: WSMessage = JSON.parse(data.toString());
+            switch (msg.type) {
+              case "get_models_config":
+                await sendModelsConfig(ws);
+                break;
+              case "save_models_config": {
+                await handleSaveModelsConfig(ws, msg);
+                const session = await restartAgentSession();
+                const unsubscribe = subscribeToSession(session, ws);
+                ws.send(JSON.stringify({ type: "session_ready", sessionId: session.sessionId }));
+
+                const ctx = { session, unsubscribe };
+                ws.removeAllListeners("message");
+                ws.on("message", (data: Buffer) => {
+                  try {
+                    const msg: WSMessage = JSON.parse(data.toString());
+                    handleNormalMessage(msg, ws, ctx);
+                  } catch (err) {
+                    ws.send(JSON.stringify({ type: "error", message: String(err) }));
+                  }
+                });
+                ws.on("close", () => {
+                  unsubscribe();
+                });
+                break;
+              }
+            }
+          } catch (err) {
+            ws.send(JSON.stringify({ type: "error", message: String(err) }));
+          }
+        });
+        return;
+      }
+
+      const session = await getOrCreateSession();
+      const unsubscribe = subscribeToSession(session, ws);
       ws.send(JSON.stringify({ type: "session_ready", sessionId: session.sessionId }));
 
-      ws.on("message", async (data: Buffer) => {
+      const ctx = { session, unsubscribe };
+
+      ws.on("message", (data: Buffer) => {
         try {
           const msg: WSMessage = JSON.parse(data.toString());
-
-          switch (msg.type) {
-            case "prompt":
-              if (msg.content) {
-                setCurrentReferencedNodes(msg.referencedNodes);
-                const prompt = makePrompt(msg);
-                if (session.isStreaming) {
-                  await session.steer(prompt);
-                } else {
-                  await session.prompt(prompt);
-                }
-                clearCurrentReferencedNodes();
-              }
-              break;
-            case "steer":
-              if (msg.content) await session.steer(msg.content);
-              break;
-            case "followUp":
-              if (msg.content) await session.followUp(msg.content);
-              break;
-            case "abort":
-              await session.abort();
-              permissionManager.denyPending("用户中止");
-              break;
-            case "observe_list": {
-              try {
-                const output = await runGovioCli("observe list");
-                const dataframes = JSON.parse(output);
-                ws.send(JSON.stringify({ type: "observe_list_result", dataframes }));
-              } catch (listErr) {
-                ws.send(JSON.stringify({
-                  type: "error",
-                  message: `observe list failed: ${listErr instanceof Error ? listErr.message : String(listErr)}`,
-                }));
-              }
-              break;
-            }
-            case "clear": {
-              unsubscribe();
-              permissionManager.clearAll();
-              resetSession();
-              const newSession = await getOrCreateSession();
-              session = newSession;
-              unsubscribe = subscribeToSession(newSession, ws);
-              ws.send(JSON.stringify({ type: "session_ready", sessionId: newSession.sessionId }));
-              break;
-            }
-            case "tool_permission_response": {
-              if (msg.requestId && msg.decision) {
-                permissionManager.resolve(msg.requestId, {
-                  decision: msg.decision,
-                  editedCommand: msg.editedCommand,
-                  reason: msg.reason,
-                });
-              }
-              break;
-            }
-            case "permission_accept_all": {
-              permissionManager.setAcceptAll(true);
-              break;
-            }
-          }
+          handleNormalMessage(msg, ws, ctx);
         } catch (err) {
           ws.send(JSON.stringify({ type: "error", message: String(err) }));
         }
@@ -185,14 +300,14 @@ export function setupWebSocket(server: import("http").Server) {
   return wss;
 }
 
-function makePrompt(msg:WSMessage):string {
+function makePrompt(msg: WSMessage): string {
   let prompt = "";
   if (msg.referencedNodes) {
     prompt += "REF:[";
-    for(const ref of msg.referencedNodes) {
-      const s = `{"${ref.label}": "${ref.data}"},`
+    for (const ref of msg.referencedNodes) {
+      const s = `{"${ref.label}": "${ref.data}"},`;
       prompt += s;
-    } 
+    }
     prompt += "]\n";
   }
   prompt += msg.content;

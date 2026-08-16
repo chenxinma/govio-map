@@ -30,6 +30,7 @@ interface ChatInputProps {
   onAbort: () => void;
   isStreaming: boolean;
   isConnected: boolean;
+  needsConfig?: boolean;
   referencedNodes?: ReferencedNode[];
   onRemoveReference?: (nodeId: string) => void;
   clearMessages?: () => void;
@@ -45,6 +46,7 @@ export default function ChatInput({
   onAbort,
   isStreaming,
   isConnected,
+  needsConfig = false,
   referencedNodes = [],
   onRemoveReference,
   clearMessages = () => {},
@@ -59,19 +61,17 @@ export default function ChatInput({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const addSystemMessage = useCallback((_content: string) => {
-    // System messages are visual-only; the store handles display
-  }, []);
-
   const ctx: CommandContext = useMemo(
     () => ({
       clearMessages,
       clearCanvas,
       clearSession,
       exportSession: () => exportSession(messages, nodes, edges),
-      addSystemMessage,
+      addSystemMessage: () => {
+        // System messages are visual-only; the store handles display
+      },
     }),
-    [clearMessages, clearCanvas, clearSession, messages, nodes, edges, addSystemMessage]
+    [clearMessages, clearCanvas, clearSession, messages, nodes, edges]
   );
 
   const { commands, execute } = useCommands(ctx);
@@ -81,34 +81,37 @@ export default function ChatInput({
     return filterCommands(commands, value);
   }, [value, commands]);
 
-  useEffect(() => {
-    setShowSuggestions(value.startsWith("/") && filteredCommands.length > 0);
+  const updateValue = useCallback((newValue: string) => {
+    setValue(newValue);
+    const suggestions = newValue.startsWith("/") ? filterCommands(commands, newValue) : [];
+    setShowSuggestions(suggestions.length > 0);
     setSelectedIndex(0);
-  }, [value, filteredCommands.length]);
+  }, [commands]);
 
   const handleSelect = useCallback(
     (command: SlashCommand) => {
       if (command.category === "builtin") {
         execute(command);
-        setValue("");
+        updateValue("");
       } else if (command.prompt) {
-        setValue(command.prompt);
+        updateValue(command.prompt);
+      } else {
+        setShowSuggestions(false);
       }
-      setShowSuggestions(false);
       textareaRef.current?.focus();
     },
-    [execute]
+    [execute, updateValue]
   );
 
   const handleSend = useCallback(() => {
     const trimmed = value.trim();
     if (!trimmed || !isConnected) return;
     onSend(trimmed);
-    setValue("");
+    updateValue("");
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [value, isConnected, onSend]);
+  }, [value, isConnected, onSend, updateValue]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -188,14 +191,20 @@ export default function ChatInput({
         <textarea
           ref={textareaRef}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => updateValue(e.target.value)}
           onKeyDown={onKeyDown}
           onBlur={() => {
             // Delay closing so click events on suggestions can fire
             setTimeout(() => setShowSuggestions(false), 150);
           }}
-          placeholder={isConnected ? "输入消息... (Enter 发送, Shift+Enter 换行)" : "未连接到服务器..."}
-          disabled={!isConnected}
+          placeholder={
+            needsConfig
+              ? "请先配置 LLM Provider（右上角设置）"
+              : isConnected
+                ? "输入消息... (Enter 发送, Shift+Enter 换行)"
+                : "未连接到服务器..."
+          }
+          disabled={!isConnected || needsConfig}
           rows={1}
           className="flex-1 resize-none bg-bg-primary border border-border-default rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-dim focus:outline-none focus:border-brand/50 disabled:opacity-50"
         />
@@ -210,7 +219,7 @@ export default function ChatInput({
         ) : (
           <button
             onClick={handleSend}
-            disabled={!value.trim() || !isConnected}
+            disabled={!value.trim() || !isConnected || needsConfig}
             className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-brand/20 border border-brand/40 text-brand hover:bg-brand/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             title="发送"
           >

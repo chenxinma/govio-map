@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import { useMemo, useState, useCallback, useRef } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { Search, X } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvas-store';
@@ -22,15 +22,12 @@ export default function NodeFindBar() {
       .map((n) => n.id);
   }, [query, nodes]);
 
-  // Reset navigation when the query changes
-  useEffect(() => {
-    setViewIndex(-1);
-  }, [query]);
+  const effectiveViewIndex = viewIndex >= matches.length ? -1 : viewIndex;
 
-  // Keep view index in range if matches shrink (e.g. a node was deleted)
-  useEffect(() => {
-    if (viewIndex >= matches.length) setViewIndex(-1);
-  }, [matches.length, viewIndex]);
+  const updateQuery = useCallback((newQuery: string) => {
+    setQuery(newQuery);
+    setViewIndex(-1);
+  }, []);
 
   const centerOn = useCallback(
     (id: string) => {
@@ -49,10 +46,10 @@ export default function NodeFindBar() {
 
   const handleEnter = useCallback(() => {
     if (matches.length === 0) return;
-    const next = viewIndex === -1 ? 0 : (viewIndex + 1) % matches.length;
+    const next = effectiveViewIndex === -1 ? 0 : (effectiveViewIndex + 1) % matches.length;
     setViewIndex(next);
     centerOn(matches[next]);
-  }, [matches, viewIndex, centerOn]);
+  }, [matches, effectiveViewIndex, centerOn]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -60,22 +57,22 @@ export default function NodeFindBar() {
         e.preventDefault();
         handleEnter();
       } else if (e.key === 'Escape') {
-        setQuery('');
+        updateQuery('');
         inputRef.current?.blur();
       }
     },
-    [handleEnter]
+    [handleEnter, updateQuery]
   );
 
   const clear = useCallback(() => {
-    setQuery('');
+    updateQuery('');
     inputRef.current?.focus();
-  }, []);
+  }, [updateQuery]);
 
   const trimmed = query.trim();
   const counter = (() => {
     if (matches.length === 0) return trimmed ? '无匹配' : '';
-    return viewIndex === -1 ? `${matches.length} 个匹配` : `${viewIndex + 1} / ${matches.length}`;
+    return effectiveViewIndex === -1 ? `${matches.length} 个匹配` : `${effectiveViewIndex + 1} / ${matches.length}`;
   })();
 
   return (
@@ -84,7 +81,7 @@ export default function NodeFindBar() {
       <input
         ref={inputRef}
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => updateQuery(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="查找节点…"
         className="w-40 bg-transparent text-xs text-text-primary placeholder:text-text-muted focus:outline-none"

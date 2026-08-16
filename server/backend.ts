@@ -2,6 +2,24 @@ import { createServer } from "http";
 import { setupWebSocket } from "./ws-handler.js";
 import { handleParquetApi } from "./parquet-api.js";
 import { agentSetup } from "./agent.js";
+import { ensureModelsConfig } from "./models-config.js";
+
+let agentConfigNeeded = false;
+
+export function isAgentConfigNeeded(): boolean {
+  return agentConfigNeeded;
+}
+
+export async function completeAgentSetup(): Promise<void> {
+  agentConfigNeeded = false;
+  try {
+    await agentSetup();
+    console.log("[agent] Agent setup complete");
+  } catch (err) {
+    console.error("[agent] Agent setup failed:", err);
+    throw err;
+  }
+}
 
 /**
  * Start the standalone backend: HTTP API (/api/preview) + WebSocket (/ws, /canvas)
@@ -22,8 +40,14 @@ export async function startBackend(port = 5174) {
   console.log(`[ws] WebSocket + API server on port ${port}`);
 
   try {
-    await agentSetup();
-    console.log("[agent] Agent setup complete");
+    const hasConfig = await ensureModelsConfig();
+    if (hasConfig) {
+      await agentSetup();
+      console.log("[agent] Agent setup complete");
+    } else {
+      agentConfigNeeded = true;
+      console.log("[agent] LLM config required; waiting for frontend setup");
+    }
   } catch (err) {
     console.error("[agent] Agent setup failed:", err);
   }

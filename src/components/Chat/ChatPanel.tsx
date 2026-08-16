@@ -10,7 +10,7 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ width }: ChatPanelProps) {
-  const { messages, isConnected, isStreaming, send, abort, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission } = useChatContext();
+  const { messages, isConnected, isStreaming, send, abort, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission, needsConfig } = useChatContext();
   const referencedNodes = useCanvasStore((s) => s.referencedNodes);
   const removeReference = useCanvasStore((s) => s.removeReference);
   const clearReferences = useCanvasStore((s) => s.clearReferences);
@@ -81,6 +81,7 @@ export default function ChatPanel({ width }: ChatPanelProps) {
         onAbort={abort}
         isStreaming={isStreaming}
         isConnected={isConnected}
+        needsConfig={needsConfig}
         referencedNodes={referencedNodes}
         onRemoveReference={removeReference}
         clearMessages={clearMessages}
