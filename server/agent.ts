@@ -1,5 +1,6 @@
 import { createAgentSession, SessionManager, DefaultResourceLoader, getAgentDir, type AgentSession } from "@earendil-works/pi-coding-agent";
 import govioCanvasExtension from "./extensions/govio-canvas.js";
+import { ensureGovioCli, downloadGovioSkills } from "./govio-installer.js";
 
 
 let session: AgentSession | null = null;
@@ -41,7 +42,8 @@ export async function agentSetup() {
   if (diagnostics.length > 0) {
     console.log("Warnings:", diagnostics);
   }
-  await runGovioCli("-V");
+  await ensureGovioCli();
+  await downloadGovioSkills();
   console.log(">>> Server agent ready. <<<");
 }
 
