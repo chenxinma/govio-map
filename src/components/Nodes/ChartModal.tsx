@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { Chart, registerables } from 'chart.js';
+import { TreemapController, TreemapElement } from 'chartjs-chart-treemap';
 import type { ChartConfig } from '../../types';
 
-Chart.register(...registerables);
+Chart.register(...registerables, TreemapController, TreemapElement);
 
 interface Props {
   config: ChartConfig;

@@ -372,13 +372,16 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
       title: Type.String({ description: "Chart node title, e.g. \"Chart: df_sales (bar)\"" }),
       sourceDf: Type.Optional(Type.String({ description: "Source DataFrame name, shown in node header" })),
       config: Type.Object({
-        type: Type.String({ description: "Chart.js chart type: \"bar\" | \"line\" | \"pie\" | \"doughnut\" | \"scatter\"" }),
+        type: Type.String({ description: "Chart.js chart type: \"bar\" | \"line\" | \"pie\" | \"doughnut\" | \"scatter\" | \"treemap\"" }),
         data: Type.Object({
-          labels: Type.Optional(Type.Array(Type.String(), { description: "Category labels (required for bar/line/pie/doughnut, omit for scatter)" })),
+          labels: Type.Optional(Type.Array(Type.String(), { description: "Category labels (required for bar/line/pie/doughnut, omit for scatter/treemap)" })),
           datasets: Type.Array(
             Type.Object({
-              label: Type.String({ description: "Dataset label shown in legend" }),
-              data: Type.Array(Type.Unknown(), { description: "Data values: number[] for bar/line/pie, [{x,y}] for scatter" }),
+              label: Type.Optional(Type.String({ description: "Dataset label shown in legend" })),
+              data: Type.Optional(Type.Array(Type.Unknown(), { description: "Data values: number[] for bar/line/pie, [{x,y}] for scatter. Omit for treemap" })),
+              tree: Type.Optional(Type.Array(Type.Unknown(), { description: "Treemap only: flat rows, one leaf per row, e.g. [{catalog1:'TypeA',catalog2:'Level1',cnt:120}]" })),
+              key: Type.Optional(Type.String({ description: "Treemap only: numeric column name used as area weight, e.g. 'cnt'" })),
+              groups: Type.Optional(Type.Array(Type.String(), { description: "Treemap only: hierarchy path columns nested in order, e.g. ['catalog1','catalog2','catalog3']" })),
             }),
             { description: "Data series array" }
           ),

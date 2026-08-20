@@ -2,11 +2,12 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { BarChart3, Maximize2, Quote, Trash2 } from 'lucide-react';
 import { Chart, registerables } from 'chart.js';
+import { TreemapController, TreemapElement } from 'chartjs-chart-treemap';
 import type { ChartNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
 import ChartModal from './ChartModal';
 
-Chart.register(...registerables);
+Chart.register(...registerables, TreemapController, TreemapElement);
 
 function ChartNode({ data, id }: NodeProps) {
   const nodeData = data as unknown as ChartNodeData;

@@ -68,8 +68,11 @@ export interface ChartConfig {
   data: {
     labels?: string[];
     datasets: Array<{
-      label: string;
-      data: number[] | Array<{ x: number; y: number }>;
+      label?: string;
+      data?: number[] | Array<{ x: number; y: number }>;
+      tree?: Array<Record<string, unknown>>;
+      key?: string;
+      groups?: string[];
       [key: string]: unknown;
     }>;
   };
