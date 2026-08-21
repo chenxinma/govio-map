@@ -147,6 +147,72 @@ function nextDfName(): string {
   return `df_query_${dfCounter}`;
 }
 
+// ── Treemap tree resolution ────────────────────────────────────────
+
+// ponytail: hard cap protects the chart node event size; >200 leaves should be
+// truncated agent-side in SQL (see treemap design doc) anyway.
+const TREEMAP_ROW_CAP = 2000;
+
+interface TreemapDataset {
+  treeDf?: string;
+  tree?: unknown;
+  groups?: string[];
+  [key: string]: unknown;
+}
+
+/**
+ * Treemap datasets reference an ObserveStore DataFrame via `treeDf` instead of
+ * inline `tree` rows. Resolve rows server-side so the agent never reads data
+ * content (observe info --rows / load -o) to build the chart config.
+ * Throws on failure; returns notes appended to the tool result.
+ */
+async function resolveTreemapTrees(config: {
+  type: string;
+  data: { datasets: TreemapDataset[] };
+}): Promise<string[]> {
+  const notes: string[] = [];
+  if (config.type !== "treemap") return notes;
+  for (const ds of config.data.datasets) {
+    if (!ds.treeDf || Array.isArray(ds.tree)) continue;
+    // dfName is interpolated into a shell command - restrict to safe identifiers.
+    if (!/^[A-Za-z0-9_]+$/.test(ds.treeDf)) {
+      throw new Error(`Invalid treeDf '${ds.treeDf}': only letters, digits and underscores are allowed.`);
+    }
+    let sample: Array<Record<string, unknown>>;
+    let totalRows = 0;
+    try {
+      const { runGovioCli } = await import("../agent.js");
+      const out = await runGovioCli(`observe info --name ${ds.treeDf} --rows ${TREEMAP_ROW_CAP}`);
+      const info = JSON.parse(out);
+      if (!info || info.success === false) {
+        throw new Error(
+          `DataFrame '${ds.treeDf}' not found in ObserveStore (${info?.error ?? "unknown error"}). Load it first via 'govio-cli observe load'.`,
+        );
+      }
+      sample = Array.isArray(info.sample) ? info.sample : [];
+      totalRows = info.rows || 0;
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("DataFrame '")) throw err;
+      throw new Error(`Failed to resolve tree from '${ds.treeDf}': ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const groups = ds.groups ?? [];
+    // Null group keys would render as literal "null" blocks in the treemap.
+    const rows = sample.map((row) => {
+      const r = { ...row };
+      for (const g of groups) {
+        if (r[g] == null) r[g] = "未指定";
+      }
+      return r;
+    });
+    ds.tree = rows;
+    notes.push(`tree: resolved ${rows.length} rows from ObserveStore DataFrame '${ds.treeDf}'`);
+    if (totalRows > TREEMAP_ROW_CAP) {
+      notes.push(`warning: '${ds.treeDf}' has ${totalRows} rows, only first ${TREEMAP_ROW_CAP} used. Re-aggregate in SQL (e.g. drop a group level or bucket small values into 'Other') for a readable treemap.`);
+    }
+  }
+  return notes;
+}
+
 function formatCompareResult(parsed: {
   schema?: {
     match?: boolean;
@@ -367,7 +433,8 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "govio_show_chart",
     label: "Govio Chart",
-    description: "Show a chart node on the canvas with a chart.js config. Call govio-cli to fetch data first, then pass the chart.js configuration object. Refer to the chart-selector skill for chart type selection and config templates.",
+    description:
+      "Show a chart node on the canvas with a chart.js config. For treemap: reference the ObserveStore DataFrame via dataset.treeDf + key + groups - the server fetches the rows itself, do NOT read or export the data content. For bar/line/pie/doughnut/scatter: fetch data via govio-cli first and pass values inline. Refer to the chart-selector skill for chart type selection and config templates.",
     parameters: Type.Object({
       title: Type.String({ description: "Chart node title, e.g. \"Chart: df_sales (bar)\"" }),
       sourceDf: Type.Optional(Type.String({ description: "Source DataFrame name, shown in node header" })),
@@ -379,7 +446,8 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
             Type.Object({
               label: Type.Optional(Type.String({ description: "Dataset label shown in legend" })),
               data: Type.Optional(Type.Array(Type.Unknown(), { description: "Data values: number[] for bar/line/pie, [{x,y}] for scatter. Omit for treemap" })),
-              tree: Type.Optional(Type.Array(Type.Unknown(), { description: "Treemap only: flat rows, one leaf per row, e.g. [{catalog1:'TypeA',catalog2:'Level1',cnt:120}]" })),
+              treeDf: Type.Optional(Type.String({ description: "Treemap only (preferred): ObserveStore DataFrame name whose rows are the flat tree leaves. Server fetches rows itself - do NOT read/export the data content or inline it as tree" })),
+              tree: Type.Optional(Type.Array(Type.Unknown(), { description: "Treemap only: inline flat rows, one leaf per row, e.g. [{catalog1:'TypeA',catalog2:'Level1',cnt:120}]. Only for tiny hand-built datasets - prefer treeDf" })),
               key: Type.Optional(Type.String({ description: "Treemap only: numeric column name used as area weight, e.g. 'cnt'" })),
               groups: Type.Optional(Type.Array(Type.String(), { description: "Treemap only: hierarchy path columns nested in order, e.g. ['catalog1','catalog2','catalog3']" })),
             }),
@@ -390,6 +458,15 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
       }),
     }),
     execute: async (_toolCallId, params) => {
+      let notes: string[] = [];
+      try {
+        notes = await resolveTreemapTrees(params.config);
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
+          details: {},
+        };
+      }
       pushGovioNode({
         nodeType: "chart",
         title: params.title,
@@ -397,7 +474,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         config: params.config as GovioNodeCreateEvent["config"],
       });
       return {
-        content: [{ type: "text", text: `Created chart node: ${params.title} (${params.config.type})` }],
+        content: [{ type: "text", text: `Created chart node: ${params.title} (${params.config.type})${notes.length ? "\n" + notes.join("\n") : ""}` }],
         details: {},
       };
     },

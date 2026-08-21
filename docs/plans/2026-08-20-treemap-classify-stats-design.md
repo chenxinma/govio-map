@@ -1,6 +1,6 @@
 # DataFrame 分类打标与 Treemap 分层统计展示（设计）
 
-> 状态：方案已评审定稿（2026-08-20），待实施
+> 状态：已实施（渲染链路 2026-08-21 变更为 treeDf 服务端解析，见「总体架构」）
 > 决策：渲染采用 chartjs-chart-treemap 插件（方案 A）；第一版只做静态比例 + tooltip，不做下钻
 
 ## 目标
@@ -40,17 +40,23 @@ agent 构造打标+聚合 SQL
 govio-cli observe load --name df_cat_stats --memory --sql "..."
     ↓                                    （画布自动出现 df_cat_stats 的 DataFrame 节点）
 ObserveStore: df_cat_stats（行: catalog1, catalog2, catalog3, cnt）
-    ↓  agent 从 info --name 拿到样本/schema，组装 flat rows
+    ↓  agent 只传结构引用：treeDf=df_cat_stats + key + groups
 agent 调 govio_show_chart(config)
-    ↓  config.type = "treemap"，datasets[0] = { tree: <flat rows>, key: "cnt", groups: [...] }
-server push chart node event（config 透传）
+    ↓  server 端从 ObserveStore 取全量行，填充 dataset.tree，归一 NULL 分组值
+server push chart node event（config 含已解析的 tree）
     ↓
 ChartNode: chartjs-chart-treemap 按 groups 自动聚合分层 + squarified 布局渲染
     ↓
 tooltip 显示各分类值 / 占比
 ```
 
-关键设计点：**flat rows 直传，AI 不组装嵌套树**。chartjs-chart-treemap 的 dataset 接受扁平行数组（`tree`），配 `key`（数值列）和 `groups`（层级列，按序嵌套）后由插件自动完成层级聚合并布局。父级块的面积 = 其子块面积之和，无需 SQL 侧做 ROLLUP/GROUPING SETS。
+关键设计点（2026-08-21 变更）：**tree 由 server 端解析，AI 不碰数据内容**。dataset 通过 `treeDf` 字段引用 ObserveStore 中的 DataFrame，`govio_show_chart` 的 execute 在服务端调 `observe info --name <treeDf> --rows <cap>` 取全量行填充 `tree`（上限 2000 行，NULL 分组值归一为 `未指定`）。初版设计的「agent 从 info --name 拿样本自行组装 flat rows」在实测（`docs/govio/eda-reports/govio-session-2026-08-21.json`）中暴露三个问题，故废弃：
+
+1. AI 必须读取数据内容，违反「非必要不读取数据内容」原则，还需用户授权 `-o` 导出
+2. 325 行聚合结果就超出 bash 输出截断限制（50KB），AI 被迫再聚合缩小体积，链路反复重试
+3. 数百行 JSON 内联进工具调用参数，体积膨胀且易截断
+
+chartjs-chart-treemap 的 dataset 接受扁平行数组（`tree`），配 `key`（数值列）和 `groups`（层级列，按序嵌套）后由插件自动完成层级聚合并布局。父级块的面积 = 其子块面积之和，无需 SQL 侧做 ROLLUP/GROUPING SETS。
 
 ## 数据链路设计（零改动）
 
@@ -138,7 +144,7 @@ treemap 叶子过多时视觉不可读，且 `govio_show_chart` 工具调用的 
 - tooltip 数据访问：`item.raw.v` 为该块聚合值，`item.raw._data` 为该块对应的原始分组数据（取层级标签用）
 - 分层配色：`backgroundColor` 可传函数，按 `ctx.raw._data.<第一层列名>` 映射固定色板，实现"同 catalog1 同色"的分组视觉
 
-### govio_show_chart 调用模板（agent 侧）
+### govio_show_chart 调用模板（agent 侧，treeDf 引用模式）
 
 ```json
 {
@@ -149,11 +155,7 @@ treemap 叶子过多时视觉不可读，且 `govio_show_chart` 工具调用的 
     "data": {
       "datasets": [{
         "label": "数据量",
-        "tree": [
-          { "catalog1": "TypeA", "catalog2": "Level1", "catalog3": "Big", "cnt": 120 },
-          { "catalog1": "TypeA", "catalog2": "Level1", "catalog3": "Mid", "cnt": 80 },
-          { "catalog1": "TypeB", "catalog2": "Level2", "catalog3": "Small", "cnt": 45 }
-        ],
+        "treeDf": "df_cat_stats",
         "key": "cnt",
         "groups": ["catalog1", "catalog2", "catalog3"],
         "spacing": 1,
@@ -163,19 +165,14 @@ treemap 叶子过多时视觉不可读，且 `govio_show_chart` 工具调用的 
     },
     "options": {
       "plugins": {
-        "legend": { "display": false },
-        "tooltip": {
-          "callbacks": {
-            "label": "(item) => { const d = item.raw._data; return (d.catalog3 || d.catalog2 || d.catalog1) + ': ' + item.raw.v; }"
-          }
-        }
+        "legend": { "display": false }
       }
     }
   }
 }
 ```
 
-> 注：`backgroundColor`/`callbacks` 等函数值能否透传取决于 govio_show_chart 的 schema 对 `unknown` 的序列化策略；若只允许 JSON 值，则 tooltip 用插件默认行为（显示 value），或后续在 schema 中预留 `labels.formatter` 的字符串模板约定。实施时验证。
+`treeDf` 指向 ObserveStore 中的 DataFrame，server 端自动取数填充 `tree`（含 NULL 分组值归一）。inline `tree` 向后兼容保留，仅限手工构造的极小数据集。tooltip 用插件默认行为（config 只透传 JSON 值，不传函数）。
 
 ### 改动清单
 
@@ -183,8 +180,8 @@ treemap 叶子过多时视觉不可读，且 `govio_show_chart` 工具调用的 
 |---|------|------|------|
 | 1 | `package.json` | `npm i chartjs-chart-treemap`（~15KB，peer chart.js>=3 已满足） | 1 依赖 |
 | 2 | `src/components/Nodes/ChartNode.tsx`、`ChartModal.tsx` | 各自在 `Chart.register(...registerables)` 后追加 `Chart.register(TreemapController, TreemapElement)`（注册幂等；两处独立 `new Chart`，都需注册） | 各 +2 行 |
-| 3 | `server/extensions/govio-canvas.ts` | `govio_show_chart` 的 typebox schema：`config.type` 描述加入 `"treemap"`；dataset 对象增加可选字段 `tree?: Array<Record<string,unknown>>`、`key?: string`、`groups?: string[]`，`data` 改为可选（treemap 用 `tree` 不用 `data`）。否则严格校验会拒绝 treemap dataset | ~10 行 |
-| 4 | `src/types/index.ts` | `ChartConfig.datasets[]` 类型同步放宽（`tree?/key?/groups?`，`data?` 可选） | ~5 行 |
+| 3 | `server/extensions/govio-canvas.ts` | `govio_show_chart` 的 typebox schema：`config.type` 描述加入 `"treemap"`；dataset 增加可选字段 `treeDf`（ObserveStore 引用）、`tree`/`key`/`groups`；execute 新增 `resolveTreemapTrees`，服务端取数填充 tree（上限 2000 行，NULL 分组归一） | ~60 行 |
+| 4 | `src/types/index.ts` | `ChartConfig.datasets[]` 类型同步（`treeDf?/tree?/key?/groups?`） | ~5 行 |
 | 5 | `.pi/skills/govio-observe/SKILL.md` chart 章节（及 `govio_show_chart` 工具 description 提到的 chart-selector skill，若后续创建） | 补 treemap 模式：单步 --memory 打标聚合 SQL + govio_show_chart treemap config 模板 + 大基数约定 | 文档 |
 
 不新增 CLI 子命令（如 `observe classify`）——SQL 表达力完整覆盖，新增命令只多一条维护路径。

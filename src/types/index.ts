@@ -70,6 +70,7 @@ export interface ChartConfig {
     datasets: Array<{
       label?: string;
       data?: number[] | Array<{ x: number; y: number }>;
+      treeDf?: string;
       tree?: Array<Record<string, unknown>>;
       key?: string;
       groups?: string[];
