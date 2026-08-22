@@ -7,6 +7,33 @@ export interface ToolCall {
   success?: boolean;
 }
 
+export interface ModelOption {
+  key: string;
+  provider: string;
+  modelId: string;
+  label: string;
+}
+
+export interface ObserveInfo {
+  datasources?: string[];
+  dataframes?: {
+    dataframes?: Array<{ name: string; rows: number; columns: number }>;
+  };
+}
+
+const MODEL_STORAGE_KEY = "govio.selectedModel";
+
+export function flattenModels(config: ModelsConfig): ModelOption[] {
+  const out: ModelOption[] = [];
+  for (const [provider, p] of Object.entries(config.providers)) {
+    for (const m of p.models) {
+      if (!m.id) continue;
+      out.push({ key: `${provider}/${m.id}`, provider, modelId: m.id, label: `${provider} / ${m.name || m.id}` });
+    }
+  }
+  return out;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -34,6 +61,9 @@ interface WSEvent {
   command?: string;
   config?: ModelsConfig;
   message?: string;
+  provider?: string;
+  modelId?: string;
+  info?: ObserveInfo;
 }
 
 let msgIdCounter = 0;
@@ -52,6 +82,12 @@ export function useChat() {
   const [pendingPermission, setPendingPermission] = useState<PendingPermission | null>(null);
   const [needsConfig, setNeedsConfig] = useState(false);
   const [modelsConfig, setModelsConfig] = useState<ModelsConfig | null>(null);
+  const modelsConfigRef = useRef<ModelsConfig | null>(null);
+  const [selectedModel, setSelectedModel] = useState<ModelOption | null>(null);
+  const selectedModelRef = useRef<ModelOption | null>(null);
+  // Model key already sent to the backend (avoids duplicate set_model sends).
+  const appliedModelKeyRef = useRef<string | null>(null);
+  const observeInfoResolveRef = useRef<{ resolve: (info: ObserveInfo) => void; reject: (err: Error) => void } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttempts = useRef(0);
@@ -63,6 +99,30 @@ export function useChat() {
   const reusableThinkingId = useRef<string | null>(null);
   const disposedRef = useRef(false);
   const connectRef = useRef<() => void>(() => {});
+
+  const sendSetModel = useCallback((opt: ModelOption) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "set_model", provider: opt.provider, modelId: opt.modelId }));
+  }, []);
+
+  // Remembered model wins; if it no longer exists in the config list, fall back to the first.
+  const applyModelSelection = useCallback((config: ModelsConfig) => {
+    const options = flattenModels(config);
+    if (options.length === 0) {
+      selectedModelRef.current = null;
+      setSelectedModel(null);
+      return;
+    }
+    const remembered = localStorage.getItem(MODEL_STORAGE_KEY);
+    const desired = options.find((o) => o.key === remembered) || options[0];
+    selectedModelRef.current = desired;
+    setSelectedModel(desired);
+    if (appliedModelKeyRef.current !== desired.key) {
+      appliedModelKeyRef.current = desired.key;
+      sendSetModel(desired);
+    }
+  }, [sendSetModel]);
 
   const finalizeCurrent = useCallback(() => {
     const id = currentAssistantId.current;
@@ -124,6 +184,15 @@ export function useChat() {
           case "session_ready":
             setIsConnected(true);
             setNeedsConfig(false);
+            // Fresh session (connect / clear / config save): re-apply the current
+            // model choice and refresh the model list in case the config changed.
+            if (selectedModelRef.current) {
+              appliedModelKeyRef.current = selectedModelRef.current.key;
+              sendSetModel(selectedModelRef.current);
+            }
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "get_models_config" }));
+            }
             break;
 
           case "agent_start":
@@ -280,7 +349,23 @@ export function useChat() {
 
           case "models_config":
             if (data.config) {
+              modelsConfigRef.current = data.config;
               setModelsConfig(data.config);
+              applyModelSelection(data.config);
+            }
+            break;
+
+          case "model_set":
+            if (data.provider && data.modelId) {
+              appliedModelKeyRef.current = `${data.provider}/${data.modelId}`;
+            }
+            break;
+
+          case "observe_info_result":
+            if (observeInfoResolveRef.current) {
+              const { resolve } = observeInfoResolveRef.current;
+              observeInfoResolveRef.current = null;
+              resolve(data.info ?? {});
             }
             break;
 
@@ -295,6 +380,11 @@ export function useChat() {
               setIsObserving(false);
               observeListResolveRef.current = null;
             }
+            if (observeInfoResolveRef.current) {
+              const { reject } = observeInfoResolveRef.current;
+              observeInfoResolveRef.current = null;
+              reject(new Error(data.message || "observe info failed"));
+            }
             break;
         }
       } catch (err) {
@@ -303,7 +393,7 @@ export function useChat() {
     };
 
     wsRef.current = ws;
-  }, []);
+  }, [sendSetModel, applyModelSelection]);
 
   useEffect(() => {
     connectRef.current = connect;
@@ -425,6 +515,33 @@ export function useChat() {
     });
   }, []);
 
+  const observeInfo = useCallback((): Promise<ObserveInfo> => {
+    return new Promise((resolve, reject) => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        reject(new Error("WebSocket not connected"));
+        return;
+      }
+      observeInfoResolveRef.current = { resolve, reject };
+      ws.send(JSON.stringify({ type: "observe_info" }));
+      setTimeout(() => {
+        if (observeInfoResolveRef.current) {
+          const { reject: timeoutReject } = observeInfoResolveRef.current;
+          observeInfoResolveRef.current = null;
+          timeoutReject(new Error("observe info timeout"));
+        }
+      }, 15000);
+    });
+  }, []);
+
+  const selectModel = useCallback((opt: ModelOption) => {
+    selectedModelRef.current = opt;
+    setSelectedModel(opt);
+    localStorage.setItem(MODEL_STORAGE_KEY, opt.key);
+    appliedModelKeyRef.current = opt.key;
+    sendSetModel(opt);
+  }, [sendSetModel]);
+
   const getModelsConfig = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -443,5 +560,7 @@ export function useChat() {
     ws.send(JSON.stringify({ type: "save_models_config", apiKey }));
   }, []);
 
-  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission, needsConfig, modelsConfig, getModelsConfig, saveModelsConfig, saveApiKey };
+  const modelOptions = modelsConfig ? flattenModels(modelsConfig) : [];
+
+  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission, needsConfig, modelsConfig, getModelsConfig, saveModelsConfig, saveApiKey, modelOptions, selectedModel, selectModel, observeInfo };
 }

@@ -10,7 +10,7 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ width }: ChatPanelProps) {
-  const { messages, isConnected, isStreaming, send, abort, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission, needsConfig } = useChatContext();
+  const { messages, isConnected, isStreaming, send, abort, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission, needsConfig, modelOptions, selectedModel, selectModel } = useChatContext();
   const referencedNodes = useCanvasStore((s) => s.referencedNodes);
   const removeReference = useCanvasStore((s) => s.removeReference);
   const clearReferences = useCanvasStore((s) => s.clearReferences);
@@ -74,6 +74,28 @@ export default function ChatPanel({ width }: ChatPanelProps) {
           />
         )}
       </div>
+
+      {/* Model selector */}
+      {modelOptions.length > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 border-t border-border-subtle flex-shrink-0">
+          <span className="text-xs text-text-muted flex-shrink-0">模型</span>
+          <select
+            value={selectedModel?.key ?? ""}
+            onChange={(e) => {
+              const opt = modelOptions.find((o) => o.key === e.target.value);
+              if (opt) selectModel(opt);
+            }}
+            className="flex-1 min-w-0 h-7 bg-bg-surface border border-border-default rounded-md px-1.5 text-xs text-text-secondary focus:outline-none focus:border-brand/50 truncate"
+            title={selectedModel?.label}
+          >
+            {modelOptions.map((m) => (
+              <option key={m.key} value={m.key}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Input */}
       <ChatInput

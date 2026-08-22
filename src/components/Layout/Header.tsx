@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { Hexagon, Settings } from "lucide-react";
+import { Hexagon, Settings, Database } from "lucide-react";
 import SettingsModal from "../SettingsModal";
+import DataSourcesModal from "../DataSourcesModal";
 import { useChatContext } from "../../hooks/useChatContext";
 
 export default function Header() {
   const [showSettings, setShowSettings] = useState(false);
+  const [showDataSources, setShowDataSources] = useState(false);
   const { getModelsConfig, saveModelsConfig, modelsConfig } = useChatContext();
 
   const openSettings = () => {
@@ -29,6 +31,13 @@ export default function Header() {
       </div>
       <div className="flex items-center gap-3">
         <button
+          onClick={() => setShowDataSources(true)}
+          className="w-7 h-7 rounded-full bg-bg-surface border border-border-default flex items-center justify-center text-text-muted hover:text-text-primary hover:border-brand/40 transition-colors"
+          title="数据源"
+        >
+          <Database size={14} />
+        </button>
+        <button
           onClick={openSettings}
           className="w-7 h-7 rounded-full bg-bg-surface border border-border-default flex items-center justify-center text-text-muted hover:text-text-primary hover:border-brand/40 transition-colors"
           title="设置"
@@ -48,6 +57,7 @@ export default function Header() {
           onClose={() => setShowSettings(false)}
         />
       )}
-    </header>
+
+      {showDataSources && <DataSourcesModal onClose={() => setShowDataSources(false)} />}    </header>
   );
 }

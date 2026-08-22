@@ -70,7 +70,7 @@ export function resetSession() {
   session = null;
 }
 
-export async function runGovioCli(cmd: string): Promise<string> {
+export async function runGovioCli(cmd: string, quiet = false): Promise<string> {
   const { execFile } = await import("child_process");
   const args = cmd.split(/\s+/);
   return new Promise((resolve, reject) => {
@@ -79,7 +79,7 @@ export async function runGovioCli(cmd: string): Promise<string> {
         console.error(`[govio-cli] ${cmd} failed:`, stderr || error.message);
         reject(error);
       } else {
-        console.debug(stdout);
+        if (!quiet) console.debug(stdout);
         resolve(stdout);
       }
     });

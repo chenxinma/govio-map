@@ -8,7 +8,7 @@ import { readModelsConfig, writeModelsConfig, createDefaultModelsConfig } from "
 import type { ModelsConfig } from "../src/types/models-config.js";
 
 interface WSMessage {
-  type: "prompt" | "steer" | "followUp" | "abort" | "observe_list" | "clear" | "tool_permission_response" | "permission_accept_all" | "get_models_config" | "save_models_config";
+  type: "prompt" | "steer" | "followUp" | "abort" | "observe_list" | "observe_info" | "clear" | "tool_permission_response" | "permission_accept_all" | "get_models_config" | "save_models_config" | "set_model";
   content?: string;
   referencedNodes?: Array<{ nodeId: string; label: string; type: string; data?: string }>;
   requestId?: string;
@@ -17,6 +17,8 @@ interface WSMessage {
   reason?: string;
   config?: ModelsConfig;
   apiKey?: string;
+  provider?: string;
+  modelId?: string;
 }
 
 type SessionInstance = Awaited<ReturnType<typeof getOrCreateSession>>;
@@ -185,6 +187,43 @@ export function setupWebSocket(server: import("http").Server) {
             ws.send(JSON.stringify({
               type: "error",
               message: `observe list failed: ${listErr instanceof Error ? listErr.message : String(listErr)}`,
+            }));
+          });
+        break;
+      }
+      case "observe_info": {
+        runGovioCli("observe info", true)
+          .then((output) => {
+            const info = JSON.parse(output);
+            ws.send(JSON.stringify({ type: "observe_info_result", info }));
+          })
+          .catch((infoErr) => {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: `observe info failed: ${infoErr instanceof Error ? infoErr.message : String(infoErr)}`,
+            }));
+          });
+        break;
+      }
+      case "set_model": {
+        const { provider, modelId } = msg;
+        if (!provider || !modelId) {
+          ws.send(JSON.stringify({ type: "error", message: "set_model requires provider and modelId" }));
+          break;
+        }
+        const model = ctx.session.modelRuntime.getModel(provider, modelId);
+        if (!model) {
+          ws.send(JSON.stringify({ type: "error", message: `Model not found: ${provider}/${modelId}` }));
+          break;
+        }
+        ctx.session.setModel(model)
+          .then(() => {
+            ws.send(JSON.stringify({ type: "model_set", provider, modelId }));
+          })
+          .catch((modelErr) => {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: `set_model failed: ${modelErr instanceof Error ? modelErr.message : String(modelErr)}`,
             }));
           });
         break;
