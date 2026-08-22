@@ -35,7 +35,7 @@ Single Zustand store owns canvas state: nodes, edges, referenced nodes, preview 
 - `sqlQuery`: SQL statement (green left border)
 - `dataFrame`: pandas-style dataframe info (orange left border)
 - `report`: diff or correlation analysis (amber/violet left border)
-- `chart`: chart.js visualization (blue left border)
+- `chart`: Plotly visualization (blue left border)
 
 ### Backend (`server/index.ts`)
 Vite plugin (`server/index.ts`) runs HTTP + WebSocket on port 5174: `/ws` (chat), `/canvas` (node stream), `/api/preview` (parquet). `server/agent.ts` manages an in-memory pi `AgentSession` with the `govio-canvas` extension. Requires `govio-cli` on PATH; no mock fallback (disconnected state disables input).
@@ -45,7 +45,7 @@ Vite plugin (`server/index.ts`) runs HTTP + WebSocket on port 5174: `/ws` (chat)
 - `server/agent.ts` / `server/extensions/govio-canvas.ts` — pi AgentSession + govio tools & event hooks
 - `server/ws-handler.ts` / `server/permission-manager.ts` — WS handling, event forwarding, permission flow
 - `src/hooks/useChat.ts` / `src/services/canvas-service.ts` — /ws & /canvas clients
-- `src/store/canvas-store.ts` / `src/components/Nodes/*.tsx` — Zustand canvas state + nodes (incl. chart.js)
+- `src/store/canvas-store.ts` / `src/components/Nodes/*.tsx` — Zustand canvas state + nodes (incl. Plotly)
 - `src/commands/` / `src/utils/layout.ts` — slash-command system + dagre layout
 
 ## Design System
@@ -67,7 +67,7 @@ ANTHROPIC_API_KEY=sk-ant-xxxxx
 
 ## Technical Stack
 
-React 19 + TypeScript, Vite, @xyflow/react (ReactFlow), Zustand, @dagrejs/dagre, Tailwind CSS v4, chart.js, @earendil-works/pi-coding-agent, hyparquet, WebSocket (ws)
+React 19 + TypeScript, Vite, @xyflow/react (ReactFlow), Zustand, @dagrejs/dagre, Tailwind CSS v4, plotly.js, @earendil-works/pi-coding-agent, hyparquet, WebSocket (ws)
 
 <!-- rtk-instructions v2 -->
 # RTK (Rust Token Killer) - Token-Optimized Commands

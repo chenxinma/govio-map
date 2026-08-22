@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import { Chart, registerables } from 'chart.js';
+import Plotly from 'plotly.js-dist-min';
 import type { ChartConfig } from '../../types';
-
-Chart.register(...registerables);
 
 interface Props {
   config: ChartConfig;
@@ -13,34 +11,22 @@ interface Props {
 }
 
 export default function ChartModal({ config, title, onClose }: Props) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chartRef = useRef<Chart | null>(null);
+  const plotRef = useRef<HTMLDivElement>(null);
   const [hasError, setHasError] = useState(false);
 
-  /* eslint-disable react-hooks/set-state-in-effect -- effect synchronizes chart.js lifecycle; hasError reflects constructor failures */
   useEffect(() => {
-    if (!canvasRef.current) return;
+    const el = plotRef.current;
+    if (!el) return;
     setHasError(false);
-    const modalConfig: ChartConfig = {
-      ...config,
-      options: {
-        ...(config.options ?? {}),
-        responsive: true,
-        maintainAspectRatio: false,
-      },
-    };
-    try {
-      chartRef.current = new Chart(canvasRef.current, modalConfig as ConstructorParameters<typeof Chart>[1]) as Chart;
-    } catch (err) {
-      console.error('[ChartModal] chart render failed:', err);
-      setHasError(true);
-    }
+    Plotly.react(el, config.data, { ...config.layout, autosize: true }, { responsive: true, displayModeBar: 'hover' })
+      .catch((err: unknown) => {
+        console.error('[ChartModal] chart render failed:', err);
+        setHasError(true);
+      });
     return () => {
-      chartRef.current?.destroy();
-      chartRef.current = null;
+      Plotly.purge(el);
     };
   }, [config]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -56,7 +42,7 @@ export default function ChartModal({ config, title, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="bg-bg-card border border-border-default rounded-lg w-[860px] max-w-[90vw] max-h-[90vh] flex flex-col"
+        className="bg-bg-card border border-border-default rounded-lg w-[1200px] max-w-[95vw] max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
@@ -69,7 +55,7 @@ export default function ChartModal({ config, title, onClose }: Props) {
           </button>
         </div>
         <div className="p-4 flex-1 min-h-0 relative">
-          <canvas ref={canvasRef} className={`w-full h-[520px] ${hasError ? 'hidden' : ''}`} />
+          <div ref={plotRef} className={`w-full h-[75vh] ${hasError ? 'hidden' : ''}`} />
           {hasError && (
             <div className="absolute inset-0 flex items-center justify-center text-xs text-text-muted">
               图表配置错误

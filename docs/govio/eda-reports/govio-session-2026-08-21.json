@@ -1,0 +1,359 @@
+{
+  "exportedAt": "2026-08-21T07:02:13.184Z",
+  "messages": [
+    {
+      "id": "msg-1",
+      "role": "user",
+      "content": "列出当前数据源"
+    },
+    {
+      "id": "msg-2",
+      "role": "assistant",
+      "content": "当前已配置的数据源有 4 个：\n\n- `local`\n- `dwd`\n- `dws`\n- `sfsc_sec`\n\n需要查看某个数据源下的表，或加载数据进 DataFrame 吗？",
+      "thinking": "用户要求列出当前数据源。这触发了 govio 数据治理相关需求。我需要先读取 govio skill 文件来了解如何执行这个命令。用户需求是\"列出当前数据源\"，这属于数据探查场景，应该路由到 govio-observe。我需要读取 govio-observe skill 文件来了解如何查看数据源。用户需求是\"列出当前数据源\"，属于简单任务（1-2步）。根据 skill 文件，应该执行 `govio-cli observe info --datasource`。这不需要澄清，直接执行即可。命令返回了当前可用的数据源列表，共有4个数据源：local, dwd, dws, sfsc_sec。我可以直接简洁地反馈给用户。"
+    },
+    {
+      "id": "msg-3",
+      "role": "user",
+      "content": "用数据源sfsc_sec加载dataframe",
+      "referencedNodes": [
+        {
+          "nodeId": "sql-1",
+          "label": "New Query",
+          "type": "sqlQuery",
+          "data": "select\n    a.fd_id,\n    a.doc_number,\n    a.doc_subject,\n    atyp.fd_CRM_type_number a_type,\n    case\n        when a.doc_status = '00'\n        or a.fd_apply_status = '60' then '作废'\n        when a.doc_status = '10' then '草稿'\n        when a.doc_status = '11' then '驳回'\n        when a.doc_status = '20' then '审批中'\n        when a.doc_status = '30'\n        and a.fd_apply_status = '30' then '待签订'\n        when a.doc_status = '30'\n        and a.fd_apply_status = '32' then '签订中'\n        when a.doc_status = '30'\n        and a.fd_apply_status = '14' then '待关闭'\n        when a.doc_status = '30'\n        and a.fd_apply_status = '17' then '已关闭'\n        else '其他'\n    end as \"doc_status\",\n    a.fd_effedate,\n    a.fd_enddate,\n    a.fd_signdate,\n    a.fd_type,\n    cb.fd_name cb_name,\n    org.fd_name org_name,\n    parent_org.fd_name bu_name,\n    a.fd_maincontract_id,\n    fd_last_modified_time\nfrom\n    cntr_mysql.fsgcontract.km_agreement_apply a -- 合同\n    inner join cntr_mysql.fsgcontract.km_agreement_contbody cb on cb.fd_id = a.fd_contbody_id -- 签约主体（外服）\n    and cb.fd_is_available = True\n    inner join cntr_mysql.fsgcontract.sys_org_element org on org.fd_id = a.fd_contract_manager_dept_id -- 部门（业务中心）\n    left join cntr_mysql.fsgcontract.sys_org_element parent_org on org.fd_parentid = parent_org.fd_id\n    inner join cntr_mysql.fsgcontract.km_agreement_tmpl t on a.doc_template_id = t.fd_id\n    inner join cntr_mysql.fsgcontract.km_agreement_type atyp on t.fd_ag_type_id = atyp.fd_id"
+        }
+      ]
+    },
+    {
+      "id": "msg-4",
+      "role": "assistant",
+      "content": "DataFrame `agreement_apply` 加载完成：\n\n- 数据源：`sfsc_sec`\n- 行数：86,156\n- 列数：14\n- 字段：`fd_id`, `doc_number`, `doc_subject`, `a_type`, `doc_status`, `fd_effedate`, `fd_enddate`, `fd_signdate`, `fd_type`, `cb_name`, `org_name`, `bu_name`, `fd_maincontract_id`, `fd_last_modified_time`",
+      "thinking": "用户要求用数据源 sfsc_sec 加载 DataFrame，并提供了 SQL。我需要使用 `govio-cli observe load` 命令。\n\n需要为 DataFrame 命名。SQL 查询的是合同相关数据，可以命名为 `km_agreement_apply` 或类似的名称。但由于这个名称可能较长，我应该选择一个描述性的、小写下划线的名称。看起来是合同申请数据，可以命名为 `contracts`。\n\n等等，我需要先确认 DataFrame 名称应该是什么。用户没有指定，我应该自己决定一个合理的名称。SQL 表名是 `km_agreement_apply`，但这名字有点长。用 `contracts` 更通用。\n\n实际上，最好以 SQL 的主表命名，或者根据查询内容命名。这里主表是 `km_agreement_apply`，查询的是合同申请信息。我可以用 `agreement_apply`。\n\n让我再想想，skill 文件说 DataFrame 名称使用小写+下划线。我可以命名为 `agreement_apply`。\n\n执行命令：`govio-cli observe load --name agreement_apply --datasource sfsc_sec --sql \"...\"`\n\nSQL 很长，包含换行和注释。我需要在 bash 命令中正确处理。可以用单引号包裹 SQL，但 SQL 中有单引号（如 `'00'`），所以需要用双引号包裹，或者用 here-doc。\n\n在 bash 中执行长 SQL 时，最好用单引号包裹整个 SQL 字符串。但 SQL 里有 `'00'`、`'10'` 等单引号。这会导致 bash 字符串中断。\n\n可以用双引号包裹，但 SQL 中有 `$` 吗？没有。有反斜杠吗？没有。所以双引号可以。\n\n但更好的方式是，因为 SQL 已经提供在 REF 中，我可以直接用双引号包裹。需要处理 SQL 中的双引号 `\"doc_status\"`，这会和 bash 的双引号冲突。\n\n另一种方式：用单引号包裹整个 SQL，但把内部单引号转义为 `'\\''`。或者使用 here-document。\n\n最简单的方式：把 SQL 写在一个变量里，用 here-doc 传给命令。但 govio-cli 的参数方式需要 `--sql` 参数。\n\n我可以把整个 SQL 用单引号包裹，然后把内部的每个单引号 `'` 替换为 `'\\''`。\n\nSQL 中的单引号有：\n- `'00'`\n- `'60'`\n- `'10'`\n- `'11'`\n- `'20'`\n- `'30'`\n- `'30'`（多次）\n- `'32'`\n- `'14'`\n- `'17'`\n- `'作废'`\n- `'草稿'`\n- `'驳回'`\n- `'审批中'`\n- `'待签订'`\n- `'签订中'`\n- `'待关闭'`\n- `'已关闭'`\n- `'其他'`\n- `True`（没有引号）\n\n还有 `\"doc_status\"` 双引号，这个在 bash 单引号字符串里没问题，因为单引号内所有字符都原样保留。\n\n所以用单引号包裹，内部单引号转义为 `'\\''` 即可。\n\n或者，我可以用一个更简单的方法：把 SQL 写入临时文件，然后用 `$(cat file)` 传给 `--sql`。但 skill 文件没有说必须怎么用，只是示例直接写在命令行。\n\n让我用单引号包裹并转义内部单引号的方式。\n\n实际上，bash 工具接收字符串，我可以直接在 content 中写带换行的命令。但这样比较乱。\n\n另一个方法：先创建临时 SQL 文件，然后用 `--sql \"$(cat /tmp/query.sql)\"`。\n\n这更 clean。我就这么做。\n\n等等，根据简化反馈输出规则：如果通过引用的SQL完成加载Dataframe后，只要简单告知用户加载完成并附上Dataframe的摘要信息，不需要显示SQL。\n\n所以我应该先加载，然后查看 DataFrame 信息。\n\n步骤：\n1. 创建临时 SQL 文件\n2. 执行 load 命令\n3. 执行 info --name agreement_apply 查看摘要\n\n我也可以选择不创建临时文件，直接在命令行中传递 SQL。为了简单，用临时文件。\n\n实际上，创建临时文件也是多余的。我可以尝试用 bash 的单引号转义。让我看看能否构造好。\n\nSQL 内容：\n```sql\nselect\n    a.fd_id,\n    a.doc_number,\n    a.doc_subject,\n    atyp.fd_CRM_type_number a_type,\n    case\n        when a.doc_status = '00'\n        or a.fd_apply_status = '60' then '作废'\n        when a.doc_status = '10' then '草稿'\n        when a.doc_status = '11' then '驳回'\n        when a.doc_status = '20' then '审批中'\n        when a.doc_status = '30'\n        and a.fd_apply_status = '30' then '待签订'\n        when a.doc_status = '30'\n        and a.fd_apply_status = '32' then '签订中'\n        when a.doc_status = '30'\n        and a.fd_apply_status = '14' then '待关闭'\n        when a.doc_status = '30'\n        and a.fd_apply_status = '17' then '已关闭'\n        else '其他'\n    end as \"doc_status\",\n    a.fd_effedate,\n    a.fd_enddate,\n    a.fd_signdate,\n    a.fd_type,\n    cb.fd_name cb_name,\n    org.fd_name org_name,\n    parent_org.fd_name bu_name,\n    a.fd_maincontract_id,\n    fd_last_modified_time\nfrom\n    cntr_mysql.fsgcontract.km_agreement_apply a\n    inner join cntr_mysql.fsgcontract.km_agreement_contbody cb on cb.fd_id = a.fd_contbody_id\n    and cb.fd_is_available = True\n    inner join cntr_mysql.fsgcontract.sys_org_element org on org.fd_id = a.fd_contract_manager_dept_id\n    left join cntr_mysql.fsgcontract.sys_org_element parent_org on org.fd_parentid = parent_org.fd_id\n    inner join cntr_mysql.fsgcontract.km_agreement_tmpl t on a.doc_template_id = t.fd_id\n    inner join cntr_mysql.fsgcontract.km_agreement_type atyp on t.fd_ag_type_id = atyp.fd_id\n```\n\n用单引号包裹，内部 `' '` 变成 `'\\'\\''`？不，在单引号 bash 字符串中，要嵌入单引号，必须退出单引号：`'\\''`。例如 `'it'\\''s'` 表示 `it's`。\n\n所以对于 `'00'`，变成 `'\\''00'\\''`。\n\n全部替换后：\n`'... a.doc_status = '\\''00'\\'' or ...'`\n\n这看起来可行，但整个字符串会非常长且难读。还是用临时文件更好。\n\n我用 `write` 工具写临时文件，然后用 `bash` 执行 load。临时文件可以放在 `/tmp/` 下。\n\nDataFrame 名称：我选 `agreement_apply`。\n\n执行 load 后，执行 info 查看摘要。Now execute the load command and then get info.DataFrame loaded successfully. I should provide a concise summary to the user as per the simplified feedback output rule."
+    },
+    {
+      "id": "msg-5",
+      "role": "user",
+      "content": "做分组标签\n1. 合同全量 'all' \n2. 合同状态 doc_status='待关闭' 则为有效，其他状态显示其他\n3. 合同主体 cb_name = '上海外服（集团）有限公司' 则为'外服本部' 否则显示'其他公司'\n4. 所属外服机构 bu_name\n5. 业务中心 org_name\n按这些标签做分组 统计 doc_number 去重数量",
+      "referencedNodes": [
+        {
+          "nodeId": "gov-2",
+          "label": "DF: agreement_apply",
+          "type": "dataFrame",
+          "data": "agreement_apply"
+        }
+      ]
+    },
+    {
+      "id": "msg-6",
+      "role": "assistant",
+      "content": "DataFrame `agreement_group_stats` 已生成：\n\n- 行数：325\n- 列数：6\n- 字段：`contract_scope`, `status_label`, `entity_label`, `bu_name`, `org_name`, `doc_count`\n\n按 `contract_scope` → `status_label` → `entity_label` → `bu_name` → `org_name` 五级分组，统计了 `doc_number` 去重数量。",
+      "thinking": "用户想要对 `agreement_apply` DataFrame 做分组统计，按照指定的标签生成，然后按这些标签分组统计 `doc_number` 的去重数量。\n\n这是一个二次加工任务，需要使用 `--memory` 模式，因为数据已经在 ObserveStore 中。\n\n分组标签逻辑：\n1. 合同全量：固定值 'all'\n2. 合同状态：doc_status='待关闭' 则为 '有效'，其他显示 '其他'\n3. 合同主体：cb_name = '上海外服（集团）有限公司' 则为 '外服本部'，否则显示 '其他公司'\n4. 所属外服机构：bu_name\n5. 业务中心：org_name\n\n按这些标签分组，统计 doc_number 去重数量。\n\n输出 DataFrame 名称用户可以没指定，我可以用 `agreement_group_stats`。\n\nSQL 语句：\n```sql\nSELECT \n    'all' AS contract_scope,\n    CASE WHEN doc_status = '待关闭' THEN '有效' ELSE '其他' END AS status_label,\n    CASE WHEN cb_name = '上海外服（集团）有限公司' THEN '外服本部' ELSE '其他公司' END AS entity_label,\n    bu_name,\n    org_name,\n    COUNT(DISTINCT doc_number) AS doc_count\nFROM agreement_apply\nGROUP BY \n    'all',\n    CASE WHEN doc_status = '待关闭' THEN '有效' ELSE '其他' END,\n    CASE WHEN cb_name = '上海外服（集团）有限公司' THEN '外服本部' ELSE '其他公司' END,\n    bu_name,\n    org_name\n```\n\n注意在 GROUP BY 中不能直接用列别名，但 DuckDB 支持用列位置编号 GROUP BY 1,2,3,4,5 或者重复表达式。DuckDB 也支持别名。但为保险起见，我用位置编号。\n\n另外，DuckDB 中 `COUNT(DISTINCT doc_number)` 是支持的。\n\n让我执行这个命令。\n\n加载完成后查看 info。DataFrame `agreement_group_stats` 已加载成功。我应提供简洁的摘要。"
+    },
+    {
+      "id": "msg-7",
+      "role": "user",
+      "content": "展示一个treemap图表",
+      "referencedNodes": [
+        {
+          "nodeId": "gov-3",
+          "label": "DF: agreement_group_stats",
+          "type": "dataFrame",
+          "data": "agreement_group_stats"
+        }
+      ]
+    },
+    {
+      "id": "msg-8",
+      "role": "assistant",
+      "content": "生成 treemap 图表需要读取 `agreement_group_stats` 的完整数据内容（325 行）。是否允许我将该数据导出到临时 JSON 文件以渲染图表？",
+      "thinking": "用户想要为 `agreement_group_stats` 展示一个 treemap 图表。我需要使用 `govio_show_chart` 工具来展示 treemap。\n\ntreemap 需要配置：\n- type: \"treemap\"\n- groups: 分层路径列，按顺序嵌套\n- key: 数值列作为面积权重\n- tree: 数据行\n\n用户要求展示 treemap，但没有指定具体按哪些维度分层。根据数据的分组标签，我可以选择几个维度来展示。最合理的分层可能是：\n- 第一层：contract_scope（都是 'all'）\n- 第二层：status_label\n- 第三层：entity_label\n- 第四层：bu_name\n- 第五层：org_name\n\n或者更简洁一些：status_label → entity_label → bu_name → org_name。\n\n由于 treemap 需要扁平数据，我需要先获取数据内容。根据\"非必要不读取数据内容\"的规则，但这里为了生成图表，需要读取数据。\n\n我可以使用 `govio-cli observe info --name agreement_group_stats` 查看样本数据，或者直接使用 `--rows` 获取全部数据。但数据有325行，不算太多。\n\n为了生成 treemap，我需要完整数据。我可以使用 `govio-cli observe info --name agreement_group_stats --rows 400` 获取全部数据，或者使用 `-o` 输出到文件。但规则说 `-o` 输出前要先征得用户确认。\n\n这里用户要求展示图表，我可以直接读取数据到命令行输出（因为 325 行可能超过默认显示），但 bash 输出可能会被截断。\n\n更好的方式：用 `govio-cli observe chart` 命令生成 treemap PNG。但 skill 文件里的 chart 子命令只支持 `bar` 和 `line`，不支持 treemap。chart 子命令不支持 treemap。\n\n所以我需要用 `govio_show_chart` 工具。这个工具需要传入 chart.js 配置，包括 tree 数据。所以我需要先把数据取出来。\n\n我可以先用 `govio-cli observe info --name agreement_group_stats --rows 400` 把数据取回来，然后解析 JSON，构造 chart.js treemap 配置。\n\n但 325 行的数据可能在 bash 输出中会被截断到 2000 行或 50KB。JSON 格式 325 行应该远小于 2000 行，大小可能在 50KB 左右或更小，应该没问题。\n\n让我先获取数据。输出被截断了，只显示了后面的部分。我需要获取完整的 JSON 数据。输出大小是 50KB，被截断了。我应该使用 `-o` 输出到文件，或者通过其他方式获取完整数据。\n\n由于用户要求展示图表，需要完整数据。我可以先征得用户同意输出到文件，或者我可以直接用 Python 脚本读取 DataFrame 并生成 chart.js 配置。\n\n但更简单的方法是：使用 `govio-cli observe load` 的 `-o` 参数把数据输出到 JSON 文件。根据规则，使用 `-o` 输出数据内容前必须先征得用户确认。\n\n但是，生成图表需要数据。我可以向用户说明需要导出数据来生成图表，并请求确认。\n\n或者，我可以使用一个技巧：用 `govio-cli observe info --name agreement_group_stats --rows 400 -o /tmp/agreement_group_stats.json`。但 skill 文件 info 命令的参数里没有 `-o`，只有 load 命令有。\n\n另一个方法：直接在 Python 中读取 parquet 文件。但 skill 文件明确禁止直接读取底层文件。\n\n所以最好的方法是：请求用户确认导出数据到 JSON 文件以生成 treemap 图表。\n\n实际上，govio_show_chart 工具需要的是 chart.js 配置对象，里面包含 tree 数据。我没有办法绕过获取数据。\n\n我应该先询问用户是否允许导出数据内容。但用户明确说\"展示一个treemap图表\"，这暗示了需要数据。不过规则说如果用户未明确表示可以查看数据内容，应先问询。\n\n让我请求确认，同时说明用途。"
+    },
+    {
+      "id": "msg-9",
+      "role": "user",
+      "content": "可以"
+    },
+    {
+      "id": "msg-10",
+      "role": "assistant",
+      "content": "",
+      "thinking": "用户同意了。我可以将数据导出到临时 JSON 文件，然后读取并构造 chart.js treemap 配置。\n\n使用 `govio-cli observe load --name ... --memory --sql \"SELECT * FROM agreement_group_stats\" -o /tmp/agreement_group_stats.json`\n\n然后读取文件，用 Python 或 Node 解析并构造 treemap 配置。\n\n实际上，我可以用一行 Python 命令同时读取 JSON 并输出 chart.js 配置到另一个文件，然后调用 govio_show_chart。\n\n或者，我可以用 Python 脚本把 JSON 数据转换成 treemap 需要的格式，然后输出 JSON 字符串，再通过 bash 调用 govio_show_chart。但 govio_show_chart 是一个工具调用，不是 bash 命令。\n\n所以流程：\n1. 导出数据到 JSON\n2. 用 Python 读取 JSON 并生成 chart.js 配置 JSON\n3. 调用 govio_show_chart\n\n其实我可以直接把 tree 数据作为参数传入 govio_show_chart，不需要中间文件。但我需要知道完整数据。\n\n让我先把数据导出到文件，然后用 Python 生成配置。\n\n关于 treemap 的分组：\n- 第一层：status_label（有效/其他）\n- 第二层：entity_label（外服本部/其他公司）\n- 第三层：bu_name\n- 第四层：org_name\n\n不加入 contract_scope，因为它全是 'all'，没有区分意义。\n\nkey: doc_count\n\n需要处理 null 值。chart.js treemap 对 null 分组可能有 issue。可以把 null 替换为 \"（未指定）\" 或其他占位符。\n\n让我执行导出。数据已导出。现在用 Python 读取 JSON，构造 treemap 配置，然后调用 govio_show_chart。\n\n我先把配置写到文件，然后读取并调用 govio_show_chart。或者直接通过 Python 输出 JSON，然后我用工具调用。\n\n由于 govio_show_chart 需要我传入 config 对象，我可以用 Python 生成配置 JSON 到文件，然后读取文件内容，解析后调用。\n\n让我用 Python 生成配置。\n\ntreemap 的 tree 数据需要是扁平行列表，每个元素包含分组字段和 key 值。\n\ngroups: ['status_label', 'entity_label', 'bu_name', 'org_name']\nkey: 'doc_count'\n\n还需要处理 null，替换为 '（未指定）'。\n\nchart.js treemap 插件通常需要注册，但 govio_show_chart 工具应该已经处理好了。我只需要提供 type: 'treemap' 和 dataset 配置。\n\n配置示例：\n```json\n{\n  \"type\": \"treemap\",\n  \"data\": {\n    \"datasets\": [{\n      \"tree\": [...],\n      \"groups\": [\"status_label\", \"entity_label\", \"bu_name\", \"org_name\"],\n      \"key\": \"doc_count\",\n      \"label\": \"合同数量\"\n    }]\n  },\n  \"options\": {\n    \"plugins\": {\n      \"title\": {\n        \"display\": true,\n        \"text\": \"合同分组统计 Treemap\"\n      },\n      \"tooltip\": {\n        \"callbacks\": {\n          \"title\": ...\n        }\n      }\n    }\n  }\n}\n```\n\n我需要用 Python 生成。Now I need to read the config file and call govio_show_chart. Let me read it first.文件也被截断了，但我已经有文件路径。我可以直接用 Python 读取文件并调用 govio_show_chart，但 govio_show_chart 是工具调用，不是 Python 能调用的。\n\n我可以用 Python 生成一个紧凑的 JSON 配置字符串，然后自己在工具调用中传入。由于文件太大，read 被截断，我可以使用 bash 把 JSON 文件内容读入一个环境变量，然后用 Python 压缩成一行输出。\n\n但更简单：我可以用 Python 读取配置并只输出关键统计信息确认，然后构造工具调用中的 config。\n\n实际上，我可以用 Python 读取完整的配置对象，然后把它写到一个 Python 脚本里，让脚本打印出 JSON 字符串，但 bash 输出可能又会被截断。\n\n最好的方法是：我不需要把完整配置打印出来。我可以在一个单独的步骤中用 Python 生成配置对象并保存为文件，然后使用 `bash` 命令读取该文件的全部内容（bash 输出会被截断，但可以保存到临时文件）。\n\n等等，govio_show_chart 工具的 config 参数需要我在工具调用中直接传入 JSON 对象。我可以：\n1. 使用 Python 生成配置\n2. 用 `bash` 读取完整文件内容到一个变量并打印其长度确认\n3. 由于我无法在工具调用中引用文件，我需要把完整的 JSON 内容作为参数传入\n\n但 config 对象很大（约 50KB+），直接在工具参数中传入可能会超出限制或被截断。\n\n让我换个思路：也许我不需要把所有 325 行都展示。treemap 的叶子太多会导致图表不可读。我可以按更粗的粒度聚合，减少叶子数量。\n\n比如只按三层分组：status_label → entity_label → bu_name，然后对 bu_name 下的 doc_count 求和。这样会大大减少叶子数量（bu_name 的数量远小于 org_name）。\n\n或者只按两层：status_label → entity_label。\n\n用户要求\"展示一个treemap图表\"，没有指定层级。我可以选择一个合理的、可读的层级。三层（status_label → entity_label → bu_name）应该比较合适。\n\n这样聚合后的数据量会小很多，图表也更清晰。\n\n让我重新生成一个聚合后的 DataFrame 和 treemap 配置。\n\n先加载一个聚合后的 DataFrame：\n```sql\nSELECT \n    status_label,\n    entity_label,\n    bu_name,\n    SUM(doc_count) AS doc_count\nFROM agreement_group_stats\nGROUP BY status_label, entity_label, bu_name\n```\n\n然后生成 treemap，groups: ['status_label', 'entity_label', 'bu_name']。\n\n这样数据量会小很多，也更容易在工具参数中传递。\n\n让我执行这个步骤。Now I have 131 rows. This is more manageable. Let me generate the chart config with Python and then call govio_show_chart.\n\nI'll generate config to /tmp/agreement_treemap_config2.json and then use Python to print it compactly, or read it.\n\nActually, I can use Python to output the compact JSON to stdout, capture it in bash, but it might be truncated. Let me check the size first.\n\nOr I can construct the govio_show_chart config directly in the tool call using a Python one-liner that reads the data and builds the config. But the tool needs a JSON object, not a file.\n\nSince the config is now ~131 rows, the JSON might be around 15-20KB, which might still be large but manageable. Let me read the generated config file.\n\nActually, let me generate it and see the size."
+    }
+  ],
+  "canvas": {
+    "nodes": [
+      {
+        "id": "sql-1",
+        "type": "sqlQuery",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "type": "sqlQuery",
+          "title": "New Query",
+          "createdAt": "2026-08-21T06:46:58.536Z",
+          "sql": "select\n    a.fd_id,\n    a.doc_number,\n    a.doc_subject,\n    atyp.fd_CRM_type_number a_type,\n    case\n        when a.doc_status = '00'\n        or a.fd_apply_status = '60' then '作废'\n        when a.doc_status = '10' then '草稿'\n        when a.doc_status = '11' then '驳回'\n        when a.doc_status = '20' then '审批中'\n        when a.doc_status = '30'\n        and a.fd_apply_status = '30' then '待签订'\n        when a.doc_status = '30'\n        and a.fd_apply_status = '32' then '签订中'\n        when a.doc_status = '30'\n        and a.fd_apply_status = '14' then '待关闭'\n        when a.doc_status = '30'\n        and a.fd_apply_status = '17' then '已关闭'\n        else '其他'\n    end as \"doc_status\",\n    a.fd_effedate,\n    a.fd_enddate,\n    a.fd_signdate,\n    a.fd_type,\n    cb.fd_name cb_name,\n    org.fd_name org_name,\n    parent_org.fd_name bu_name,\n    a.fd_maincontract_id,\n    fd_last_modified_time\nfrom\n    cntr_mysql.fsgcontract.km_agreement_apply a -- 合同\n    inner join cntr_mysql.fsgcontract.km_agreement_contbody cb on cb.fd_id = a.fd_contbody_id -- 签约主体（外服）\n    and cb.fd_is_available = True\n    inner join cntr_mysql.fsgcontract.sys_org_element org on org.fd_id = a.fd_contract_manager_dept_id -- 部门（业务中心）\n    left join cntr_mysql.fsgcontract.sys_org_element parent_org on org.fd_parentid = parent_org.fd_id\n    inner join cntr_mysql.fsgcontract.km_agreement_tmpl t on a.doc_template_id = t.fd_id\n    inner join cntr_mysql.fsgcontract.km_agreement_type atyp on t.fd_ag_type_id = atyp.fd_id",
+          "outputColumns": []
+        }
+      },
+      {
+        "id": "gov-2",
+        "type": "dataFrame",
+        "position": {
+          "x": 480,
+          "y": 100
+        },
+        "data": {
+          "type": "dataFrame",
+          "title": "DF: agreement_apply",
+          "createdAt": "2026-08-21T06:51:29.665Z",
+          "dfName": "agreement_apply",
+          "sourceName": "sfsc_sec",
+          "totalRows": 86156,
+          "totalColumns": 14,
+          "memoryUsage": "9.2 MB",
+          "columns": [
+            {
+              "name": "fd_id",
+              "dtype": "str",
+              "nonNull": 86156
+            },
+            {
+              "name": "doc_number",
+              "dtype": "str",
+              "nonNull": 86156
+            },
+            {
+              "name": "doc_subject",
+              "dtype": "str",
+              "nonNull": 86156
+            },
+            {
+              "name": "a_type",
+              "dtype": "str",
+              "nonNull": 86156
+            },
+            {
+              "name": "doc_status",
+              "dtype": "str",
+              "nonNull": 86156
+            },
+            {
+              "name": "fd_effedate",
+              "dtype": "datetime64[us]",
+              "nonNull": 86156
+            },
+            {
+              "name": "fd_enddate",
+              "dtype": "datetime64[us]",
+              "nonNull": 86156
+            },
+            {
+              "name": "fd_signdate",
+              "dtype": "object",
+              "nonNull": 86156
+            },
+            {
+              "name": "fd_type",
+              "dtype": "str",
+              "nonNull": 86156
+            },
+            {
+              "name": "cb_name",
+              "dtype": "str",
+              "nonNull": 86156
+            },
+            {
+              "name": "org_name",
+              "dtype": "str",
+              "nonNull": 86156
+            },
+            {
+              "name": "bu_name",
+              "dtype": "str",
+              "nonNull": 86156
+            },
+            {
+              "name": "fd_maincontract_id",
+              "dtype": "str",
+              "nonNull": 86156
+            },
+            {
+              "name": "fd_last_modified_time",
+              "dtype": "datetime64[us]",
+              "nonNull": 86156
+            }
+          ],
+          "previewData": []
+        }
+      },
+      {
+        "id": "gov-3",
+        "type": "dataFrame",
+        "position": {
+          "x": 880,
+          "y": 100
+        },
+        "data": {
+          "type": "dataFrame",
+          "title": "DF: agreement_group_stats",
+          "createdAt": "2026-08-21T06:58:37.494Z",
+          "dfName": "agreement_group_stats",
+          "sourceName": "memory",
+          "totalRows": 325,
+          "totalColumns": 6,
+          "memoryUsage": "15.2 KB",
+          "columns": [
+            {
+              "name": "contract_scope",
+              "dtype": "str",
+              "nonNull": 325
+            },
+            {
+              "name": "status_label",
+              "dtype": "str",
+              "nonNull": 325
+            },
+            {
+              "name": "entity_label",
+              "dtype": "str",
+              "nonNull": 325
+            },
+            {
+              "name": "bu_name",
+              "dtype": "str",
+              "nonNull": 325
+            },
+            {
+              "name": "org_name",
+              "dtype": "str",
+              "nonNull": 325
+            },
+            {
+              "name": "doc_count",
+              "dtype": "int64",
+              "nonNull": 325
+            }
+          ],
+          "previewData": []
+        }
+      },
+      {
+        "id": "gov-4",
+        "type": "dataFrame",
+        "position": {
+          "x": 1280,
+          "y": 100
+        },
+        "data": {
+          "type": "dataFrame",
+          "title": "DF: agreement_group_stats_export",
+          "createdAt": "2026-08-21T07:00:55.301Z",
+          "dfName": "agreement_group_stats_export",
+          "sourceName": "memory",
+          "totalRows": 325,
+          "totalColumns": 6,
+          "memoryUsage": "15.2 KB",
+          "columns": [
+            {
+              "name": "contract_scope",
+              "dtype": "str",
+              "nonNull": 325
+            },
+            {
+              "name": "status_label",
+              "dtype": "str",
+              "nonNull": 325
+            },
+            {
+              "name": "entity_label",
+              "dtype": "str",
+              "nonNull": 325
+            },
+            {
+              "name": "bu_name",
+              "dtype": "str",
+              "nonNull": 325
+            },
+            {
+              "name": "org_name",
+              "dtype": "str",
+              "nonNull": 325
+            },
+            {
+              "name": "doc_count",
+              "dtype": "int64",
+              "nonNull": 325
+            }
+          ],
+          "previewData": []
+        }
+      },
+      {
+        "id": "gov-5",
+        "type": "dataFrame",
+        "position": {
+          "x": 1280,
+          "y": 440
+        },
+        "data": {
+          "type": "dataFrame",
+          "title": "DF: agreement_treemap_data",
+          "createdAt": "2026-08-21T07:01:53.332Z",
+          "dfName": "agreement_treemap_data",
+          "sourceName": "memory",
+          "totalRows": 131,
+          "totalColumns": 4,
+          "memoryUsage": "4.1 KB",
+          "columns": [
+            {
+              "name": "status_label",
+              "dtype": "str",
+              "nonNull": 131
+            },
+            {
+              "name": "entity_label",
+              "dtype": "str",
+              "nonNull": 131
+            },
+            {
+              "name": "bu_name",
+              "dtype": "str",
+              "nonNull": 131
+            },
+            {
+              "name": "doc_count",
+              "dtype": "float64",
+              "nonNull": 131
+            }
+          ],
+          "previewData": []
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-sql-1-gov-2",
+        "source": "sql-1",
+        "target": "gov-2"
+      },
+      {
+        "id": "e-gov-2-gov-3",
+        "source": "gov-2",
+        "target": "gov-3"
+      },
+      {
+        "id": "e-gov-3-gov-4",
+        "source": "gov-3",
+        "target": "gov-4"
+      },
+      {
+        "id": "e-gov-3-gov-5",
+        "source": "gov-3",
+        "target": "gov-5"
+      }
+    ]
+  }
+}

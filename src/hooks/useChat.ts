@@ -33,6 +33,7 @@ interface WSEvent {
   requestId?: string;
   command?: string;
   config?: ModelsConfig;
+  message?: string;
 }
 
 let msgIdCounter = 0;
@@ -288,7 +289,7 @@ export function useChat() {
             break;
 
           case "error":
-            console.error("[chat] Server error:", data.content);
+            console.error("[chat] Server error:", data.message);
             if (isObservingRef.current) {
               isObservingRef.current = false;
               setIsObserving(false);

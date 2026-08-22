@@ -224,7 +224,7 @@ export const useCanvasStore = create<CanvasStore>()(
             title: event.title || "Chart",
             createdAt: now,
             sourceDf: event.sourceDf || "",
-            config: event.config || { type: "bar", data: { labels: [], datasets: [] } },
+            config: event.config || { type: "bar", data: [] },
           },
         };
         break;

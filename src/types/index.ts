@@ -63,17 +63,31 @@ export interface ReportNodeData {
   [key: string]: unknown;
 }
 
-export interface ChartConfig {
+export interface ChartTrace {
   type: string;
-  data: {
-    labels?: string[];
-    datasets: Array<{
-      label: string;
-      data: number[] | Array<{ x: number; y: number }>;
-      [key: string]: unknown;
-    }>;
-  };
-  options?: Record<string, unknown>;
+  name?: string;
+  x?: unknown[];
+  y?: unknown[];
+  labels?: string[];
+  values?: number[];
+  mode?: string;
+  hole?: number;
+  // treemap contract (resolved server-side into ids/labels/parents/values)
+  treeDf?: string;
+  key?: string;
+  groups?: string[];
+  ids?: string[];
+  parents?: string[];
+  branchvalues?: string;
+  [key: string]: unknown;
+}
+
+export interface ChartConfig {
+  /** chart type label shown in the node header (set server-side) */
+  type: string;
+  /** Plotly traces */
+  data: ChartTrace[];
+  layout?: Record<string, unknown>;
 }
 
 export interface ChartNodeData {
