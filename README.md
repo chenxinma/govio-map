@@ -111,7 +111,7 @@ pi-coding-agent（`@earendil-works/pi-coding-agent`）是内嵌的 AI 编码 Age
 | SQL | 绿色左边框 | SQL 语句、输出列（双击编辑） | `message_end` 提取 SQL 块 / 工具栏手动新建 |
 | DataFrame | 橙色左边框 | df.info 信息、预览 | `govio-cli observe load` 结果解析 |
 | Report | 琥珀(差异) / 紫(相关性) | 差异比较或相关性分析报告 | `observe compare` / `observe explore` 解析 |
-| Chart | 蓝色左边框 | chart.js 图表（可放大） | `govio_show_chart` 工具 |
+| Chart | 蓝色左边框 | Plotly 图表（可放大） | `govio_show_chart` 工具 |
 
 ## 布局
 
@@ -127,7 +127,7 @@ pi-coding-agent（`@earendil-works/pi-coding-agent`）是内嵌的 AI 编码 Age
 | 状态 | Zustand（persist → localStorage） |
 | 布局 | @dagrejs/dagre |
 | 样式 | Tailwind CSS v4 |
-| 图表 | chart.js |
+| 图表 | Plotly |
 | AI Agent | @earendil-works/pi-coding-agent |
 | 通信 | WebSocket (ws) |
 | 数据 | hyparquet（parquet 读取） |

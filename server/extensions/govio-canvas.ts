@@ -147,67 +147,139 @@ function nextDfName(): string {
   return `df_query_${dfCounter}`;
 }
 
-// ── Treemap tree resolution ────────────────────────────────────────
+// ── Chart trace resolution (Plotly) ───────────────────────────────
 
 // ponytail: hard cap protects the chart node event size; >200 leaves should be
 // truncated agent-side in SQL (see treemap design doc) anyway.
 const TREEMAP_ROW_CAP = 2000;
 
-interface TreemapDataset {
-  treeDf?: string;
-  tree?: unknown;
-  groups?: string[];
+interface ChartTrace {
+  type?: string;
   [key: string]: unknown;
 }
 
 /**
- * Treemap datasets reference an ObserveStore DataFrame via `treeDf` instead of
- * inline `tree` rows. Resolve rows server-side so the agent never reads data
- * content (observe info --rows / load -o) to build the chart config.
- * Throws on failure; returns notes appended to the tool result.
+ * Aggregate flat leaf rows into the flat ids/labels/parents/values hierarchy
+ * Plotly's treemap trace needs (branchvalues:"total"). Exported for the
+ * self-check below.
  */
-async function resolveTreemapTrees(config: {
-  type: string;
-  data: { datasets: TreemapDataset[] };
-}): Promise<string[]> {
+export function buildTreemapHierarchy(
+  rows: Array<Record<string, unknown>>,
+  key: string,
+  groups: string[],
+): { ids: string[]; labels: string[]; parents: string[]; values: number[] } {
+  // Aggregate rows bottom-up along the group path. branchvalues:"total"
+  // requires every parent's value to equal the sum of its descendants, which
+  // the path-prefix aggregation guarantees. Null group keys would render as
+  // literal "null" blocks in the treemap.
+  const nodeValue = new Map<string, number>();
+  for (const row of rows) {
+    const segs: string[] = [];
+    for (const g of groups) {
+      segs.push(String(row[g] ?? "未指定"));
+      const path = segs.join("/");
+      nodeValue.set(path, (nodeValue.get(path) ?? 0) + Number(row[key] ?? 0));
+    }
+  }
+  const ids: string[] = [];
+  const labels: string[] = [];
+  const parents: string[] = [];
+  const values: number[] = [];
+  for (const [path, value] of nodeValue) {
+    const segs = path.split("/");
+    ids.push(path);
+    labels.push(segs[segs.length - 1]);
+    parents.push(segs.length > 1 ? segs.slice(0, -1).join("/") : "");
+    values.push(value);
+  }
+  return { ids, labels, parents, values };
+}
+
+/**
+ * Treemap traces reference an ObserveStore DataFrame via `treeDf` instead of
+ * inline rows. Fetch rows server-side and build the flat ids/labels/parents/
+ * values hierarchy Plotly needs, so the agent never reads data content
+ * (observe info --rows / load -o) to build the chart config.
+ */
+async function resolveTreemapTrace(trace: ChartTrace): Promise<string[]> {
   const notes: string[] = [];
-  if (config.type !== "treemap") return notes;
-  for (const ds of config.data.datasets) {
-    if (!ds.treeDf || Array.isArray(ds.tree)) continue;
-    // dfName is interpolated into a shell command - restrict to safe identifiers.
-    if (!/^[A-Za-z0-9_]+$/.test(ds.treeDf)) {
-      throw new Error(`Invalid treeDf '${ds.treeDf}': only letters, digits and underscores are allowed.`);
+  const treeDf = typeof trace.treeDf === "string" ? trace.treeDf : "";
+  if (!treeDf) {
+    throw new Error("treemap trace requires treeDf (ObserveStore DataFrame name).");
+  }
+  // dfName is interpolated into a shell command - restrict to safe identifiers.
+  if (!/^[A-Za-z0-9_]+$/.test(treeDf)) {
+    throw new Error(`Invalid treeDf '${treeDf}': only letters, digits and underscores are allowed.`);
+  }
+  const key = typeof trace.key === "string" ? trace.key : "";
+  const groups = Array.isArray(trace.groups) ? (trace.groups as string[]) : [];
+  if (!key || groups.length === 0) {
+    throw new Error("treemap trace requires key (numeric weight column) and groups (hierarchy path columns).");
+  }
+  let sample: Array<Record<string, unknown>>;
+  let totalRows = 0;
+  try {
+    const { runGovioCli } = await import("../agent.js");
+    const out = await runGovioCli(`observe info --name ${treeDf} --rows ${TREEMAP_ROW_CAP}`);
+    const info = JSON.parse(out);
+    if (!info || info.success === false) {
+      throw new Error(
+        `DataFrame '${treeDf}' not found in ObserveStore (${info?.error ?? "unknown error"}). Load it first via 'govio-cli observe load'.`,
+      );
     }
-    let sample: Array<Record<string, unknown>>;
-    let totalRows = 0;
-    try {
-      const { runGovioCli } = await import("../agent.js");
-      const out = await runGovioCli(`observe info --name ${ds.treeDf} --rows ${TREEMAP_ROW_CAP}`);
-      const info = JSON.parse(out);
-      if (!info || info.success === false) {
-        throw new Error(
-          `DataFrame '${ds.treeDf}' not found in ObserveStore (${info?.error ?? "unknown error"}). Load it first via 'govio-cli observe load'.`,
-        );
-      }
-      sample = Array.isArray(info.sample) ? info.sample : [];
-      totalRows = info.rows || 0;
-    } catch (err) {
-      if (err instanceof Error && err.message.startsWith("DataFrame '")) throw err;
-      throw new Error(`Failed to resolve tree from '${ds.treeDf}': ${err instanceof Error ? err.message : String(err)}`);
-    }
-    const groups = ds.groups ?? [];
-    // Null group keys would render as literal "null" blocks in the treemap.
-    const rows = sample.map((row) => {
-      const r = { ...row };
-      for (const g of groups) {
-        if (r[g] == null) r[g] = "未指定";
-      }
-      return r;
-    });
-    ds.tree = rows;
-    notes.push(`tree: resolved ${rows.length} rows from ObserveStore DataFrame '${ds.treeDf}'`);
-    if (totalRows > TREEMAP_ROW_CAP) {
-      notes.push(`warning: '${ds.treeDf}' has ${totalRows} rows, only first ${TREEMAP_ROW_CAP} used. Re-aggregate in SQL (e.g. drop a group level or bucket small values into 'Other') for a readable treemap.`);
+    sample = Array.isArray(info.sample) ? info.sample : [];
+    totalRows = info.rows || 0;
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("DataFrame '")) throw err;
+    throw new Error(`Failed to resolve tree from '${treeDf}': ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const { ids, labels, parents, values } = buildTreemapHierarchy(sample, key, groups);
+  delete trace.treeDf;
+  delete trace.key;
+  delete trace.groups;
+  Object.assign(trace, { ids, labels, parents, values, branchvalues: "total" });
+  notes.push(`treemap: resolved ${sample.length} rows from ObserveStore DataFrame '${treeDf}' into ${ids.length} nodes`);
+  if (totalRows > TREEMAP_ROW_CAP) {
+    notes.push(`warning: '${treeDf}' has ${totalRows} rows, only first ${TREEMAP_ROW_CAP} used. Re-aggregate in SQL (e.g. drop a group level or bucket small values into 'Other') for a readable treemap.`);
+  }
+  return notes;
+}
+
+/**
+ * Normalize the agent-friendly trace vocabulary into native Plotly traces
+ * (line -> scatter+lines, doughnut -> pie+hole) and resolve treemap treeDf
+ * references. Sets config.type to the chart type label for the node header.
+ */
+async function resolveChartConfig(config: { data?: ChartTrace[]; [key: string]: unknown }): Promise<string[]> {
+  const notes: string[] = [];
+  const traces = Array.isArray(config.data) ? config.data : [];
+  if (!config.type && typeof traces[0]?.type === "string") {
+    config.type = traces[0].type;
+  }
+  // Plotly default margins (l/r 80, t 100, b 80) waste half of a 420px node.
+  // Fill compact defaults; explicit layout.margin keys still win.
+  const layout = (config.layout ?? {}) as Record<string, unknown>;
+  layout.margin = {
+    l: 45, r: 15, t: 25, b: 35, pad: 0,
+    ...(typeof layout.margin === "object" && layout.margin !== null ? layout.margin : {}),
+  };
+  config.layout = layout;
+  for (const trace of traces) {
+    switch (trace.type) {
+      case "line":
+        trace.type = "scatter";
+        if (trace.mode === undefined) trace.mode = "lines+markers";
+        break;
+      case "scatter":
+        if (trace.mode === undefined) trace.mode = "markers";
+        break;
+      case "doughnut":
+        trace.type = "pie";
+        if (trace.hole === undefined) trace.hole = 0.6;
+        break;
+      case "treemap":
+        notes.push(...(await resolveTreemapTrace(trace)));
+        break;
     }
   }
   return notes;
@@ -434,33 +506,38 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
     name: "govio_show_chart",
     label: "Govio Chart",
     description:
-      "Show a chart node on the canvas with a chart.js config. For treemap: reference the ObserveStore DataFrame via dataset.treeDf + key + groups - the server fetches the rows itself, do NOT read or export the data content. For bar/line/pie/doughnut/scatter: fetch data via govio-cli first and pass values inline. Refer to the chart-selector skill for chart type selection and config templates.",
+      "Show a Plotly chart node on the canvas. Pass a Plotly figure: config.data = traces[], config.layout = optional Plotly layout. " +
+      'Trace shapes: bar {"type":"bar","x":[...],"y":[...]}; line {"type":"line","x":[...],"y":[...]}; ' +
+      'scatter {"type":"scatter","x":[...],"y":[...]}; pie/doughnut {"type":"pie","labels":[...],"values":[...]}; ' +
+      'treemap {"type":"treemap","treeDf":"<ObserveStore DataFrame>","key":"<numeric weight column>","groups":["<hierarchy columns in nesting order>"]}. ' +
+      "For treemap the server fetches the rows itself - do NOT read or export the data content to build it inline. " +
+      "For bar/line/scatter/pie fetch values via govio-cli first and pass them inline. " +
+      "Extra Plotly trace attributes (name, mode, marker, textinfo, ...) and layout keys (title, xaxis.title, yaxis.title, legend, ...) pass through to Plotly.",
     parameters: Type.Object({
       title: Type.String({ description: "Chart node title, e.g. \"Chart: df_sales (bar)\"" }),
       sourceDf: Type.Optional(Type.String({ description: "Source DataFrame name, shown in node header" })),
       config: Type.Object({
-        type: Type.String({ description: "Chart.js chart type: \"bar\" | \"line\" | \"pie\" | \"doughnut\" | \"scatter\" | \"treemap\"" }),
-        data: Type.Object({
-          labels: Type.Optional(Type.Array(Type.String(), { description: "Category labels (required for bar/line/pie/doughnut, omit for scatter/treemap)" })),
-          datasets: Type.Array(
-            Type.Object({
-              label: Type.Optional(Type.String({ description: "Dataset label shown in legend" })),
-              data: Type.Optional(Type.Array(Type.Unknown(), { description: "Data values: number[] for bar/line/pie, [{x,y}] for scatter. Omit for treemap" })),
-              treeDf: Type.Optional(Type.String({ description: "Treemap only (preferred): ObserveStore DataFrame name whose rows are the flat tree leaves. Server fetches rows itself - do NOT read/export the data content or inline it as tree" })),
-              tree: Type.Optional(Type.Array(Type.Unknown(), { description: "Treemap only: inline flat rows, one leaf per row, e.g. [{catalog1:'TypeA',catalog2:'Level1',cnt:120}]. Only for tiny hand-built datasets - prefer treeDf" })),
-              key: Type.Optional(Type.String({ description: "Treemap only: numeric column name used as area weight, e.g. 'cnt'" })),
-              groups: Type.Optional(Type.Array(Type.String(), { description: "Treemap only: hierarchy path columns nested in order, e.g. ['catalog1','catalog2','catalog3']" })),
-            }),
-            { description: "Data series array" }
-          ),
-        }),
-        options: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Chart.js options object (scales, plugins, etc.)" })),
+        data: Type.Array(
+          Type.Object({
+            type: Type.String({ description: 'Chart type: "bar" | "line" | "scatter" | "pie" | "doughnut" | "treemap"' }),
+            name: Type.Optional(Type.String({ description: "Series label shown in legend" })),
+            x: Type.Optional(Type.Array(Type.Unknown(), { description: "bar/line/scatter: x values (category labels or numbers)" })),
+            y: Type.Optional(Type.Array(Type.Unknown(), { description: "bar/line/scatter: y values (numbers)" })),
+            labels: Type.Optional(Type.Array(Type.String(), { description: "pie/doughnut: category labels" })),
+            values: Type.Optional(Type.Array(Type.Number(), { description: "pie/doughnut: sector values" })),
+            treeDf: Type.Optional(Type.String({ description: "treemap only: ObserveStore DataFrame name whose rows are the flat leaves. Server fetches rows itself - do NOT read/export the data content" })),
+            key: Type.Optional(Type.String({ description: "treemap only: numeric column used as area weight, e.g. 'cnt'" })),
+            groups: Type.Optional(Type.Array(Type.String(), { description: "treemap only: hierarchy path columns nested in order, e.g. ['catalog1','catalog2','catalog3']" })),
+          }),
+          { description: "Plotly traces; extra Plotly attributes (mode, marker, textinfo, ...) pass through" }
+        ),
+        layout: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Plotly layout: title, xaxis.title, yaxis.title, legend, colors, etc." })),
       }),
     }),
     execute: async (_toolCallId, params) => {
       let notes: string[] = [];
       try {
-        notes = await resolveTreemapTrees(params.config);
+        notes = await resolveChartConfig(params.config);
       } catch (err) {
         return {
           content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
@@ -473,8 +550,10 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         sourceDf: params.sourceDf,
         config: params.config as GovioNodeCreateEvent["config"],
       });
+      // resolveChartConfig sets fig.type (chart type label) on the config object.
+      const chartType = String((params.config as { type?: unknown }).type ?? "chart");
       return {
-        content: [{ type: "text", text: `Created chart node: ${params.title} (${params.config.type})${notes.length ? "\n" + notes.join("\n") : ""}` }],
+        content: [{ type: "text", text: `Created chart node: ${params.title} (${chartType})${notes.length ? "\n" + notes.join("\n") : ""}` }],
         details: {},
       };
     },

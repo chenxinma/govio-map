@@ -1,39 +1,32 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { BarChart3, Maximize2, Quote, Trash2 } from 'lucide-react';
-import { Chart, registerables } from 'chart.js';
-import { TreemapController, TreemapElement } from 'chartjs-chart-treemap';
+import Plotly from 'plotly.js-dist-min';
 import type { ChartNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
 import ChartModal from './ChartModal';
-
-Chart.register(...registerables, TreemapController, TreemapElement);
 
 function ChartNode({ data, id }: NodeProps) {
   const nodeData = data as unknown as ChartNodeData;
   const addReference = useCanvasStore((s) => s.addReference);
   const deleteNodes = useCanvasStore((s) => s.deleteNodes);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chartRef = useRef<Chart | null>(null);
+  const plotRef = useRef<HTMLDivElement>(null);
   const [showModal, setShowModal] = useState(false);
   const [hasError, setHasError] = useState(false);
 
-  /* eslint-disable react-hooks/set-state-in-effect -- effect synchronizes chart.js lifecycle; hasError reflects constructor failures */
   useEffect(() => {
-    if (!canvasRef.current) return;
+    const el = plotRef.current;
+    if (!el) return;
     setHasError(false);
-    try {
-      chartRef.current = new Chart(canvasRef.current, nodeData.config as ConstructorParameters<typeof Chart>[1]) as Chart;
-    } catch (err) {
-      console.error('[ChartNode] chart render failed:', err);
-      setHasError(true);
-    }
+    Plotly.react(el, nodeData.config.data, nodeData.config.layout ?? {}, { responsive: true, displayModeBar: false })
+      .catch((err: unknown) => {
+        console.error('[ChartNode] chart render failed:', err);
+        setHasError(true);
+      });
     return () => {
-      chartRef.current?.destroy();
-      chartRef.current = null;
+      Plotly.purge(el);
     };
   }, [nodeData.config]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <div className="w-[420px] rounded-lg border border-border-default bg-bg-card overflow-hidden">
@@ -59,7 +52,7 @@ function ChartNode({ data, id }: NodeProps) {
         onClick={() => setShowModal(true)}
       >
         <div className="relative">
-          <canvas ref={canvasRef} className={`w-full h-[260px] ${hasError ? 'hidden' : ''}`} />
+          <div ref={plotRef} className={`w-full h-[260px] ${hasError ? 'hidden' : ''}`} />
           {hasError && (
             <div className="flex items-center justify-center h-[260px] text-xs text-text-muted">
               图表配置错误

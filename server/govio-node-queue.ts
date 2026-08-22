@@ -23,18 +23,12 @@ export interface GovioNodeCreateEvent {
   tableName?: string;
   database?: string;
   fields?: Array<{ name: string; type: string; description?: string; references?: { table: string; field: string } }>;
-  // chart
+  // chart (Plotly figure: data = traces, layout optional; type = chart type
+  // label for the node header, set by resolveChartConfig)
   config?: {
-    type: string;
-    data: {
-      labels?: string[];
-      datasets: Array<{
-        label: string;
-        data: number[] | Array<{ x: number; y: number }>;
-        [key: string]: unknown;
-      }>;
-    };
-    options?: Record<string, unknown>;
+    type?: string;
+    data: Array<Record<string, unknown>>;
+    layout?: Record<string, unknown>;
   };
   sourceDf?: string;
   // edge sources — referencedNodes from the user's prompt
