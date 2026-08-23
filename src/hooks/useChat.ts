@@ -14,10 +14,17 @@ export interface ModelOption {
   label: string;
 }
 
+export interface DataFrameSummary {
+  name: string;
+  rows: number;
+  columns: number;
+  column_info?: Array<{ name: string; dtype: string }>;
+}
+
 export interface ObserveInfo {
   datasources?: string[];
   dataframes?: {
-    dataframes?: Array<{ name: string; rows: number; columns: number }>;
+    dataframes?: DataFrameSummary[];
   };
 }
 
