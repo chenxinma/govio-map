@@ -27,7 +27,12 @@
       "Bash(timeout 12 npx vite build)",
       "Bash(rtk gh *)",
       "Bash(npm install *)",
-      "Bash(rtk proxy *)"
+      "Bash(rtk proxy *)",
+      "Bash(gh pr *)",
+      "Bash(git pull *)",
+      "Bash(git tag *)",
+      "Bash(git push *)",
+      "Bash(git ls-remote *)"
     ]
   }
 }

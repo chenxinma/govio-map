@@ -1,11 +1,19 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { X, Database, RefreshCw, Table2 } from "lucide-react";
+import { X, Database, RefreshCw, Table2, Plus, Check } from "lucide-react";
 import { useChatContext } from "../hooks/useChatContext";
-import type { ObserveInfo } from "../hooks/useChat";
+import type { ObserveInfo, DataFrameSummary } from "../hooks/useChat";
+import { useCanvasStore } from "../store/canvas-store";
 
 interface DataSourcesModalProps {
   onClose: () => void;
+}
+
+function estimateMemoryUsage(rows: number, cols: number): string {
+  const bytes = rows * cols * 8;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export default function DataSourcesModal({ onClose }: DataSourcesModalProps) {
@@ -13,6 +21,41 @@ export default function DataSourcesModal({ onClose }: DataSourcesModalProps) {
   const [info, setInfo] = useState<ObserveInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const nodes = useCanvasStore((s) => s.nodes);
+  const createGovioNode = useCanvasStore((s) => s.createGovioNode);
+
+  const dfNamesOnCanvas = useMemo(() => {
+    const set = new Set<string>();
+    for (const n of nodes) {
+      const d = n.data as unknown as { type?: string; dfName?: string };
+      if (d.type === "dataFrame" && d.dfName) set.add(d.dfName);
+    }
+    return set;
+  }, [nodes]);
+
+  const handleAddToCanvas = useCallback(
+    (df: DataFrameSummary) => {
+      if (dfNamesOnCanvas.has(df.name)) return;
+      const columns = (df.column_info ?? []).map((c) => ({
+        name: c.name,
+        nonNull: df.rows,
+        dtype: c.dtype,
+      }));
+      createGovioNode({
+        type: "govio_node_create",
+        nodeType: "dataFrame",
+        title: `DF: ${df.name}`,
+        dfName: df.name,
+        sourceName: "",
+        totalRows: df.rows,
+        totalColumns: df.columns,
+        memoryUsage: estimateMemoryUsage(df.rows, df.columns),
+        columns,
+      });
+    },
+    [dfNamesOnCanvas, createGovioNode]
+  );
 
   const fetchInfo = useCallback(() => {
     return observeInfo()
@@ -114,6 +157,7 @@ export default function DataSourcesModal({ onClose }: DataSourcesModalProps) {
                       <th className="text-left px-3 py-2 font-medium">名称</th>
                       <th className="text-right px-3 py-2 font-medium">行数</th>
                       <th className="text-right px-3 py-2 font-medium">列数</th>
+                      <th className="text-right px-3 py-2 font-medium"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -129,6 +173,24 @@ export default function DataSourcesModal({ onClose }: DataSourcesModalProps) {
                           {df.rows.toLocaleString()}
                         </td>
                         <td className="px-3 py-2 text-right text-text-secondary font-mono">{df.columns}</td>
+                        <td className="px-3 py-2 text-right">
+                          {dfNamesOnCanvas.has(df.name) ? (
+                            <span
+                              className="inline-flex items-center text-text-dim"
+                              title="已在画布"
+                            >
+                              <Check size={14} />
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleAddToCanvas(df)}
+                              className="inline-flex items-center text-text-muted hover:text-brand transition-colors p-1 rounded hover:bg-brand/10"
+                              title="添加到画布"
+                            >
+                              <Plus size={14} />
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
