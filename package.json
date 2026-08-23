@@ -21,6 +21,7 @@
     "dotenv": "^17.4.2",
     "hyparquet": "^1.25.6",
     "lucide-react": "^1.8.0",
+    "pi-subagents": "^0.54.0",
     "plotly.js-dist-min": "^3.7.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
