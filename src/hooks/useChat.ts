@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import type { Node, Edge } from "@xyflow/react";
 import type { ReferencedNode } from "../types";
 import type { ModelsConfig } from "../types/models-config";
+import { useCanvasStore } from "../store/canvas-store";
 
 export interface ToolCall {
   toolName: string;
@@ -56,6 +58,15 @@ export interface PendingPermission {
   command: string;
 }
 
+export interface SessionListItem {
+  id: string;
+  path: string;
+  name: string | null;
+  preview: string;
+  messageCount: number;
+  modified: string;
+}
+
 export type PermissionDecision = "allow" | "deny" | "edit";
 
 interface WSEvent {
@@ -71,6 +82,14 @@ interface WSEvent {
   provider?: string;
   modelId?: string;
   info?: ObserveInfo;
+  sessions?: SessionListItem[];
+  messages?: unknown[];
+  hasMore?: boolean;
+  oldestEntryId?: string | null;
+  replace?: boolean;
+  nodes?: unknown[];
+  edges?: unknown[];
+  path?: string;
 }
 
 let msgIdCounter = 0;
@@ -92,6 +111,10 @@ export function useChat() {
   const modelsConfigRef = useRef<ModelsConfig | null>(null);
   const [selectedModel, setSelectedModel] = useState<ModelOption | null>(null);
   const selectedModelRef = useRef<ModelOption | null>(null);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [sessions, setSessions] = useState<SessionListItem[]>([]);
+  const oldestEntryIdRef = useRef<string | null>(null);
   // Model key already sent to the backend (avoids duplicate set_model sends).
   const appliedModelKeyRef = useRef<string | null>(null);
   const observeInfoResolveRef = useRef<{ resolve: (info: ObserveInfo) => void; reject: (err: Error) => void } | null>(null);
@@ -112,6 +135,27 @@ export function useChat() {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify({ type: "set_model", provider: opt.provider, modelId: opt.modelId }));
   }, []);
+
+  const sendCanvasSnapshot = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const { nodes, edges } = useCanvasStore.getState();
+    ws.send(JSON.stringify({ type: "canvas_save", nodes, edges }));
+  }, []);
+
+  // Persist canvas snapshots alongside the session (debounced on any node/edge change).
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsub = useCanvasStore.subscribe((state, prev) => {
+      if (state.nodes === prev.nodes && state.edges === prev.edges) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(sendCanvasSnapshot, 1000);
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsub();
+    };
+  }, [sendCanvasSnapshot]);
 
   // Remembered model wins; if it no longer exists in the config list, fall back to the first.
   const applyModelSelection = useCallback((config: ModelsConfig) => {
@@ -191,6 +235,14 @@ export function useChat() {
           case "session_ready":
             setIsConnected(true);
             setNeedsConfig(false);
+            // Reset pagination; the server pushes the first transcript page
+            // (session_messages_result replace=true) right after this event.
+            oldestEntryIdRef.current = null;
+            setHasMoreHistory(false);
+            setHistoryLoading(false);
+            // Bind the current canvas to the (possibly new) session once the
+            // server's canvas_restore for this session has been applied.
+            setTimeout(sendCanvasSnapshot, 1500);
             // Fresh session (connect / clear / config save): re-apply the current
             // model choice and refresh the model list in case the config changed.
             if (selectedModelRef.current) {
@@ -199,6 +251,39 @@ export function useChat() {
             }
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: "get_models_config" }));
+            }
+            break;
+
+          case "session_messages_result": {
+            const incoming = (data.messages ?? []) as unknown as ChatMessage[];
+            if (data.replace) {
+              currentAssistantId.current = null;
+              currentHasText.current = false;
+              reusableThinkingId.current = null;
+              setMessages(incoming);
+            } else {
+              setHistoryLoading(false);
+              setMessages((prev) => [...incoming, ...prev]);
+            }
+            oldestEntryIdRef.current = data.oldestEntryId ?? null;
+            setHasMoreHistory(!!data.hasMore);
+            break;
+          }
+
+          case "canvas_restore":
+            useCanvasStore.getState().hydrateSession(
+              (data.nodes ?? []) as Node[],
+              (data.edges ?? []) as Edge[],
+            );
+            break;
+
+          case "session_list_result":
+            setSessions(data.sessions ?? []);
+            break;
+
+          case "session_deleted":
+            if (data.path) {
+              setSessions((prev) => prev.filter((s) => s.path !== data.path));
             }
             break;
 
@@ -400,7 +485,7 @@ export function useChat() {
     };
 
     wsRef.current = ws;
-  }, [sendSetModel, applyModelSelection]);
+  }, [sendSetModel, sendCanvasSnapshot, applyModelSelection]);
 
   useEffect(() => {
     connectRef.current = connect;
@@ -469,6 +554,39 @@ export function useChat() {
     setPendingPermission(null);
     clearMessages();
   }, [clearMessages, finalizeCurrent]);
+
+  const loadMoreHistory = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !oldestEntryIdRef.current) return;
+    setHistoryLoading(true);
+    ws.send(JSON.stringify({ type: "session_messages", beforeEntryId: oldestEntryIdRef.current }));
+  }, []);
+
+  const fetchSessions = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "session_list" }));
+  }, []);
+
+  const openSession = useCallback((path: string) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (isStreamingRef.current) {
+      ws.send(JSON.stringify({ type: "abort" }));
+      isStreamingRef.current = false;
+      setIsStreaming(false);
+      finalizeCurrent();
+    }
+    setPendingPermission(null);
+    clearMessages();
+    ws.send(JSON.stringify({ type: "session_open", path }));
+  }, [clearMessages, finalizeCurrent]);
+
+  const deleteSession = useCallback((path: string) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "session_delete", path }));
+  }, []);
 
   const respondPermission = useCallback((decision: PermissionDecision, editedCommand?: string) => {
     const ws = wsRef.current;
@@ -569,5 +687,5 @@ export function useChat() {
 
   const modelOptions = modelsConfig ? flattenModels(modelsConfig) : [];
 
-  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission, needsConfig, modelsConfig, getModelsConfig, saveModelsConfig, saveApiKey, modelOptions, selectedModel, selectModel, observeInfo };
+  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission, needsConfig, modelsConfig, getModelsConfig, saveModelsConfig, saveApiKey, modelOptions, selectedModel, selectModel, observeInfo, hasMoreHistory, historyLoading, loadMoreHistory, sessions, fetchSessions, openSession, deleteSession };
 }

@@ -44,6 +44,7 @@ interface CanvasStore {
   deleteNodes: (nodeIds: string[]) => void;
   deleteEdges: (edgeIds: string[]) => void;
   clearCanvas: () => void;
+  hydrateSession: (nodes: Node[], edges: Edge[]) => void;
   createManualSQLNode: () => void;
   restoreCanvas: (dataframes: Array<{ name: string; rows?: number; columns?: number; column_info?: Array<{ name: string; nonNull?: number; dtype: string }> }>) => void;
 }
@@ -414,6 +415,11 @@ export const useCanvasStore = create<CanvasStore>()(
       previewPanels: [],
       referencedNodes: [],
     });
+  },
+
+  hydrateSession: (nodes, edges) => {
+    syncCountersFromNodes(nodes);
+    set({ nodes, edges, previewPanels: [], referencedNodes: [] });
   },
 
   createManualSQLNode: () => {

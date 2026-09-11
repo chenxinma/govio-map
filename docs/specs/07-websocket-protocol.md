@@ -149,6 +149,31 @@
 
 字段因 nodeType 而异，详见 06-backend.md 中 GovioNodeCreateEvent 字段表。
 
+## 会话管理协议
+
+会话记录由 pi `SessionManager` 持久化到 `.govio/sessions/<ts>_<id>.jsonl`；画布快照存同名 sidecar `<session-file>.canvas.json`。会话建立/切换后服务端依次推送 `session_ready` → `canvas_restore`（如有）→ `session_messages_result`（replace=true，最近 10 轮）。
+
+### 客户端消息
+
+| 消息 | 参数 | 说明 |
+|---|---|---|
+| `session_list` | - | 拉取历史会话列表 |
+| `session_open` | `{path}` | 切换到指定会话文件（先 abort 当前流式） |
+| `session_messages` | `{beforeEntryId?}` | 分页拉取展示记录；缺省返回最近 10 轮 |
+| `session_delete` | `{path}` | 删除会话（不允许删当前活动会话） |
+| `canvas_save` | `{nodes, edges}` | 画布快照写入当前会话 sidecar（前端 debounce 1s） |
+
+### 服务端消息
+
+| 消息 | 载荷 | 说明 |
+|---|---|---|
+| `session_list_result` | `{sessions:[{id,path,name,preview,messageCount,modified}]}` | 按 modified 倒序 |
+| `session_messages_result` | `{messages, hasMore, oldestEntryId, replace}` | replace=true 整屏替换（恢复/切换），false 为 prepend（加载更早） |
+| `session_deleted` | `{path}` | 删除成功回执 |
+| `canvas_restore` | `{nodes, edges}` | 恢复会话绑定的画布（sidecar 存在时） |
+
+`messages` 元素与前端 `ChatMessage` 同构（id 用 entry id；user 消息的 `REF:` 前缀已解析为 `referencedNodes`，仅还原 label）。
+
 ## 节点队列刷新时机
 
 队列在以下两个事件时刷新：
