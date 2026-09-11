@@ -51,10 +51,8 @@ async function main() {
         if (inMessage) {
           if (event.assistantMessageEvent.type === "text_delta" || event.assistantMessageEvent.type === "thinking_delta") {
             const delta = event.assistantMessageEvent.delta;
-            for (const ch of delta) {
-              content += ch;
-              out.write(ch === '"' ? '\\"' : ch === "\n" ? "\\n" : ch);
-            }
+            content += delta;
+            out.write(JSON.stringify(delta).slice(1, -1));
           }
         }
         break;
