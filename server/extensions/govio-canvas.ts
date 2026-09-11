@@ -468,15 +468,15 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "govio_create_source_table",
     label: "Govio Source Table",
-    description: "Create a source table node on the canvas with column schema information. Call this after querying a PhysicalTable's column structure via govio-cli query.",
+    description: "Create a source table node on the canvas showing the column schema. Each field must carry all three parts from the govio physical-table column query result: column name (column_name), description name (name) and data type (data_type). Call this after querying a PhysicalTable's column structure via govio-cli query.",
     parameters: Type.Object({
       tableName: Type.String({ description: "Physical table name `full_table_name`" }),
       database: Type.Optional(Type.String({ description: "Database name" })),
       fields: Type.Array(
         Type.Object({
-          name: Type.String({ description: "Column name `column`" }),
-          type: Type.String({ description: "Column data type `dtype`" }),
-          description: Type.Optional(Type.String({ description: "Column description or label `name`" })),
+          name: Type.String({ description: "物理列名，取查询结果的 `column_name`" }),
+          type: Type.String({ description: "数据类型，取查询结果的 `data_type`" }),
+          description: Type.Optional(Type.String({ description: "列的描述名称（业务/中文名），取查询结果的 `name` 字段；查询结果中存在时必须传入，节点上与 column_name、data_type 一起展示" })),
           references: Type.Optional(
             Type.Object({
               table: Type.String({ description: "Referenced table name" }),

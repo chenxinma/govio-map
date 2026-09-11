@@ -108,7 +108,7 @@
 |------|------|------|------|
 | tableName | string | 是 | 物理表名 |
 | database | string | 否 | 数据库名 |
-| fields | Array<{name, type, description?, references?}> | 是 | 字段定义 |
+| fields | Array<{name, type, description?, references?}> | 是 | 字段定义：`name`=物理列名(column_name)、`type`=数据类型(data_type)、`description`=描述名称(name)，三者均取自 govio 物理表字段结构查询结果，节点上同时展示 |
 
 执行后调用 `pushGovioNode({nodeType: "sourceTable", ...})`。
 

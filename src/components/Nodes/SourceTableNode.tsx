@@ -27,17 +27,24 @@ function SourceTableNode({ data, id }: NodeProps) {
 
       <div className="border-t border-border-subtle px-4 py-2">
         {visibleFields.map((field) => (
-          <div key={field.name} className="flex items-center justify-between py-[3px] text-xs">
-            <div className="flex items-center gap-1.5">
-              <span className="text-text-primary font-mono">{field.name}</span>
-              {field.isPrimaryKey && (
-                <span className="text-[10px] px-1 py-0.5 rounded bg-brand/10 text-brand font-mono">PK</span>
-              )}
-              {field.isForeignKey && (
-                <span className="text-[10px] px-1 py-0.5 rounded bg-node-source/10 text-node-source font-mono">FK</span>
-              )}
+          <div key={field.name} className="py-[3px] text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-text-primary font-mono truncate" title={field.name}>{field.name}</span>
+                {field.isPrimaryKey && (
+                  <span className="text-[10px] px-1 py-0.5 rounded bg-brand/10 text-brand font-mono flex-shrink-0">PK</span>
+                )}
+                {field.isForeignKey && (
+                  <span className="text-[10px] px-1 py-0.5 rounded bg-node-source/10 text-node-source font-mono flex-shrink-0">FK</span>
+                )}
+              </div>
+              <span className="text-text-dim font-mono text-[11px] flex-shrink-0">{field.type}</span>
             </div>
-            <span className="text-text-dim font-mono text-[11px]">{field.type}</span>
+            {field.description && (
+              <div className="text-text-muted text-[11px] truncate mt-0.5" title={field.description}>
+                {field.description}
+              </div>
+            )}
           </div>
         ))}
         {remaining > 0 && !expanded && (
