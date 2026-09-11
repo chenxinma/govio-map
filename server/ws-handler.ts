@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
-import { getOrCreateSession, resetSession, runGovioCli } from "./agent.js";
+import { getOrCreateSession, resetSession, openSessionFile, runGovioCli } from "./agent.js";
+import { listSessions, deleteSession, saveCanvas, loadCanvas, buildTranscript } from "./session-history.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
 import { permissionManager, type PermissionDecision } from "./permission-manager.js";
 import { isAgentConfigNeeded, completeAgentSetup } from "./backend.js";
@@ -8,7 +9,7 @@ import { readModelsConfig, writeModelsConfig, createDefaultModelsConfig } from "
 import type { ModelsConfig } from "../src/types/models-config.js";
 
 interface WSMessage {
-  type: "prompt" | "steer" | "followUp" | "abort" | "observe_list" | "observe_info" | "clear" | "tool_permission_response" | "permission_accept_all" | "get_models_config" | "save_models_config" | "set_model";
+  type: "prompt" | "steer" | "followUp" | "abort" | "observe_list" | "observe_info" | "clear" | "tool_permission_response" | "permission_accept_all" | "get_models_config" | "save_models_config" | "set_model" | "session_list" | "session_open" | "session_messages" | "session_delete" | "canvas_save";
   content?: string;
   referencedNodes?: Array<{ nodeId: string; label: string; type: string; data?: string }>;
   requestId?: string;
@@ -19,6 +20,10 @@ interface WSMessage {
   apiKey?: string;
   provider?: string;
   modelId?: string;
+  path?: string;
+  beforeEntryId?: string;
+  nodes?: unknown[];
+  edges?: unknown[];
 }
 
 type SessionInstance = Awaited<ReturnType<typeof getOrCreateSession>>;
@@ -140,6 +145,22 @@ export function setupWebSocket(server: import("http").Server) {
     }
   }
 
+  function pushSessionState(ws: WebSocket, session: SessionInstance) {
+    ws.send(JSON.stringify({ type: "session_ready", sessionId: session.sessionId }));
+    try {
+      const file = session.sessionManager.getSessionFile();
+      if (!file) return;
+      const canvas = loadCanvas(file);
+      if (canvas) {
+        ws.send(JSON.stringify({ type: "canvas_restore", nodes: canvas.nodes, edges: canvas.edges }));
+      }
+      const page = buildTranscript(session.sessionManager.getBranch());
+      ws.send(JSON.stringify({ type: "session_messages_result", ...page, replace: true }));
+    } catch (err) {
+      console.error("[ws] pushSessionState error:", err);
+    }
+  }
+
   async function restartAgentSession(): Promise<SessionInstance> {
     if (isAgentConfigNeeded()) {
       await completeAgentSetup();
@@ -236,8 +257,82 @@ export function setupWebSocket(server: import("http").Server) {
         getOrCreateSession().then((newSession) => {
           ctx.session = newSession;
           ctx.unsubscribe = subscribeToSession(newSession, ws);
-          ws.send(JSON.stringify({ type: "session_ready", sessionId: newSession.sessionId }));
+          pushSessionState(ws, newSession);
         });
+        break;
+      }
+      case "session_list": {
+        listSessions()
+          .then((sessions) => ws.send(JSON.stringify({ type: "session_list_result", sessions })))
+          .catch((err) => ws.send(JSON.stringify({ type: "error", message: `session_list failed: ${err}` })));
+        break;
+      }
+      case "session_open": {
+        if (!msg.path) {
+          ws.send(JSON.stringify({ type: "error", message: "session_open requires path" }));
+          break;
+        }
+        const targetPath = msg.path;
+        if (ctx.session.sessionManager.getSessionFile() === targetPath) {
+          pushSessionState(ws, ctx.session);
+          break;
+        }
+        try { ctx.session.abort(); } catch { /* not streaming */ }
+        unsubscribe();
+        permissionManager.clearAll();
+        openSessionFile(targetPath)
+          .then((newSession) => {
+            ctx.session = newSession;
+            ctx.unsubscribe = subscribeToSession(newSession, ws);
+            pushSessionState(ws, newSession);
+          })
+          .catch((err) => {
+            ws.send(JSON.stringify({ type: "error", message: `session_open failed: ${err}` }));
+            // Fall back to a fresh session so the chat stays usable.
+            getOrCreateSession().then((newSession) => {
+              ctx.session = newSession;
+              ctx.unsubscribe = subscribeToSession(newSession, ws);
+              pushSessionState(ws, newSession);
+            });
+          });
+        break;
+      }
+      case "session_messages": {
+        const file = ctx.session.sessionManager.getSessionFile();
+        if (!file) {
+          ws.send(JSON.stringify({ type: "session_messages_result", messages: [], hasMore: false, oldestEntryId: null, replace: false }));
+          break;
+        }
+        const page = buildTranscript(ctx.session.sessionManager.getBranch(), { beforeEntryId: msg.beforeEntryId });
+        ws.send(JSON.stringify({ type: "session_messages_result", ...page, replace: false }));
+        break;
+      }
+      case "session_delete": {
+        if (!msg.path) {
+          ws.send(JSON.stringify({ type: "error", message: "session_delete requires path" }));
+          break;
+        }
+        if (msg.path === ctx.session.sessionManager.getSessionFile()) {
+          ws.send(JSON.stringify({ type: "error", message: "cannot delete the active session" }));
+          break;
+        }
+        try {
+          deleteSession(msg.path);
+          ws.send(JSON.stringify({ type: "session_deleted", path: msg.path }));
+        } catch (err) {
+          ws.send(JSON.stringify({ type: "error", message: `session_delete failed: ${err}` }));
+        }
+        break;
+      }
+      case "canvas_save": {
+        const file = ctx.session.sessionManager.getSessionFile();
+        if (file) {
+          try {
+            saveCanvas(file, msg.nodes ?? [], msg.edges ?? []);
+          } catch (err) {
+            console.error("[ws] canvas_save failed:", err);
+          }
+        }
         break;
       }
       case "tool_permission_response": {
@@ -264,7 +359,7 @@ export function setupWebSocket(server: import("http").Server) {
           restartAgentSession().then((newSession) => {
             ctx.session = newSession;
             ctx.unsubscribe = subscribeToSession(newSession, ws);
-            ws.send(JSON.stringify({ type: "session_ready", sessionId: newSession.sessionId }));
+            pushSessionState(ws, newSession);
           });
         });
         break;
@@ -288,7 +383,7 @@ export function setupWebSocket(server: import("http").Server) {
                 await handleSaveModelsConfig(ws, msg);
                 const session = await restartAgentSession();
                 const unsubscribe = subscribeToSession(session, ws);
-                ws.send(JSON.stringify({ type: "session_ready", sessionId: session.sessionId }));
+                pushSessionState(ws, session);
 
                 const ctx = { session, unsubscribe };
                 ws.removeAllListeners("message");
@@ -315,7 +410,7 @@ export function setupWebSocket(server: import("http").Server) {
 
       const session = await getOrCreateSession();
       const unsubscribe = subscribeToSession(session, ws);
-      ws.send(JSON.stringify({ type: "session_ready", sessionId: session.sessionId }));
+      pushSessionState(ws, session);
 
       const ctx = { session, unsubscribe };
 

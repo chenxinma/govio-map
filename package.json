@@ -1,7 +1,7 @@
 {
   "name": "govio-map",
   "private": true,
-  "version": "0.5.4",
+  "version": "0.5.5",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",
-    "@earendil-works/pi-coding-agent": "^0.83.0",
+    "@earendil-works/pi-coding-agent": "^0.85.1",
     "@xyflow/react": "^12.10.2",
     "dagre": "^0.8.5",
     "dotenv": "^17.4.2",

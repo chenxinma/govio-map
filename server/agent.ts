@@ -3,10 +3,14 @@ import { existsSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import govioCanvasExtension from "./extensions/govio-canvas.js";
 import { ensureGovioCli, downloadGovioSkills } from "./govio-installer.js";
+import { getSessionDir } from "./session-history.js";
 
 
 let session: AgentSession | null = null;
 let resLoader: DefaultResourceLoader | null = null;
+// First session creation after server start resumes the most recent persisted
+// session; every later creation (after /clear, switch, config save) starts a new file.
+let resumedOnce = false;
 
 /**
  * pi-subagents 以 npm 依赖安装在项目 node_modules 中（版本随 package.json 管理）。
@@ -113,10 +117,35 @@ export async function getOrCreateSession(): Promise<AgentSession> {
   if (session) return session;
   if (!resLoader) throw Error("Agent not ready.");
 
+  const cwd = process.cwd();
+  const dir = getSessionDir();
+  const sessionManager = resumedOnce
+    ? SessionManager.create(cwd, dir)
+    : (resumedOnce = true, SessionManager.continueRecent(cwd, dir));
+
   const { session: newSession } = await createAgentSession({
-    cwd: process.cwd(),
+    cwd,
     resourceLoader: resLoader,
-    sessionManager: SessionManager.inMemory(),
+    sessionManager,
+  });
+
+  session = newSession;
+  return session;
+}
+
+/** Switch to a persisted historical session file and continue from it. */
+export async function openSessionFile(path: string): Promise<AgentSession> {
+  if (!resLoader) throw Error("Agent not ready.");
+  resetSession();
+  resumedOnce = true;
+
+  const cwd = process.cwd();
+  const sessionManager = SessionManager.open(path, getSessionDir(), cwd);
+
+  const { session: newSession } = await createAgentSession({
+    cwd,
+    resourceLoader: resLoader,
+    sessionManager,
   });
 
   session = newSession;
