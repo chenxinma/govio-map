@@ -400,8 +400,9 @@ function handleLoadResult(cmd: string, stdout: string): void {
       columns,
       ...(sourceRefs ? { sourceRefs } : {}),
     });
-  } catch {
-    // stdout is not valid JSON
+  } catch (err) {
+    // stdout is not valid JSON — typically caused by `| head` truncating the output.
+    console.warn(`[govio-canvas] handleLoadResult JSON parse failed for '${args.name}': ${err instanceof Error ? err.message : String(err)} (stdout length: ${stdout.length}, first 120 chars: ${JSON.stringify(stdout.slice(0, 120))})`);
   }
 }
 
@@ -419,8 +420,8 @@ function handleCompareResult(cmd: string, stdout: string): void {
       content,
       sourceRefs: [{ label: args.source }, { label: args.target }],
     });
-  } catch {
-    // stdout is not valid JSON
+  } catch (err) {
+    console.warn(`[govio-canvas] handleCompareResult JSON parse failed: ${err instanceof Error ? err.message : String(err)} (stdout length: ${stdout.length})`);
   }
 }
 
@@ -444,8 +445,8 @@ function handleExploreResult(cmd: string, stdout: string): void {
       content,
       sourceRefs,
     });
-  } catch {
-    // stdout is not valid JSON
+  } catch (err) {
+    console.warn(`[govio-canvas] handleExploreResult JSON parse failed: ${err instanceof Error ? err.message : String(err)} (stdout length: ${stdout.length})`);
   }
 }
 
