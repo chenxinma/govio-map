@@ -12,6 +12,17 @@ Tables ──▶ SQL ──▶ DataFrame ──▶ Report
 
 skills/govio/assets = ./.agents/skills/govio/assets
 
+## Govio Skills 同步
+
+Skills 原版在 `D:/work/python/govio/skills/`（由 `package_skills.py` 打包为 `dist/govio-skills.zip`）。`.agents/skills/` 是运行时副本，尚未对外发行，不会自动更新，手动同步：
+
+```bash
+cp -r "D:/work/python/govio/skills/". .agents/skills/
+
+# 校验：无输出即一致
+diff -rq "D:/work/python/govio/skills" .agents/skills
+```
+
 ## Commands
 
 ```bash
