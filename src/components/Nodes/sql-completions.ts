@@ -1,4 +1,4 @@
-import { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
+import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import type { Node } from '@xyflow/react';
 import type { CanvasNodeData } from '../../types';
 
