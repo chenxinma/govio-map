@@ -82,18 +82,18 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
         const info = JSON.parse(infoOutput);
 
         // 创建 canvas 节点
-        if (info && info.columns) {
+        if (info && info.schema) {
           pushGovioNode({
             nodeType: "dataFrame",
             title: name,
             dfName: name,
             sourceName: datasource,
-            totalRows: info.totalRows || 0,
-            totalColumns: info.columns.length,
-            memoryUsage: info.memoryUsage || "unknown",
-            columns: info.columns.map((col: { name: string; nonNull?: number; dtype: string }) => ({
-              name: col.name,
-              nonNull: col.nonNull || 0,
+            totalRows: info.rows || 0,
+            totalColumns: info.columns || info.schema.length,
+            memoryUsage: "unknown",
+            columns: info.schema.map((col: { column: string; dtype: string }) => ({
+              name: col.column,
+              nonNull: 0,
               dtype: col.dtype,
             })),
           });
