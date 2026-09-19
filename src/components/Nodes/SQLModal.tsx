@@ -166,7 +166,7 @@ export default function SQLModal({ sql: initialSql, title, onSave, onClose }: Pr
           <select
             value={selectedDatasource}
             onChange={(e) => setSelectedDatasource(e.target.value)}
-            className="px-2 py-1 text-xs bg-bg-primary border border-border-default rounded focus:outline-none focus:border-brand min-w-[120px]"
+            className="px-2 py-1 text-xs text-text-primary bg-bg-primary border border-border-default rounded focus:outline-none focus:border-brand min-w-[120px] appearance-auto"
           >
             {datasources.length === 0 ? (
               <option value="">加载中...</option>
