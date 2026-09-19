@@ -43,7 +43,7 @@ export async function ensureGovioCli(): Promise<void> {
 
 async function installGovioCli(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn("uv", ["tool", "install", "govio"], {
+    const child = spawn("uv", ["tool", "install", "--compile-bytecode", "--force", "-p", "3.13", "govio"], {
       stdio: "inherit",
       shell: process.platform === "win32",
     });

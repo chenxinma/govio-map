@@ -28,6 +28,7 @@ export default function Header() {
         </span>
         <span className="text-xs text-text-dim font-mono">/</span>
         <span className="text-sm text-text-muted">数据治理画布</span>
+        <span className="text-xs text-text-dim font-mono">v{__APP_VERSION__}</span>
       </div>
       <div className="flex items-center gap-3">
         <button
