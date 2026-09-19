@@ -14,8 +14,10 @@
     "build:electron": "tsc -b && vite build && npm run compile:electron && electron-builder"
   },
   "dependencies": {
+    "@codemirror/lang-sql": "^6.10.0",
     "@dagrejs/dagre": "^3.0.0",
     "@earendil-works/pi-coding-agent": "^0.85.1",
+    "@uiw/react-codemirror": "^4.25.11",
     "@xyflow/react": "^12.10.2",
     "dagre": "^0.8.5",
     "dotenv": "^17.4.2",
