@@ -63,6 +63,7 @@ export default function SQLModal({ sql: initialSql, title, onSave, onClose }: Pr
         return res.json();
       })
       .then((data: InitData) => {
+        console.log('[SQLModal] Loaded datasources:', data.datasources);
         // 数据源列表：memory + 外部数据源
         setDatasources(['memory', ...data.datasources]);
         setDataframes(data.dataframes);
