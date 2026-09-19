@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Play, Loader2, Check, AlertCircle } from 'lucide-react';
+import { X, Play, Loader2, Check, AlertCircle, AlignLeft } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
 import { sql } from '@codemirror/lang-sql';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { format } from 'sql-formatter';
 import { useCanvasStore } from '../../store/canvas-store';
 import { getCompletionSources, createSQLCompletion } from './sql-completions';
 
@@ -120,7 +121,17 @@ export default function SQLModal({ sql: initialSql, title, nodeId, onSave, onClo
     }
   }, [selectedDatasource, value]);
 
-  // ESC 关闭
+  // SQL格式化
+  const handleFormat = useCallback(() => {
+    try {
+      const formatted = format(value, { language: 'sql' });
+      setValue(formatted);
+    } catch (err) {
+      console.error('SQL format error:', err);
+    }
+  }, [value]);
+
+  // ESC 关闭，Ctrl+Enter 保存，Ctrl+Shift+F 格式化
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -128,10 +139,14 @@ export default function SQLModal({ sql: initialSql, title, nodeId, onSave, onClo
         e.preventDefault();
         onSave(value);
       }
+      if (e.key === 'f' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+        e.preventDefault();
+        handleFormat();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, onSave, value]);
+  }, [onClose, onSave, value, handleFormat]);
 
 
 
@@ -152,6 +167,19 @@ export default function SQLModal({ sql: initialSql, title, nodeId, onSave, onClo
             className="text-text-muted hover:text-text-primary transition-colors p-1 rounded hover:bg-bg-surface"
           >
             <X size={16} />
+          </button>
+        </div>
+
+        {/* 编辑器工具栏 */}
+        <div className="flex items-center justify-between px-4 py-1.5 border-b border-border-subtle bg-bg-surface">
+          <span className="text-[10px] text-text-dim font-mono uppercase tracking-wider">SQL Editor</span>
+          <button
+            onClick={handleFormat}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-text-muted hover:text-text-primary hover:bg-bg-card rounded transition-colors"
+            title="格式化 SQL (Ctrl+Shift+F)"
+          >
+            <AlignLeft size={12} />
+            <span>Format</span>
           </button>
         </div>
 
