@@ -119,11 +119,7 @@ export default function SQLModal({ sql: initialSql, title, onSave, onClose }: Pr
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, onSave, value]);
 
-  // 数据源选项说明
-  const getDatasourceLabel = (ds: string) => {
-    if (ds === 'memory') return `memory (${dataframes.length}个DataFrame)`;
-    return ds;
-  };
+
 
   return createPortal(
     <div
@@ -172,7 +168,7 @@ export default function SQLModal({ sql: initialSql, title, onSave, onClose }: Pr
             className="px-2 py-1 text-xs bg-bg-primary border border-border-default rounded focus:outline-none focus:border-brand"
           >
             {datasources.map((ds) => (
-              <option key={ds} value={ds}>{getDatasourceLabel(ds)}</option>
+              <option key={ds} value={ds}>{ds}</option>
             ))}
           </select>
           <span className="text-[10px] text-text-dim">
