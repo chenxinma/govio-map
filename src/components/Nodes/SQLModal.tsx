@@ -166,11 +166,15 @@ export default function SQLModal({ sql: initialSql, title, onSave, onClose }: Pr
           <select
             value={selectedDatasource}
             onChange={(e) => setSelectedDatasource(e.target.value)}
-            className="px-2 py-1 text-xs bg-bg-primary border border-border-default rounded focus:outline-none focus:border-brand"
+            className="px-2 py-1 text-xs bg-bg-primary border border-border-default rounded focus:outline-none focus:border-brand min-w-[120px]"
           >
-            {datasources.map((ds) => (
-              <option key={ds} value={ds}>{ds}</option>
-            ))}
+            {datasources.length === 0 ? (
+              <option value="">加载中...</option>
+            ) : (
+              datasources.map((ds) => (
+                <option key={ds} value={ds}>{ds}</option>
+              ))
+            )}
           </select>
           <span className="text-[10px] text-text-dim">
             {selectedDatasource === 'memory' ? '使用已加载的DataFrame' : '从数据库抽取'}
