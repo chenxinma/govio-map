@@ -5,6 +5,20 @@ import { asyncBufferFromFile, parquetReadObjects } from "hyparquet";
 import type { AsyncBuffer } from "hyparquet/src/types.js";
 import { runGovioCli } from "./agent.js";
 import { pushGovioNode, emitFlushed, flushGovioNodes } from "./govio-node-queue.js";
+import { execFile } from "child_process";
+
+function runGovioCliWithArgs(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile("govio-cli", args, { encoding: "utf-8", timeout: 30000 }, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`[govio-cli] args=${JSON.stringify(args)} failed:`, stderr || error.message);
+        reject(error);
+      } else {
+        resolve(stdout);
+      }
+    });
+  });
+}
 
 const PARQUET_DIR = ".govio/observe/dataframes";
 
@@ -56,17 +70,15 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
           return;
         }
 
-        // 构建 observe load 命令：memory 使用 --memory，其他使用 --datasource
-        const escapedSql = sql.replace(/"/g, '\\"');
-        const loadCmd = datasource === 'memory'
-          ? `observe load --memory --name "${name}" --sql "${escapedSql}"`
-          : `observe load --datasource "${datasource}" --name "${name}" --sql "${escapedSql}"`;
-        const loadOutput = await runGovioCli(loadCmd, true);
+        // 使用数组参数避免SQL中的空格被错误分割
+        const loadArgs = datasource === 'memory'
+          ? ['observe', 'load', '--memory', '--name', name, '--sql', sql]
+          : ['observe', 'load', '--datasource', datasource, '--name', name, '--sql', sql];
+        const loadOutput = await runGovioCliWithArgs(loadArgs);
         const loadResult = JSON.parse(loadOutput);
 
         // 获取 DataFrame 信息
-        const infoCmd = `observe info --name ${name} --rows 0`;
-        const infoOutput = await runGovioCli(infoCmd, true);
+        const infoOutput = await runGovioCli(`observe info --name ${name} --rows 0`, true);
         const info = JSON.parse(infoOutput);
 
         // 创建 canvas 节点
