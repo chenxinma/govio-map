@@ -10,6 +10,12 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), wsPlugin()],
   server: {
     port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5174',
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     chunkSizeWarningLimit: 700,
