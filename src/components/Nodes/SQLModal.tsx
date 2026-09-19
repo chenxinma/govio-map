@@ -11,7 +11,6 @@ import { getCompletionSources, createSQLCompletion } from './sql-completions';
 interface Props {
   sql: string;
   title: string;
-  nodeId: string;
   onSave: (sql: string) => void;
   onClose: () => void;
   onExecuteSuccess?: (dfName: string) => void;
@@ -33,7 +32,7 @@ function generateDfName(sql: string): string {
   return `df_${Math.abs(hash).toString(36)}`;
 }
 
-export default function SQLModal({ sql: initialSql, title, nodeId, onSave, onClose, onExecuteSuccess }: Props) {
+export default function SQLModal({ sql: initialSql, title, onSave, onClose, onExecuteSuccess }: Props) {
   const nodes = useCanvasStore((s) => s.nodes);
   const [value, setValue] = useState(initialSql);
   const [datasources, setDatasources] = useState<string[]>(['memory']);
@@ -119,7 +118,7 @@ export default function SQLModal({ sql: initialSql, title, nodeId, onSave, onClo
     } finally {
       setIsExecuting(false);
     }
-  }, [selectedDatasource, value]);
+  }, [selectedDatasource, value, onExecuteSuccess]);
 
   // SQL格式化
   const handleFormat = useCallback(() => {

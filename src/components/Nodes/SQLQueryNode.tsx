@@ -41,7 +41,6 @@ function SQLNode({ data, id }: NodeProps) {
   const addReference = useCanvasStore((s) => s.addReference);
   const deleteNodes = useCanvasStore((s) => s.deleteNodes);
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
-  const edges = useCanvasStore((s) => s.edges);
   const [isEditing, setIsEditing] = useState(nodeData.sql === '');
   const [editValue, setEditValue] = useState(nodeData.sql);
   const [showModal, setShowModal] = useState(false);
@@ -168,7 +167,6 @@ function SQLNode({ data, id }: NodeProps) {
         <SQLModal
           sql={nodeData.sql}
           title={nodeData.title}
-          nodeId={id}
           onSave={(newSql) => {
             updateNodeData(id, { sql: newSql });
             setShowModal(false);
