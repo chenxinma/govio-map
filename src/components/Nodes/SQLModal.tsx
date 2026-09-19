@@ -55,26 +55,32 @@ export default function SQLModal({ sql: initialSql, title, onSave, onClose }: Pr
 
   // 初始化：加载数据源和DataFrame列表
   useEffect(() => {
+    console.log('[SQLModal] useEffect running...');
     const controller = new AbortController();
     
     fetch('/api/sql-editor-init', { signal: controller.signal })
       .then((res) => {
+        console.log('[SQLModal] Response received, status:', res.status);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
       })
       .then((data: InitData) => {
-        console.log('[SQLModal] Loaded datasources:', data.datasources);
+        console.log('[SQLModal] Data parsed:', data);
+        console.log('[SQLModal] Setting datasources to:', ['memory', ...data.datasources]);
         // 数据源列表：memory + 外部数据源
         setDatasources(['memory', ...data.datasources]);
         setDataframes(data.dataframes);
       })
       .catch((err) => {
         if (err.name !== 'AbortError') {
-          console.error('Failed to load init data:', err);
+          console.error('[SQLModal] Failed to load init data:', err);
         }
       });
     
-    return () => controller.abort();
+    return () => {
+      console.log('[SQLModal] Cleanup, aborting fetch');
+      controller.abort();
+    };
   }, []);
 
   // 执行SQL
