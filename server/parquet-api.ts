@@ -30,7 +30,9 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
         runGovioCli("observe info --df", true),
       ]);
       const datasources = JSON.parse(datasourcesOutput);
-      const dataframes = JSON.parse(dataframesOutput);
+      const dataframesRaw = JSON.parse(dataframesOutput);
+      // 提取DataFrame名称列表
+      const dataframes = dataframesRaw.dataframes?.map((df: { name: string }) => df.name) || [];
       res.writeHead(200, { "Content-Type": "application/json", ...CORS_HEADERS });
       res.end(JSON.stringify({ datasources, dataframes }));
     } catch (err) {
