@@ -70,7 +70,6 @@ export default function SQLModal({ sql: initialSql, title, onSave, onClose }: Pr
               lineNumbers: true,
               highlightActiveLine: true,
               highlightSelectionMatches: true,
-              autocompletion: true,
             }}
           />
         </div>

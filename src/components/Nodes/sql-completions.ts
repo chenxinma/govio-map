@@ -1,4 +1,5 @@
-import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
+import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
+import { autocompletion } from '@codemirror/autocomplete';
 import type { Node } from '@xyflow/react';
 import type { CanvasNodeData } from '../../types';
 
@@ -20,10 +21,7 @@ export function getCompletionSources(nodes: Node[]): Map<string, string[]> {
   return sources;
 }
 
-/**
- * 创建自定义SQL补全扩展
- */
-export function createSQLCompletion(sources: Map<string, string[]>) {
+function completionsFromSources(sources: Map<string, string[]>) {
   return (context: CompletionContext): CompletionResult | null => {
     // 匹配当前输入的单词
     const word = context.matchBefore(/[\w.]+/);
@@ -50,7 +48,7 @@ export function createSQLCompletion(sources: Map<string, string[]>) {
     }
 
     // 否则补全表名
-    const tableOptions: Completion[] = [];
+    const tableOptions: { label: string; type: string; boost: number; detail?: string }[] = [];
     sources.forEach((columns, tableName) => {
       if (tableName.toLowerCase().startsWith(text.toLowerCase())) {
         tableOptions.push({
@@ -71,4 +69,13 @@ export function createSQLCompletion(sources: Map<string, string[]>) {
 
     return null;
   };
+}
+
+/**
+ * 创建自定义SQL补全扩展
+ */
+export function createSQLCompletion(sources: Map<string, string[]>) {
+  return autocompletion({
+    override: [completionsFromSources(sources)],
+  });
 }
