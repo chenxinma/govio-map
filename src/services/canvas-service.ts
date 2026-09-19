@@ -17,18 +17,11 @@ export interface CanvasEvent {
   database?: string;
   fields?: Array<{ name: string; type: string; nullable: boolean; description?: string; isPrimaryKey?: boolean; isForeignKey?: boolean; references?: { table: string; field: string } }>;
   referencedNodes?: Array<{ nodeId: string; label: string }>;
-  // chart
+  // chart (Plotly figure)
   config?: {
-    type: string;
-    data: {
-      labels?: string[];
-      datasets: Array<{
-        label: string;
-        data: number[] | Array<{ x: number; y: number }>;
-        [key: string]: unknown;
-      }>;
-    };
-    options?: Record<string, unknown>;
+    type?: string;
+    data: Array<Record<string, unknown>>;
+    layout?: Record<string, unknown>;
   };
   sourceDf?: string;
 }

@@ -193,3 +193,43 @@ REF:[{"billing": "{\"full_table_name\":\"billing\",...}"},{"df_query_1": "df_que
 ```
 
 服务端 `setCurrentReferencedNodes()` 存储引用，后续 `pushGovioNode()` 自动附加到节点事件中，用于前端自动创建连线。
+
+## 权限审批协议
+
+当 Agent 执行 `govio-cli observe load -o`（带输出标志）时，扩展拦截并请求用户确认。
+
+### 客户端消息
+
+| 消息 | 参数 | 说明 |
+|---|---|---|
+| `tool_permission_response` | `{requestId, decision, editedCommand?, reason?}` | allow/deny/edit |
+| `permission_accept_all` | - | 同意当前请求并标记后续全部放行 |
+
+### 服务端消息
+
+| 消息 | 载荷 | 说明 |
+|---|---|---|
+| `tool_permission_request` | `{requestId, command}` | 需要审批的 bash 命令 |
+
+超时 5 分钟自动 deny。
+
+## 模型配置协议
+
+### 客户端消息
+
+| 消息 | 参数 | 说明 |
+|---|---|---|
+| `get_models_config` | - | 拉取 models.json |
+| `save_models_config` | `{config}` 或 `{apiKey}` | 保存配置或首次设置 API key |
+| `set_model` | `{provider, modelId}` | 切换当前会话使用的模型 |
+
+### 服务端消息
+
+| 消息 | 载荷 | 说明 |
+|---|---|---|
+| `models_config` | `{config}` | ModelsConfig 对象 |
+| `config_saved` | - | 配置保存成功回执 |
+| `config_required` | - | 首次启动无配置，需前端引导设置 |
+| `model_set` | `{provider, modelId}` | 模型切换成功回执 |
+
+首次启动检测到无 models.json 时，服务端发送 `config_required`，前端显示配置弹窗。配置保存后服务端重启 Agent 会话并推送 `session_ready`。

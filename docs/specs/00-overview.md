@@ -22,36 +22,44 @@
 | 布局 | @dagrejs/dagre |
 | 样式 | Tailwind CSS 4 |
 | 图标 | Lucide React |
+| 图表 | Plotly.js (plotly.js-dist-min) |
 | AI Agent | @earendil-works/pi-coding-agent |
+| 子 Agent | pi-subagents (项目 npm 依赖) |
 | 通信 | WebSocket (ws) |
 | 数据预览 | hyparquet (parquet 文件读取) |
+| 桌面端 | Electron |
 
 ## 模块划分
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  Layout (Header + 三栏布局)                       │
+│  Layout (Header + 两栏布局)                       │
 │  ┌──────────────┬──┬───────────┐                │
 │  │  Canvas      │R │  Chat     │                │
 │  │  (ReactFlow) │e │  Panel    │                │
 │  │              │s │  (WS)     │                │
 │  │  Nodes       │i │  Input    │                │
 │  │  Toolbar     │z │  Messages │                │
-│  │  Preview     │e │           │                │
+│  │  Preview     │e │  Model    │                │
+│  │  FindBar     │  │  Sessions │                │
 │  └──────────────┴──┴───────────┘                │
 └─────────────────────────────────────────────────┘
 
-前端 Store:  canvas-store (Zustand)
+前端 Store:  canvas-store (Zustand, persist → localStorage)
 前端 Hooks:  useChat, useChatContext, useCommands
 前端服务:    canvas-service, mock-ai
 前端工具:    layout (dagre)
 
-后端 Server:  Vite Plugin (独立端口)
+后端 Server:  Vite Plugin / Electron main (独立端口)
 后端 WebSocket: ws-handler (双端点: /ws, /canvas)
-后端 Agent:   agent.ts (pi-coding-agent session)
-后端扩展:     govio-canvas.ts (工具注册 + 事件拦截)
+后端 Agent:   agent.ts (pi-coding-agent session, 持久化会话)
+后端扩展:     govio-canvas.ts (工具注册 + 事件拦截 + treemap 解析)
 后端队列:     govio-node-queue.ts (批量节点事件)
 后端 API:     parquet-api.ts (/api/preview)
+后端会话:     session-history.ts (JSONL 持久化 + 画布 sidecar)
+后端模型:     models-config.ts (多模型配置管理)
+后端权限:     permission-manager.ts (observe load 权限审批)
+后端安装:     govio-installer.ts (govio-cli + skills 自动安装)
 ```
 
 ## 数据流向
@@ -106,9 +114,10 @@ npm run dev
 
 ## 设计规范
 
-暗色主题，基于 Supabase 设计系统：
+浅色 "Green Deck" 主题（详见 `docs/DESIGN.md`）：
 
-- 背景：`#171717`，最深 `#0f0f0f`
-- 品牌色：`#3ecf8e`（绿色，仅用于标识和连线）
-- 层级区分通过边框颜色（`#242424` → `#2e2e2e` → `#363636`），不用 box-shadow
-- 字重仅用 400（正文）和 500（交互元素）
+- 背景：`#f5f5f5`（画布），`#ffffff`（卡片）
+- 品牌色：`#1DB954`（绿色，用于连线、Handle、强调）
+- 层级区分通过表面亮度（浅色 = 高层）+ 边框颜色
+- 字体：DM Sans（正文）+ JetBrains Mono（代码/数据）
+- 详细 token 定义见 `src/index.css` `@theme` 块

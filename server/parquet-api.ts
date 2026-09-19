@@ -40,7 +40,7 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
   }
 
   // console.log("Read data: " + parquetPath);
-  let responsed = false;
+  let responded = false;
   try {
     const file: AsyncBuffer = await asyncBufferFromFile(parquetPath)
     const data = await parquetReadObjects({
@@ -63,10 +63,10 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
       "Content-Type": "application/json",
       "Content-Length": contentLength,
        ...CORS_HEADERS });
-    responsed = true;
+    responded = true;
     res.end(jsonString);
   } catch (err) {
-    if (!responsed) {
+    if (!responded) {
       res.writeHead(500, { "Content-Type": "application/json", ...CORS_HEADERS });
       const errorMessage = err instanceof Error ? err.message : String(err);
       res.end(JSON.stringify({ error: 'Internal Server Error', message: errorMessage }));

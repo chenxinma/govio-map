@@ -2,7 +2,7 @@
 
 ## 概述
 
-节点是画布上的核心可视化单元。共 4 种类型，遵循从左到右的数据血缘方向：`SourceTable -> SQL -> DataFrame -> Report`。
+节点是画布上的核心可视化单元。共 5 种类型，遵循从左到右的数据血缘方向：`SourceTable -> SQL -> DataFrame -> Report/Chart`。
 
 ## 文件结构
 
@@ -13,6 +13,9 @@
 | `src/components/Nodes/SQLQueryNode.tsx` | SQL 查询节点 |
 | `src/components/Nodes/DataFrameNode.tsx` | DataFrame 节点 |
 | `src/components/Nodes/ReportNode.tsx` | 报告节点 |
+| `src/components/Nodes/ChartNode.tsx` | Plotly 图表节点 |
+| `src/components/Nodes/ChartModal.tsx` | 图表放大弹窗 |
+| `src/components/Nodes/ChartErrorBoundary.tsx` | 图表错误边界 |
 | `src/types/index.ts` | 所有节点数据类型定义 |
 
 ## 节点类型注册
@@ -23,6 +26,7 @@ const nodeTypes: NodeTypes = {
   sqlQuery: SQLQueryNode,
   dataFrame: DataFrameNode,
   report: ReportNode,
+  chart: ChartNode,
 };
 ```
 
@@ -98,7 +102,7 @@ type DataFrameColumn = {
   dtype: string;
 }
 
-type CanvasNodeData = SourceTableNodeData | SQLQueryNodeData | DataFrameNodeData | ReportNodeData;
+type CanvasNodeData = SourceTableNodeData | SQLQueryNodeData | DataFrameNodeData | ReportNodeData | ChartNodeData;
 ```
 
 ## 节点视觉规范
@@ -121,6 +125,7 @@ type CanvasNodeData = SourceTableNodeData | SQLQueryNodeData | DataFrameNodeData
 | DataFrame | node-df (hsl 25, 橙色) | Table2 | hsl(25, 75%, 55%) |
 | Report (diff) | amber-400 (琥珀色) | GitCompare | hsl(270, 60%, 70%) |
 | Report (correlation) | violet-400 (紫色) | TrendingUp | hsl(270, 60%, 70%) |
+| Chart | node-chart (hsl 200, 蓝色) | BarChart3 | hsl(200, 70%, 55%) |
 
 ## SourceTableNode 详情
 
@@ -187,11 +192,49 @@ ReportNode 实现了轻量级 Markdown 解析（`parseMarkdown`），支持：
 
 不使用 react-markdown，而是自定义解析以保持卡片内紧凑渲染。
 
+## ChartNode 详情
+
+### 布局
+
+1. **头部**：蓝色左边框，BarChart3 图标 + 标题，sourceDf 标签 + 图表类型标签
+2. **图表区域**：260px 高度 Plotly 渲染，点击放大弹出 ChartModal 全屏查看
+3. **操作栏**：引用按钮 + 放大按钮 + 删除按钮
+
+### 图表类型
+
+通过 `govio_show_chart` 工具创建，支持以下 Plotly trace 类型：
+
+| Agent 传入类型 | 实际 Plotly 类型 | 说明 |
+|---------------|-----------------|------|
+| bar | bar | 柱状图 |
+| line | scatter (mode=lines+markers) | 折线图 |
+| scatter | scatter (mode=markers) | 散点图 |
+| pie | pie | 饼图 |
+| doughnut | pie (hole=0.6) | 环形图 |
+| treemap | treemap | 树状图（服务端从 ObserveStore 解析数据） |
+
+### Treemap 数据解析
+
+treemap trace 使用 `treeDf` 引用 ObserveStore 中的 DataFrame，服务端自动：
+1. 通过 `govio-cli observe info --name <treeDf> --rows 2000` 获取数据
+2. 调用 `buildTreemapHierarchy()` 按 `groups` 路径聚合 `key` 权重
+3. 生成 Plotly 所需的 `ids/labels/parents/values` 层级结构
+4. 替换 trace 中的 `treeDf/key/groups` 为内联数据
+
+### 图表布局优化
+
+服务端 `resolveChartConfig` 自动设置紧凑 margin（l:45, r:15, t:25, b:35），适配 420px 宽节点。
+
+### 错误处理
+
+ChartNode 使用 ChartErrorBoundary 包裹，渲染失败时显示 "图表配置错误" 提示。ChartModal 同样有错误边界保护。
+
 ## 节点创建来源
 
 | 节点类型 | 创建方式 |
-|---------|---------|
+|---------|----------|
 | SourceTable | 1. 从 Sidebar 拖拽 2. AI 调用 `govio_create_source_table` 工具 |
 | SQLQuery | 1. AI 回复中提取 SQL 代码块 2. 工具栏手动创建 |
-| DataFrame | AI 执行 `govio-cli observe load` 命令后自动创建 |
+| DataFrame | 1. AI 执行 `govio-cli observe load` 后自动创建 2. AI 调用 `govio_show_dataframe` 工具 |
 | Report | AI 执行 `govio-cli observe compare/explore` 后自动创建 |
+| Chart | AI 调用 `govio_show_chart` 工具 |
