@@ -22,13 +22,17 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
     return true;
   }
 
-  // GET /api/datasources - 获取数据源列表
-  if (req.url?.startsWith("/api/datasources") && req.method === "GET") {
+  // GET /api/sql-editor-init - 获取数据源和DataFrame列表
+  if (req.url?.startsWith("/api/sql-editor-init") && req.method === "GET") {
     try {
-      const output = await runGovioCli("observe info --datasource", true);
-      const datasources = JSON.parse(output);
+      const [datasourcesOutput, dataframesOutput] = await Promise.all([
+        runGovioCli("observe info --datasource", true),
+        runGovioCli("observe info --df", true),
+      ]);
+      const datasources = JSON.parse(datasourcesOutput);
+      const dataframes = JSON.parse(dataframesOutput);
       res.writeHead(200, { "Content-Type": "application/json", ...CORS_HEADERS });
-      res.end(JSON.stringify({ datasources }));
+      res.end(JSON.stringify({ datasources, dataframes }));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       res.writeHead(500, { "Content-Type": "application/json", ...CORS_HEADERS });
@@ -50,8 +54,11 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
           return;
         }
 
-        // 执行 observe load 命令
-        const loadCmd = `observe load --datasource "${datasource}" --name "${name}" --sql "${sql.replace(/"/g, '\\"')}"`;
+        // 构建 observe load 命令：memory 使用 --memory，其他使用 --datasource
+        const escapedSql = sql.replace(/"/g, '\\"');
+        const loadCmd = datasource === 'memory'
+          ? `observe load --memory --name "${name}" --sql "${escapedSql}"`
+          : `observe load --datasource "${datasource}" --name "${name}" --sql "${escapedSql}"`;
         const loadOutput = await runGovioCli(loadCmd, true);
         const loadResult = JSON.parse(loadOutput);
 

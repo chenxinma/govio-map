@@ -14,38 +14,61 @@ interface Props {
   onClose: () => void;
 }
 
+interface InitData {
+  datasources: string[];
+  dataframes: string[];
+}
+
+// 自动生成DataFrame名称：基于SQL的hash
+function generateDfName(sql: string): string {
+  let hash = 0;
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // 转换为32位整数
+  }
+  return `df_${Math.abs(hash).toString(36)}`;
+}
+
 export default function SQLModal({ sql: initialSql, title, onSave, onClose }: Props) {
   const nodes = useCanvasStore((s) => s.nodes);
   const [value, setValue] = useState(initialSql);
   const [datasources, setDatasources] = useState<string[]>([]);
-  const [selectedDatasource, setSelectedDatasource] = useState('');
-  const [dfName, setDfName] = useState('');
+  const [dataframes, setDataframes] = useState<string[]>([]);
+  const [selectedDatasource, setSelectedDatasource] = useState('memory');
   const [isExecuting, setIsExecuting] = useState(false);
   const [executeResult, setExecuteResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // 从画布节点提取补全源
   const completionSources = useMemo(() => getCompletionSources(nodes), [nodes]);
-  const customCompletion = useMemo(() => createSQLCompletion(completionSources), [completionSources]);
+  // 合并API返回的dataframes（无列信息）
+  const allSources = useMemo(() => {
+    const merged = new Map(completionSources);
+    dataframes.forEach((df) => {
+      if (!merged.has(df)) {
+        merged.set(df, []); // 只有表名，无列信息
+      }
+    });
+    return merged;
+  }, [completionSources, dataframes]);
+  const customCompletion = useMemo(() => createSQLCompletion(allSources), [allSources]);
 
-  // 加载数据源列表
+  // 初始化：加载数据源和DataFrame列表
   useEffect(() => {
-    fetch('/api/datasources')
+    fetch('/api/sql-editor-init')
       .then((res) => res.json())
-      .then((data) => {
-        if (data.datasources) {
-          setDatasources(data.datasources);
-          if (data.datasources.length > 0) {
-            setSelectedDatasource(data.datasources[0]);
-          }
-        }
+      .then((data: InitData) => {
+        // 数据源列表：memory + 外部数据源
+        setDatasources(['memory', ...data.datasources]);
+        setDataframes(data.dataframes);
       })
-      .catch((err) => console.error('Failed to load datasources:', err));
+      .catch((err) => console.error('Failed to load init data:', err));
   }, []);
 
   // 执行SQL
   const handleExecute = useCallback(async () => {
     if (!selectedDatasource || !value.trim()) return;
-    const name = dfName.trim() || `df_${Date.now()}`;
+    const name = generateDfName(value.trim());
     setIsExecuting(true);
     setExecuteResult(null);
 
@@ -70,7 +93,7 @@ export default function SQLModal({ sql: initialSql, title, onSave, onClose }: Pr
     } finally {
       setIsExecuting(false);
     }
-  }, [selectedDatasource, value, dfName]);
+  }, [selectedDatasource, value]);
 
   // ESC 关闭
   useEffect(() => {
@@ -84,6 +107,12 @@ export default function SQLModal({ sql: initialSql, title, onSave, onClose }: Pr
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, onSave, value]);
+
+  // 数据源选项说明
+  const getDatasourceLabel = (ds: string) => {
+    if (ds === 'memory') return `memory (${dataframes.length}个DataFrame)`;
+    return ds;
+  };
 
   return createPortal(
     <div
@@ -131,18 +160,14 @@ export default function SQLModal({ sql: initialSql, title, onSave, onClose }: Pr
             onChange={(e) => setSelectedDatasource(e.target.value)}
             className="px-2 py-1 text-xs bg-bg-primary border border-border-default rounded focus:outline-none focus:border-brand"
           >
-            <option value="">选择数据源</option>
             {datasources.map((ds) => (
-              <option key={ds} value={ds}>{ds}</option>
+              <option key={ds} value={ds}>{getDatasourceLabel(ds)}</option>
             ))}
           </select>
-          <input
-            type="text"
-            value={dfName}
-            onChange={(e) => setDfName(e.target.value)}
-            placeholder="DataFrame名称（可选）"
-            className="px-2 py-1 text-xs bg-bg-primary border border-border-default rounded focus:outline-none focus:border-brand flex-1"
-          />
+          <span className="text-[10px] text-text-dim">
+            {selectedDatasource === 'memory' ? '使用已加载的DataFrame' : '从数据库抽取'}
+          </span>
+          <div className="flex-1" />
           <button
             onClick={handleExecute}
             disabled={!selectedDatasource || !value.trim() || isExecuting}
