@@ -10,8 +10,10 @@ import { getCompletionSources, createSQLCompletion } from './sql-completions';
 interface Props {
   sql: string;
   title: string;
+  nodeId: string;
   onSave: (sql: string) => void;
   onClose: () => void;
+  onExecuteSuccess?: (dfName: string) => void;
 }
 
 interface InitData {
@@ -30,7 +32,7 @@ function generateDfName(sql: string): string {
   return `df_${Math.abs(hash).toString(36)}`;
 }
 
-export default function SQLModal({ sql: initialSql, title, onSave, onClose }: Props) {
+export default function SQLModal({ sql: initialSql, title, nodeId, onSave, onClose, onExecuteSuccess }: Props) {
   const nodes = useCanvasStore((s) => s.nodes);
   const [value, setValue] = useState(initialSql);
   const [datasources, setDatasources] = useState<string[]>(['memory']);
@@ -105,6 +107,11 @@ export default function SQLModal({ sql: initialSql, title, onSave, onClose }: Pr
       if (!res.ok) throw new Error(data.error || '执行失败');
 
       setExecuteResult({ type: 'success', message: `DataFrame "${name}" 加载成功，节点已创建` });
+      
+      // 通知父节点执行成功
+      if (onExecuteSuccess) {
+        onExecuteSuccess(name);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setExecuteResult({ type: 'error', message });

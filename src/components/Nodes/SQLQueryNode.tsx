@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useRef, useEffect } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type NodeProps, type Edge } from '@xyflow/react';
 import { Maximize2, Quote, Trash2 } from 'lucide-react';
 import type { SQLQueryNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
@@ -41,6 +41,7 @@ function SQLNode({ data, id }: NodeProps) {
   const addReference = useCanvasStore((s) => s.addReference);
   const deleteNodes = useCanvasStore((s) => s.deleteNodes);
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  const edges = useCanvasStore((s) => s.edges);
   const [isEditing, setIsEditing] = useState(nodeData.sql === '');
   const [editValue, setEditValue] = useState(nodeData.sql);
   const [showModal, setShowModal] = useState(false);
@@ -167,11 +168,31 @@ function SQLNode({ data, id }: NodeProps) {
         <SQLModal
           sql={nodeData.sql}
           title={nodeData.title}
+          nodeId={id}
           onSave={(newSql) => {
             updateNodeData(id, { sql: newSql });
             setShowModal(false);
           }}
           onClose={() => setShowModal(false)}
+          onExecuteSuccess={(dfName) => {
+            // 查找新创建的DataFrame节点并添加边
+            const nodes = useCanvasStore.getState().nodes;
+            const dfNode = nodes.find((n) => {
+              const d = n.data as unknown as { dfName?: string };
+              return d.dfName === dfName;
+            });
+            if (dfNode) {
+              const newEdge: Edge = {
+                id: `edge-${id}-${dfNode.id}`,
+                source: id,
+                target: dfNode.id,
+                type: 'default',
+              };
+              useCanvasStore.setState((state) => ({
+                edges: [...state.edges, newEdge],
+              }));
+            }
+          }}
         />
       )}
     </div>
