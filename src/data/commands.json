@@ -1,5 +1,6 @@
 [
   { "name": "sql", "description": "生成SELECT SQL语句", "prompt": "请生成一个SELECT SQL语句" },
   { "name": "analyze", "description": "分析数据质量", "prompt": "请分析当前数据的质量" },
-  { "name": "release-df", "description": "释放所有Dataframe", "prompt": "请释放所有Dataframe"}
+  { "name": "release-df", "description": "释放所有Dataframe", "prompt": "请释放所有Dataframe" },
+  { "name": "导入元数据", "description": "从数据源导入表结构到知识图谱", "prompt": "/导入元数据 数据源: schemas:" }
 ]
