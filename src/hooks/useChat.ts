@@ -360,11 +360,13 @@ export function useChat() {
             const toolStartId = currentAssistantId.current;
             if (toolStartId) {
               currentHasContent.current = true;
+              // Tool events arrive after message_end; the bubble is no longer thinking-only.
+              reusableThinkingId.current = null;
               const toolName = data.toolName || "unknown";
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === toolStartId
-                    ? { ...m, tools: [...(m.tools || []), { toolName, success: undefined }] }
+                    ? { ...m, isStreaming: true, tools: [...(m.tools || []), { toolName, success: undefined }] }
                     : m
                 )
               );
@@ -402,8 +404,9 @@ export function useChat() {
               // A thinking-only bubble (no body text or tool calls) stays reusable
               // so the next message_start merges into it. Once body text or tools were
               // emitted the bubble is complete and the next message opens a fresh one.
+              // NOTE: keep currentAssistantId set — tool_execution_start/end arrive
+              // AFTER message_end and must still attach to this bubble.
               reusableThinkingId.current = currentHasContent.current ? null : id;
-              currentAssistantId.current = null;
               currentHasContent.current = false;
             }
             break;
