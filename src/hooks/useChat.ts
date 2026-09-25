@@ -6,6 +6,7 @@ import { useCanvasStore } from "../store/canvas-store";
 
 export interface ToolCall {
   toolName: string;
+  toolCallId?: string;
   success?: boolean;
 }
 
@@ -73,6 +74,7 @@ interface WSEvent {
   type: string;
   content?: string;
   toolName?: string;
+  toolCallId?: string;
   success?: boolean;
   dataframes?: unknown[];
   requestId?: string;
@@ -366,7 +368,7 @@ export function useChat() {
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === toolStartId
-                    ? { ...m, isStreaming: true, tools: [...(m.tools || []), { toolName, success: undefined }] }
+                    ? { ...m, isStreaming: true, tools: [...(m.tools || []), { toolName, toolCallId: data.toolCallId, success: undefined }] }
                     : m
                 )
               );
@@ -382,9 +384,13 @@ export function useChat() {
                 prev.map((m) => {
                   if (m.id !== toolEndId) return m;
                   const tools = [...(m.tools || [])];
-                  const lastTool = tools.length - 1;
-                  if (lastTool >= 0) {
-                    tools[lastTool] = { ...tools[lastTool], success };
+                  // Match by toolCallId: parallel tool calls end out of order,
+                  // so "last pill" is wrong whenever more than one runs at once.
+                  const idx = tools.findIndex(
+                    (t) => t.toolCallId === data.toolCallId && t.success === undefined
+                  );
+                  if (idx >= 0) {
+                    tools[idx] = { ...tools[idx], success };
                   }
                   return { ...m, tools };
                 })

@@ -64,12 +64,12 @@ export function setupWebSocket(server: import("http").Server) {
             }
             break;
           case "tool_execution_start":
-            ws.send(JSON.stringify({ type: "tool_start", toolName: event.toolName }));
+            ws.send(JSON.stringify({ type: "tool_start", toolName: event.toolName, toolCallId: event.toolCallId }));
             break;
           case "tool_execution_end":
             console.log(`[ws] Tool execution end: ${event.toolName} success=${!event.isError}`);
             console.debug(`[ws] Tool execution result (${event.toolName}):`, event.result);
-            ws.send(JSON.stringify({ type: "tool_end", toolName: event.toolName, success: !event.isError }));
+            ws.send(JSON.stringify({ type: "tool_end", toolName: event.toolName, toolCallId: event.toolCallId, success: !event.isError }));
             emitFlushed(flushGovioNodes());
             break;
           case "message_start":
