@@ -399,9 +399,39 @@ async function handleLoadResult(cmd: string, stdout: string): Promise<void> {
   if (!/^[A-Za-z0-9_]+$/.test(args.name)) return;
   let load: ObserveInfo | null = null;
   try {
-    load = JSON.parse(stdout);
-  } catch {
-    // Piped/truncated stdout - fall back to the ObserveStore below.
+    const parsed = JSON.parse(stdout);
+    if (parsed.success === false) return;
+    const columns = mapColumnInfo(parsed.column_info || [], parsed.rows || 0);
+    // --datasource loads come from a DB; --memory loads derive from upstream
+    // DataFrames, whose names are reported back as `source_tables`.
+    const sourceName = args.datasource ?? (args.memory ? "memory" : "");
+    // --memory injects ALL loaded DataFrames into DuckDB, so `source_tables`
+    // lists every loaded df - not just those this SQL actually references.
+    // Filter to names that appear in the SQL so lineage edges stay precise.
+    // Extract only the SQL portion from the command to avoid false matches
+    // against --name or other flag values.
+    const sqlMatch = cmd.match(/--sql\s+"([^"]*)"/);
+    const sqlText = sqlMatch ? sqlMatch[1] : cmd;
+    const sourceRefs =
+      args.memory && Array.isArray(parsed.source_tables) && parsed.source_tables.length > 0
+        ? parsed.source_tables
+            .filter((t: string) => new RegExp(`\\b${escapeRegex(t)}\\b`).test(sqlText))
+            .map((t: string) => ({ label: t }))
+        : undefined;
+    pushGovioNode({
+      nodeType: "dataFrame",
+      title: `DF: ${args.name}`,
+      dfName: args.name,
+      sourceName,
+      totalRows: parsed.rows || 0,
+      totalColumns: parsed.columns || columns.length,
+      memoryUsage: estimateMemoryUsage(parsed.rows || 0, parsed.columns || columns.length),
+      columns,
+      ...(sourceRefs ? { sourceRefs } : {}),
+    });
+  } catch (err) {
+    // stdout is not valid JSON — typically caused by `| head` truncating the output.
+    console.warn(`[govio-canvas] handleLoadResult JSON parse failed for '${args.name}': ${err instanceof Error ? err.message : String(err)} (stdout length: ${stdout.length}, first 120 chars: ${JSON.stringify(stdout.slice(0, 120))})`);
   }
   if (load && load.success === false) return;
   const parsed = load ?? (await readObserveInfo(args.name));
@@ -452,8 +482,8 @@ function handleCompareResult(cmd: string, stdout: string): void {
       content,
       sourceRefs: [{ label: args.source }, { label: args.target }],
     });
-  } catch {
-    // stdout is not valid JSON
+  } catch (err) {
+    console.warn(`[govio-canvas] handleCompareResult JSON parse failed: ${err instanceof Error ? err.message : String(err)} (stdout length: ${stdout.length})`);
   }
 }
 
@@ -477,8 +507,8 @@ function handleExploreResult(cmd: string, stdout: string): void {
       content,
       sourceRefs,
     });
-  } catch {
-    // stdout is not valid JSON
+  } catch (err) {
+    console.warn(`[govio-canvas] handleExploreResult JSON parse failed: ${err instanceof Error ? err.message : String(err)} (stdout length: ${stdout.length})`);
   }
 }
 
