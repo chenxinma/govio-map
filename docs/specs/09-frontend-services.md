@@ -27,7 +27,7 @@ interface CanvasService {
 ```typescript
 interface CanvasEvent {
   type: "govio_node_create";
-  nodeType: "sqlQuery" | "dataFrame" | "report" | "sourceTable";
+  nodeType: "sqlQuery" | "dataFrame" | "report" | "sourceTable" | "chart";
   title: string;
   // sqlQuery 字段
   sql?: string;
@@ -47,6 +47,13 @@ interface CanvasEvent {
   tableName?: string;
   database?: string;
   fields?: Array<{ name: string; type: string; nullable: boolean; description?: string; isPrimaryKey?: boolean; isForeignKey?: boolean; references?: { table: string; field: string } }>;
+  // chart 字段 (Plotly figure)
+  config?: {
+    type?: string;
+    data: Array<Record<string, unknown>>;
+    layout?: Record<string, unknown>;
+  };
+  sourceDf?: string;
   // 连线
   referencedNodes?: Array<{ nodeId: string; label: string }>;
 }
@@ -57,6 +64,7 @@ interface CanvasEvent {
 - 连接地址：`ws://hostname:{port+1}/canvas`
 - 接收消息后分发给所有注册的 callback
 - 单例模式（`getCanvasService()`）
+- **注意**：当前无断线重连逻辑，若 WS 断开需刷新页面恢复
 
 ### MockCanvasService
 

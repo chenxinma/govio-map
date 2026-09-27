@@ -42,16 +42,17 @@
 
 ### createGovioNode(event: CanvasEvent)
 
-核心节点创建方法，处理所有 4 种节点类型。
+核心节点创建方法，处理所有 5 种节点类型（含 chart）。
 
 流程：
 1. 生成 ID: `nextId('gov')` (如 gov-1, gov-2)
 2. 根据 `event.nodeType` 创建对应 Node 对象
-3. 自动创建连线：
+3. DataFrame 去重：按 dfName 检查画布是否已有同名节点，已有时仅补建连线
+4. 自动创建连线：
    - 从 `event.referencedNodes` 中的 nodeId 查找画布节点，创建 source->target 边
-   - Report 节点额外匹配 `sourceRefs.label` 到画布节点（按 title/tableName/dfName 匹配）
-4. 边样式：`smoothstep`, `animated: true`, `stroke: #3ecf8e`, `strokeWidth: 2`
-5. 调用 `positionNewNode()` 计算位置
+   - 所有节点类型均匹配 `sourceRefs.label` 到画布节点（按 title/tableName/dfName 匹配）
+5. 边样式：`smoothstep`, `animated: true`, `stroke: #1db954`, `strokeWidth: 2`
+6. 调用 `positionNewNode()` 计算位置
 
 ### createManualSQLNode()
 
@@ -118,6 +119,12 @@ addReference 提取的 data：
 - 持久化字段: nodes, edges, referencedNodes
 - 不持久化: previewPanels（每次重新打开）
 - 恢复时调用 `syncCountersFromNodes(nodes)` 同步 ID 计数器
+
+## 会话画布恢复
+
+### hydrateSession(nodes, edges)
+
+服务端推送 `canvas_restore` 时调用。用 sidecar 快照替换当前画布状态，清空 previewPanels 和 referencedNodes，同步 ID 计数器。
 
 ## ID 生成 (mock-ai.ts)
 

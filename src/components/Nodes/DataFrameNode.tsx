@@ -1,6 +1,6 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Table2, Quote, Eye, Trash2 } from 'lucide-react';
+import { Table2, Quote, Eye, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { DataFrameNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
 
@@ -9,6 +9,9 @@ function DataFrameNode({ data, id }: NodeProps) {
   const addReference = useCanvasStore((s) => s.addReference);
   const deleteNodes = useCanvasStore((s) => s.deleteNodes);
   const openPreviewPanel = useCanvasStore((s) => s.openPreviewPanel);
+  const [expanded, setExpanded] = useState(false);
+  const visibleColumns = expanded ? nodeData.columns : nodeData.columns.slice(0, 10);
+  const remaining = nodeData.columns.length - 10;
 
   return (
     <div className="w-[320px] rounded-lg border border-border-default bg-bg-card overflow-hidden">
@@ -38,7 +41,7 @@ function DataFrameNode({ data, id }: NodeProps) {
             </tr>
           </thead>
           <tbody>
-            {nodeData.columns.map((col, i) => (
+            {visibleColumns.map((col, i) => (
               <tr key={col.name} className="border-b border-border-subtle/50">
                 <td className="py-[3px] pr-2 text-text-dim">{i}</td>
                 <td className="py-[3px] pr-2 text-text-primary">{col.name}</td>
@@ -48,6 +51,15 @@ function DataFrameNode({ data, id }: NodeProps) {
             ))}
           </tbody>
         </table>
+        {remaining > 0 && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+            className="flex items-center gap-1 text-[11px] text-text-muted hover:text-brand transition-colors mt-1"
+          >
+            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            <span>{expanded ? 'Collapse' : `+${remaining} more fields`}</span>
+          </button>
+        )}
       </div>
 
       <div className="border-t border-border-subtle px-4 py-2 flex gap-2">

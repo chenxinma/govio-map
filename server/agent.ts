@@ -1,6 +1,7 @@
 import { createAgentSession, SessionManager, DefaultResourceLoader, getAgentDir, type AgentSession, type LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
-import { existsSync } from "node:fs";
-import { resolve as resolvePath } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve as resolvePath } from "node:path";
+import { fileURLToPath } from "node:url";
 import govioCanvasExtension from "./extensions/govio-canvas.js";
 import { ensureGovioCli, downloadGovioSkills } from "./govio-installer.js";
 import { getSessionDir } from "./session-history.js";
@@ -47,11 +48,36 @@ function ensureElectronRunAsNode(): void {
   }
 }
 
+const PI_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
+const PI_PACKAGE_ROOT_ENV = "PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT";
+
+/**
+ * pi-subagents 靠 argv[1] / 环境变量证明“本会话由哪个 Pi 持有”。嵌入式运行时下
+ * argv[1] 是 node/vite/electron 入口，无法证明归属，pi-subagents 会告警并停用动态
+ * 工具激活。这里解析内嵌 pi-coding-agent 的包根，写入官方 override 环境变量声明
+ * 宿主 Pi（子 agent 进程继承该变量，归属一致，告警消除）。
+ */
+function declareHostPiPackageRoot(): void {
+  let dir = dirname(fileURLToPath(import.meta.resolve(PI_PACKAGE_NAME)));
+  for (let i = 0; i < 10; i++) {
+    try {
+      if (JSON.parse(readFileSync(resolvePath(dir, "package.json"), "utf-8")).name === PI_PACKAGE_NAME) {
+        process.env[PI_PACKAGE_ROOT_ENV] = dir;
+        return;
+      }
+    } catch {
+      // 该层没有可读的 package.json，继续向上查找包根
+    }
+    dir = dirname(dir);
+  }
+}
+
 export async function agentSetup() {
   // Resolve cwd at call time so the Electron main process can chdir()
   // before the agent boots (module-level evaluation would be too early).
   const cwd = process.cwd();
   ensureElectronRunAsNode();
+  declareHostPiPackageRoot();
 
   const projectSubagentsDir = resolvePath(cwd, "node_modules", PI_SUBAGENTS_PACKAGE_DIR);
   const hasProjectSubagents = existsSync(projectSubagentsDir);

@@ -76,6 +76,34 @@ function parseExploreArgs(cmd: string): { dataframes: string[] } | null {
 }
 
 
+interface ObserveInfo {
+  success?: boolean;
+  rows?: number;
+  columns?: number;
+  schema?: Array<{ name?: string; column?: string; col?: string; dtype: string }>;
+  column_info?: Array<{ name?: string; column?: string; col?: string; dtype: string }>;
+  source_tables?: string[];
+}
+
+/**
+ * Read DataFrame stats from the ObserveStore. Agent-added shell pipelines
+ * (`| tail -20`, `2>&1 | head`) truncate or prefix the CLI's JSON, so the bash
+ * stdout of `observe load` cannot be trusted for node creation.
+ * Returns null for an invalid name, a missing DataFrame, or a CLI failure.
+ */
+async function readObserveInfo(dfName: string): Promise<ObserveInfo | null> {
+  // dfName is interpolated into a shell command - restrict to safe identifiers.
+  if (!/^[A-Za-z0-9_]+$/.test(dfName)) return null;
+  try {
+    const { runGovioCli } = await import("../agent.js");
+    // --rows 0 avoids pulling sample data (schema only).
+    const info: ObserveInfo = JSON.parse(await runGovioCli(`observe info --name ${dfName} --rows 0`));
+    return info && info.success !== false ? info : null;
+  } catch {
+    return null;
+  }
+}
+
 function mapColumnInfo(
   columns: Array<{ name?: string; column?: string; col?: string; dtype: string }>,
   totalRows: number,
@@ -364,11 +392,12 @@ function extractExploreSources(parsed: {
 
 // ── Event Handlers ─────────────────────────────────────────────────
 
-function handleLoadResult(cmd: string, stdout: string): void {
+async function handleLoadResult(cmd: string, stdout: string): Promise<void> {
   const args = parseLoadArgs(cmd);
   if (!args) return;
   // Validate dfName to prevent injection into downstream commands or display issues.
   if (!/^[A-Za-z0-9_]+$/.test(args.name)) return;
+  let load: ObserveInfo | null = null;
   try {
     const parsed = JSON.parse(stdout);
     if (parsed.success === false) return;
@@ -404,6 +433,39 @@ function handleLoadResult(cmd: string, stdout: string): void {
     // stdout is not valid JSON — typically caused by `| head` truncating the output.
     console.warn(`[govio-canvas] handleLoadResult JSON parse failed for '${args.name}': ${err instanceof Error ? err.message : String(err)} (stdout length: ${stdout.length}, first 120 chars: ${JSON.stringify(stdout.slice(0, 120))})`);
   }
+  if (load && load.success === false) return;
+  const parsed = load ?? (await readObserveInfo(args.name));
+  if (!parsed) return;
+  const columns = mapColumnInfo(parsed.column_info || parsed.schema || [], parsed.rows || 0);
+  // --datasource loads come from a DB; --memory loads derive from upstream
+  // DataFrames, whose names are reported back as `source_tables`.
+  const sourceName = args.datasource ?? (args.memory ? "memory" : "");
+  // --memory injects ALL loaded DataFrames into DuckDB, so `source_tables`
+  // lists every loaded df - not just those this SQL actually references.
+  // Filter to names that appear in the SQL so lineage edges stay precise.
+  // Extract only the SQL portion from the command to avoid false matches
+  // against --name or other flag values.
+  const sqlMatch = cmd.match(/--sql\s+"([^"]*)"/);
+  const sqlText = sqlMatch ? sqlMatch[1] : cmd;
+  // source_tables only exists on the load output (not on observe info), so a
+  // mangled --memory stdout simply loses the lineage edges.
+  const sourceRefs =
+    args.memory && Array.isArray(parsed.source_tables) && parsed.source_tables.length > 0
+      ? parsed.source_tables
+          .filter((t: string) => new RegExp(`\\b${escapeRegex(t)}\\b`).test(sqlText))
+          .map((t: string) => ({ label: t }))
+      : undefined;
+  pushGovioNode({
+    nodeType: "dataFrame",
+    title: `DF: ${args.name}`,
+    dfName: args.name,
+    sourceName,
+    totalRows: parsed.rows || 0,
+    totalColumns: parsed.columns || columns.length,
+    memoryUsage: estimateMemoryUsage(parsed.rows || 0, parsed.columns || columns.length),
+    columns,
+    ...(sourceRefs ? { sourceRefs } : {}),
+  });
 }
 
 function handleCompareResult(cmd: string, stdout: string): void {
@@ -571,36 +633,17 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
       sourceName: Type.Optional(Type.String({ description: "Source label: datasource name for --datasource loads, or 'memory' for --memory loads" })),
     }),
     execute: async (_toolCallId, params) => {
-      // dfName is interpolated into a shell command — restrict to safe identifiers.
-      if (!/^[A-Za-z0-9_]+$/.test(params.dfName)) {
+      // dfName is interpolated into a shell command — readObserveInfo validates it.
+      const info = await readObserveInfo(params.dfName);
+      if (!info) {
         return {
-          content: [{ type: "text", text: `Invalid dfName '${params.dfName}': only letters, digits and underscores are allowed.` }],
+          content: [{ type: "text", text: `DataFrame '${params.dfName}' not found in ObserveStore. Load it first via 'govio-cli observe load'.` }],
           details: {},
         };
       }
-      let rows = 0;
-      let cols = 0;
-      let columns: Array<{ name: string; dtype: string; nonNull: number }> = [];
-      try {
-        const { runGovioCli } = await import("../agent.js");
-        // --rows 0 avoids pulling sample data (schema only).
-        const out = await runGovioCli(`observe info --name ${params.dfName} --rows 0`);
-        const info = JSON.parse(out);
-        if (!info || info.success === false) {
-          return {
-            content: [{ type: "text", text: `DataFrame '${params.dfName}' not found in ObserveStore (${info?.error ?? "unknown error"}). Load it first via 'govio-cli observe load'.` }],
-            details: {},
-          };
-        }
-        rows = info.rows || 0;
-        cols = info.columns || 0;
-        columns = mapColumnInfo(info.schema || [], rows);
-      } catch (err) {
-        return {
-          content: [{ type: "text", text: `Failed to fetch schema for '${params.dfName}': ${err instanceof Error ? err.message : String(err)}` }],
-          details: {},
-        };
-      }
+      const rows = info.rows || 0;
+      const cols = info.columns || 0;
+      const columns = mapColumnInfo(info.column_info || info.schema || [], rows);
       pushGovioNode({
         nodeType: "dataFrame",
         title: params.title || `DF: ${params.dfName}`,
@@ -632,7 +675,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
     return { block: true, reason };
   });
 
-  pi.on("tool_result", (event) => {
+  pi.on("tool_result", async (event) => {
     if (event.toolName !== "bash" || event.isError) return;
 
     const cmd = extractBashCommand(event.input);
@@ -646,7 +689,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
 
     switch (subcommand) {
       case "load":
-        handleLoadResult(cmd, stdout);
+        await handleLoadResult(cmd, stdout);
         break;
       case "compare":
         handleCompareResult(cmd, stdout);

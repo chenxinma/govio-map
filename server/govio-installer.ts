@@ -43,7 +43,7 @@ export async function ensureGovioCli(): Promise<void> {
 
 async function installGovioCli(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn("uv", ["tool", "install", "govio"], {
+    const child = spawn("uv", ["tool", "install", "--compile-bytecode", "--force", "-p", "3.13", "govio"], {
       stdio: "inherit",
       shell: process.platform === "win32",
     });
@@ -124,9 +124,9 @@ export async function downloadGovioSkills(): Promise<void> {
   const versionOutput = await runGovioCliVersion();
   const version = parseVersion(versionOutput);
   const cwd = process.cwd();
-  const piDir = join(cwd, ".pi");
-  const skillsDir = join(piDir, "skills");
-  const zipPath = join(piDir, SKILLS_ZIP_NAME);
+  const agentsDir = join(cwd, ".agents");
+  const skillsDir = join(agentsDir, "skills");
+  const zipPath = join(agentsDir, SKILLS_ZIP_NAME);
 
   if (await skillsAlreadyInstalled(skillsDir)) {
     console.log(`[govio] Skills already installed at ${skillsDir}`);
@@ -136,7 +136,7 @@ export async function downloadGovioSkills(): Promise<void> {
   const url = `https://github.com/${GOVIO_REPO}/releases/download/v${version}/${SKILLS_ZIP_NAME}`;
   console.log(`[govio] Downloading skills from ${url}...`);
 
-  await mkdir(piDir, { recursive: true });
+  await mkdir(agentsDir, { recursive: true });
   await downloadFile(url, zipPath);
 
   console.log(`[govio] Extracting skills to ${skillsDir}...`);

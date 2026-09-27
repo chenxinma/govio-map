@@ -1,8 +1,40 @@
 import { memo, useState, useCallback, useRef, useEffect } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Quote, Trash2 } from 'lucide-react';
+import { Handle, Position, type NodeProps, type Edge } from '@xyflow/react';
+import { Maximize2, Quote, Trash2 } from 'lucide-react';
 import type { SQLQueryNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
+import SQLModal from './SQLModal';
+
+// SQL关键字高亮
+const SQL_KEYWORDS = [
+  'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'IN', 'ON', 'AS', 'JOIN',
+  'LEFT', 'RIGHT', 'INNER', 'OUTER', 'FULL', 'CROSS', 'GROUP', 'BY', 'ORDER',
+  'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'ALL', 'DISTINCT', 'INSERT', 'INTO',
+  'VALUES', 'UPDATE', 'SET', 'DELETE', 'CREATE', 'TABLE', 'ALTER', 'DROP',
+  'INDEX', 'VIEW', 'IF', 'EXISTS', 'BETWEEN', 'LIKE', 'IS', 'NULL', 'CASE',
+  'WHEN', 'THEN', 'ELSE', 'END', 'ASC', 'DESC', 'COUNT', 'SUM', 'AVG',
+  'MIN', 'MAX', 'COALESCE', 'CAST', 'OVER', 'PARTITION', 'WITH', 'RECURSIVE',
+];
+
+function highlightSQL(sql: string): React.ReactNode[] {
+  if (!sql) return [];
+  const regex = new RegExp(`(${SQL_KEYWORDS.join('|')})`, 'gi');
+  const parts = sql.split(regex);
+  return parts.map((part, i) => {
+    if (SQL_KEYWORDS.includes(part.toUpperCase())) {
+      return <span key={i} className="text-violet-400 font-semibold">{part}</span>;
+    }
+    // 字符串高亮
+    if (/^['"].*['"]$/.test(part)) {
+      return <span key={i} className="text-amber-400">{part}</span>;
+    }
+    // 数字高亮
+    if (/^\d+$/.test(part)) {
+      return <span key={i} className="text-emerald-400">{part}</span>;
+    }
+    return part;
+  });
+}
 
 function SQLNode({ data, id }: NodeProps) {
   const nodeData = data as unknown as SQLQueryNodeData;
@@ -11,6 +43,7 @@ function SQLNode({ data, id }: NodeProps) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const [isEditing, setIsEditing] = useState(nodeData.sql === '');
   const [editValue, setEditValue] = useState(nodeData.sql);
+  const [showModal, setShowModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-resize textarea
@@ -78,13 +111,13 @@ function SQLNode({ data, id }: NodeProps) {
         ) : (
           <pre
             onDoubleClick={handleDoubleClick}
-            className="text-[11px] text-text-secondary font-mono leading-relaxed whitespace-pre-wrap break-all cursor-text"
+            className="text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-all cursor-text bg-bg-primary/50 rounded px-2 py-1.5"
             title="双击编辑 SQL"
           >
             {nodeData.sql ? (
               <>
-                {sqlLines.join('\n')}
-                {hasMore && '\n...'}
+                {highlightSQL(sqlLines.join('\n'))}
+                {hasMore && <span className="text-text-dim">\n...</span>}
               </>
             ) : (
               <span className="text-text-dim italic">双击编辑 SQL</span>
@@ -113,6 +146,13 @@ function SQLNode({ data, id }: NodeProps) {
           <span>引用</span>
         </button>
         <button
+          onClick={(e) => { e.stopPropagation(); setShowModal(true); }}
+          className="flex items-center gap-1 text-xs text-text-muted hover:text-brand transition-colors px-2 py-1 rounded-md hover:bg-brand/5"
+        >
+          <Maximize2 size={12} />
+          <span>编辑</span>
+        </button>
+        <button
           onClick={(e) => { e.stopPropagation(); deleteNodes([id]); }}
           className="ml-auto flex items-center text-text-muted hover:text-error transition-colors p-1 rounded-md hover:bg-error/10"
         >
@@ -122,6 +162,37 @@ function SQLNode({ data, id }: NodeProps) {
 
       <Handle type="source" position={Position.Right} className="!bg-brand" />
       <Handle type="target" position={Position.Left} className="!bg-brand" />
+
+      {showModal && (
+        <SQLModal
+          sql={nodeData.sql}
+          title={nodeData.title}
+          onSave={(newSql) => {
+            updateNodeData(id, { sql: newSql });
+            setShowModal(false);
+          }}
+          onClose={() => setShowModal(false)}
+          onExecuteSuccess={(dfName) => {
+            // 查找新创建的DataFrame节点并添加边
+            const nodes = useCanvasStore.getState().nodes;
+            const dfNode = nodes.find((n) => {
+              const d = n.data as unknown as { dfName?: string };
+              return d.dfName === dfName;
+            });
+            if (dfNode) {
+              const newEdge: Edge = {
+                id: `edge-${id}-${dfNode.id}`,
+                source: id,
+                target: dfNode.id,
+                type: 'default',
+              };
+              useCanvasStore.setState((state) => ({
+                edges: [...state.edges, newEdge],
+              }));
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

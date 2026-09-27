@@ -3,16 +3,115 @@ import { existsSync } from "fs";
 import { join } from "path";
 import { asyncBufferFromFile, parquetReadObjects } from "hyparquet";
 import type { AsyncBuffer } from "hyparquet/src/types.js";
+import { runGovioCli } from "./agent.js";
+import { pushGovioNode, emitFlushed, flushGovioNodes } from "./govio-node-queue.js";
+import { execFile } from "child_process";
+
+function runGovioCliWithArgs(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile("govio-cli", args, { encoding: "utf-8", timeout: 30000 }, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`[govio-cli] args=${JSON.stringify(args)} failed:`, stderr || error.message);
+        reject(error);
+      } else {
+        resolve(stdout);
+      }
+    });
+  });
+}
 
 const PARQUET_DIR = ".govio/observe/dataframes";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
 export async function handleParquetApi(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  // 处理 CORS preflight
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, CORS_HEADERS);
+    res.end();
+    return true;
+  }
+
+  // GET /api/sql-editor-init - 获取数据源和DataFrame列表
+  if (req.url?.startsWith("/api/sql-editor-init") && req.method === "GET") {
+    try {
+      const [datasourcesOutput, dataframesOutput] = await Promise.all([
+        runGovioCli("observe info --datasource", true),
+        runGovioCli("observe info --df", true),
+      ]);
+      const datasources = JSON.parse(datasourcesOutput);
+      const dataframesRaw = JSON.parse(dataframesOutput);
+      // 提取DataFrame名称列表
+      const dataframes = dataframesRaw.dataframes?.map((df: { name: string }) => df.name) || [];
+      res.writeHead(200, { "Content-Type": "application/json", ...CORS_HEADERS });
+      res.end(JSON.stringify({ datasources, dataframes }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.writeHead(500, { "Content-Type": "application/json", ...CORS_HEADERS });
+      res.end(JSON.stringify({ error: message }));
+    }
+    return true;
+  }
+
+  // POST /api/execute-sql - 执行SQL并加载为DataFrame
+  if (req.url?.startsWith("/api/execute-sql") && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", async () => {
+      try {
+        const { datasource, name, sql } = JSON.parse(body);
+        if (!datasource || !name || !sql) {
+          res.writeHead(400, { "Content-Type": "application/json", ...CORS_HEADERS });
+          res.end(JSON.stringify({ error: "Missing required fields: datasource, name, sql" }));
+          return;
+        }
+
+        // 使用数组参数避免SQL中的空格被错误分割
+        const loadArgs = datasource === 'memory'
+          ? ['observe', 'load', '--memory', '--name', name, '--sql', sql]
+          : ['observe', 'load', '--datasource', datasource, '--name', name, '--sql', sql];
+        const loadOutput = await runGovioCliWithArgs(loadArgs);
+        const loadResult = JSON.parse(loadOutput);
+
+        // 获取 DataFrame 信息
+        const infoOutput = await runGovioCli(`observe info --name ${name} --rows 0`, true);
+        const info = JSON.parse(infoOutput);
+
+        // 创建 canvas 节点
+        if (info && info.schema) {
+          pushGovioNode({
+            nodeType: "dataFrame",
+            title: name,
+            dfName: name,
+            sourceName: datasource,
+            totalRows: info.rows || 0,
+            totalColumns: info.columns || info.schema.length,
+            memoryUsage: "unknown",
+            columns: info.schema.map((col: { column: string; dtype: string }) => ({
+              name: col.column,
+              nonNull: 0,
+              dtype: col.dtype,
+            })),
+          });
+          const events = flushGovioNodes();
+          emitFlushed(events);
+        }
+
+        res.writeHead(200, { "Content-Type": "application/json", ...CORS_HEADERS });
+        res.end(JSON.stringify({ success: true, result: loadResult }));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        res.writeHead(500, { "Content-Type": "application/json", ...CORS_HEADERS });
+        res.end(JSON.stringify({ error: message }));
+      }
+    });
+    return true;
+  }
+
   if (!req.url?.startsWith("/api/preview")) return false;
 
   // Handle CORS preflight
@@ -40,7 +139,7 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
   }
 
   // console.log("Read data: " + parquetPath);
-  let responsed = false;
+  let responded = false;
   try {
     const file: AsyncBuffer = await asyncBufferFromFile(parquetPath)
     const data = await parquetReadObjects({
@@ -63,10 +162,10 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
       "Content-Type": "application/json",
       "Content-Length": contentLength,
        ...CORS_HEADERS });
-    responsed = true;
+    responded = true;
     res.end(jsonString);
   } catch (err) {
-    if (!responsed) {
+    if (!responded) {
       res.writeHead(500, { "Content-Type": "application/json", ...CORS_HEADERS });
       const errorMessage = err instanceof Error ? err.message : String(err);
       res.end(JSON.stringify({ error: 'Internal Server Error', message: errorMessage }));

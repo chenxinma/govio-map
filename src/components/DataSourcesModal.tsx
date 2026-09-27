@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { X, Database, RefreshCw, Table2, Plus, Check } from "lucide-react";
+import { X, Database, RefreshCw, Table2, Plus, Check, Upload } from "lucide-react";
 import { useChatContext } from "../hooks/useChatContext";
 import type { ObserveInfo, DataFrameSummary } from "../hooks/useChat";
 import { useCanvasStore } from "../store/canvas-store";
@@ -18,6 +18,18 @@ function estimateMemoryUsage(rows: number, cols: number): string {
 
 export default function DataSourcesModal({ onClose }: DataSourcesModalProps) {
   const { observeInfo } = useChatContext();
+
+  const handleImportMeta = useCallback(
+    (ds: string) => {
+      onClose();
+      window.dispatchEvent(
+        new CustomEvent("govio:prefill-input", {
+          detail: `/导入元数据 数据源:${ds} schemas:`,
+        })
+      );
+    },
+    [onClose]
+  );
   const [info, setInfo] = useState<ObserveInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -135,10 +147,17 @@ export default function DataSourcesModal({ onClose }: DataSourcesModalProps) {
                 {datasources.map((ds) => (
                   <span
                     key={ds}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm bg-bg-surface border border-border-default text-text-primary"
+                    className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md text-sm bg-bg-surface border border-border-default text-text-primary"
                   >
                     <Database size={12} className="text-brand" />
                     {ds}
+                    <button
+                      onClick={() => handleImportMeta(ds)}
+                      className="inline-flex items-center text-text-muted hover:text-brand transition-colors p-1 rounded hover:bg-brand/10"
+                      title="导入元数据到知识图谱"
+                    >
+                      <Upload size={13} />
+                    </button>
                   </span>
                 ))}
               </div>

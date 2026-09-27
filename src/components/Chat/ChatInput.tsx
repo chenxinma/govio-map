@@ -146,6 +146,15 @@ export default function ChatInput({
   );
 
   useEffect(() => {
+    const onPrefill = (e: Event) => {
+      setValue((e as CustomEvent<string>).detail);
+      textareaRef.current?.focus();
+    };
+    window.addEventListener("govio:prefill-input", onPrefill);
+    return () => window.removeEventListener("govio:prefill-input", onPrefill);
+  }, []);
+
+  useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
