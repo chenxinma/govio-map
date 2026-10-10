@@ -10,13 +10,14 @@ const { values } = parseArgs({
     message: { type: "string", short: "m" },
     raw: { type: "boolean", short: "r" },
     output: { type: "string", short: "o" },
+    new: { type: "boolean", short: "n" },
   },
   strict: true,
 });
 
 const message = values.message;
 if (!message) {
-  console.error('Usage: tsx server/cli.ts -m "your question" [-o output.json]');
+  console.error('Usage: tsx server/cli.ts -m "your question" [-n|--new] [-o output.json]\n  -n, --new  start a new session instead of continuing the most recent one');
   process.exit(1);
 }
 
@@ -30,7 +31,7 @@ function writeLine(obj: unknown) {
 
 async function main() {
   await agentSetup();
-  const session = await getOrCreateSession();
+  const session = await getOrCreateSession(values.new);
 
   let inMessage = false;
   let content = "";

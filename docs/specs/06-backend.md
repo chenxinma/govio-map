@@ -218,6 +218,8 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 | 参数 | 说明 |
 |------|------|
 | -m, --message | 必填，提示内容 |
+| -n, --new | 可选，新开会话（默认续接最近一次会话历史） |
 | -r, --raw | 可选，输出原始 AgentEvent JSON |
+| -o, --output | 可选，输出写入文件 |
 
 输出格式：NDJSON（每行一个 JSON 对象），包含 text_delta、thinking_delta、tool_start/end、message_start/end 等事件。

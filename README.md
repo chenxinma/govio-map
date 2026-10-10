@@ -45,7 +45,7 @@ npm run dev
 
 Chat 面板自动连接 `/ws`。**当前不再有 Mock AI 降级**——后端未连接时输入框禁用并提示“未连接到服务器”。
 
-其他脚本：`npm run build`（类型检查 + 构建）、`npm run preview`、`npm run ask -- -m "消息"`（单次 CLI 对话，见 `server/cli.ts`）。
+其他脚本：`npm run build`（类型检查 + 构建）、`npm run preview`、`npm run ask -- -m "消息"`（单次 CLI 对话，`-n` 新开会话，见 `server/cli.ts`）。
 
 ## 工作原理
 

@@ -139,15 +139,17 @@ export async function agentSetup() {
   console.log(">>> Server agent ready. <<<");
 }
 
-export async function getOrCreateSession(): Promise<AgentSession> {
+export async function getOrCreateSession(forceNew = false): Promise<AgentSession> {
   if (session) return session;
   if (!resLoader) throw Error("Agent not ready.");
 
   const cwd = process.cwd();
   const dir = getSessionDir();
-  const sessionManager = resumedOnce
-    ? SessionManager.create(cwd, dir)
-    : (resumedOnce = true, SessionManager.continueRecent(cwd, dir));
+  const useRecent = !resumedOnce && !forceNew;
+  resumedOnce = true;
+  const sessionManager = useRecent
+    ? SessionManager.continueRecent(cwd, dir)
+    : SessionManager.create(cwd, dir);
 
   const { session: newSession } = await createAgentSession({
     cwd,
