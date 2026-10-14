@@ -1,7 +1,7 @@
 export interface SlashCommand {
   name: string;
   description: string;
-  category: "builtin" | "custom";
+  category: "builtin" | "custom" | "skill";
   handler?: (ctx: CommandContext) => void;
   prompt?: string;
 }
