@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Terminal, Sparkles } from "lucide-react";
+import { Terminal, Sparkles, Puzzle } from "lucide-react";
 import type { SlashCommand } from "./types";
 
 interface CommandSuggestionProps {
@@ -43,6 +43,8 @@ export default function CommandSuggestion({
         >
           {cmd.category === "builtin" ? (
             <Terminal size={14} className="text-brand flex-shrink-0" />
+          ) : cmd.category === "skill" ? (
+            <Puzzle size={14} className="text-brand flex-shrink-0" />
           ) : (
             <Sparkles size={14} className="text-warning flex-shrink-0" />
           )}

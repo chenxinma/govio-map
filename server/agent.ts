@@ -180,6 +180,11 @@ export async function openSessionFile(path: string): Promise<AgentSession> {
   return session;
 }
 
+/** pi 已加载的 skill 列表（供前端 suggestions 展示）。 */
+export function getLoadedSkills(): { name: string; description: string }[] {
+  return resLoader?.getSkills().skills.map((s) => ({ name: s.name, description: s.description })) ?? [];
+}
+
 export function getSession(): AgentSession | null {
   return session;
 }

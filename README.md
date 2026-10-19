@@ -1,5 +1,7 @@
 # Govio Map
 
+**简体中文** | [English](README.en.md)
+
 无限画布数据治理工具。通过自然语言对话驱动 AI Agent（基于 [pi-coding-agent](docs/pi/)）执行数据查询、探索与分析，结果以可视化卡片节点形式在画布上编排，并自动建立数据血缘连线。
 
 ```

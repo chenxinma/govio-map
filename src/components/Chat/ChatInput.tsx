@@ -76,17 +76,37 @@ export default function ChatInput({
 
   const { commands, execute } = useCommands(ctx);
 
+  // pi 已加载的 skill，作为 /skill:name 建议项展示（session.prompt 原生展开该语法）
+  const [skillCommands, setSkillCommands] = useState<SlashCommand[]>([]);
+  useEffect(() => {
+    fetch("/api/skills")
+      .then((r) => r.json())
+      .then((d: { skills?: { name: string; description: string }[] }) =>
+        setSkillCommands(
+          (d.skills ?? []).map((s) => ({
+            name: `skill:${s.name}`,
+            description: s.description,
+            category: "skill" as const,
+            prompt: `/skill:${s.name} `,
+          }))
+        )
+      )
+      .catch(() => {});
+  }, []);
+
+  const allCommands = useMemo(() => [...commands, ...skillCommands], [commands, skillCommands]);
+
   const filteredCommands = useMemo(() => {
     if (!value.startsWith("/")) return [];
-    return filterCommands(commands, value);
-  }, [value, commands]);
+    return filterCommands(allCommands, value);
+  }, [value, allCommands]);
 
   const updateValue = useCallback((newValue: string) => {
     setValue(newValue);
-    const suggestions = newValue.startsWith("/") ? filterCommands(commands, newValue) : [];
+    const suggestions = newValue.startsWith("/") ? filterCommands(allCommands, newValue) : [];
     setShowSuggestions(suggestions.length > 0);
     setSelectedIndex(0);
-  }, [commands]);
+  }, [allCommands]);
 
   const handleSelect = useCallback(
     (command: SlashCommand) => {

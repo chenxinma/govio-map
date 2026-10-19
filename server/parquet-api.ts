@@ -3,7 +3,7 @@ import { existsSync } from "fs";
 import { join } from "path";
 import { asyncBufferFromFile, parquetReadObjects } from "hyparquet";
 import type { AsyncBuffer } from "hyparquet/src/types.js";
-import { runGovioCli } from "./agent.js";
+import { runGovioCli, getLoadedSkills } from "./agent.js";
 import { pushGovioNode, emitFlushed, flushGovioNodes } from "./govio-node-queue.js";
 import { execFile } from "child_process";
 
@@ -54,6 +54,13 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
       res.writeHead(500, { "Content-Type": "application/json", ...CORS_HEADERS });
       res.end(JSON.stringify({ error: message }));
     }
+    return true;
+  }
+
+  // GET /api/skills - pi 已加载的 skill 列表
+  if (req.url?.startsWith("/api/skills") && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json", ...CORS_HEADERS });
+    res.end(JSON.stringify({ skills: getLoadedSkills() }));
     return true;
   }
 

@@ -245,7 +245,7 @@ async function resolveTreemapTrace(trace: ChartTrace): Promise<string[]> {
     throw new Error("treemap trace requires key (numeric weight column) and groups (hierarchy path columns).");
   }
   let sample: Array<Record<string, unknown>>;
-  let totalRows = 0;
+  let totalRows: number;
   try {
     const { runGovioCli } = await import("../agent.js");
     const out = await runGovioCli(`observe info --name ${treeDf} --rows ${TREEMAP_ROW_CAP}`);
@@ -259,7 +259,7 @@ async function resolveTreemapTrace(trace: ChartTrace): Promise<string[]> {
     totalRows = info.rows || 0;
   } catch (err) {
     if (err instanceof Error && err.message.startsWith("DataFrame '")) throw err;
-    throw new Error(`Failed to resolve tree from '${treeDf}': ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`Failed to resolve tree from '${treeDf}': ${err instanceof Error ? err.message : String(err)}`, { cause: err });
   }
   const { ids, labels, parents, values } = buildTreemapHierarchy(sample, key, groups);
   delete trace.treeDf;
@@ -570,7 +570,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
       }),
     }),
     execute: async (_toolCallId, params) => {
-      let notes: string[] = [];
+      let notes: string[];
       try {
         notes = await resolveChartConfig(params.config);
       } catch (err) {
@@ -688,21 +688,13 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
       const dfName = extractDfName(text) || nextDfName();
       // const sourceName = extractDataSource(block.sql);
       const tableName = extractTableName(block.sql);
-      let columns = block.outputColumns.map((name) => ({
-        name,
-        nonNull: 0,
-        dtype: "unknown",
-      }));
-
-      if (columns.length === 0) {
-        columns = [{ name: tableName ? `${tableName}.*` : "result", nonNull: 0, dtype: "unknown" }];
-      }
-
       pushGovioNode({
         nodeType: "sqlQuery",
         title: `Q: ${tableName || dfName}`,
         sql: block.sql,
-        outputColumns: block.outputColumns
+        // extractSelectColumns 解析不出列（如 SELECT *）时回退到 tableName.*
+        outputColumns:
+          block.outputColumns.length > 0 ? block.outputColumns : [tableName ? `${tableName}.*` : "result"],
       });
     }
   });
