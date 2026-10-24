@@ -8,6 +8,15 @@ import { finished } from "node:stream/promises";
 const GOVIO_REPO = "chenxinma/govio";
 const SKILLS_ZIP_NAME = "govio-skills.zip";
 
+/**
+ * govio-cli 最低支持版本。
+ * govio-map 与 govio-cli 自 0.6.1 起独立发版（不再保持版本号一致），
+ * 通过此常量声明本应用所需的最低 govio-cli 版本：未安装或低于该版本时
+ * 统一走 uv 安装/升级到最新版。
+ * 升级 govio-map 时如依赖了新的 govio-cli 能力，请同步提升此版本号。
+ */
+export const MIN_GOVIO_CLI_VERSION = "0.5.6";
+
 export async function runGovioCliVersion(): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile("govio-cli", ["-V"], { encoding: "utf-8", timeout: 15000 }, (error, stdout) => {
@@ -28,17 +37,41 @@ function parseVersion(versionOutput: string): string {
   return match[1];
 }
 
+/** 比较 x.y.z 版本号：a < b 返回 -1，a === b 返回 0，a > b 返回 1。 */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
 export async function ensureGovioCli(): Promise<void> {
+  let installed: string | null = null;
   try {
-    const version = await runGovioCliVersion();
-    console.log(`[govio] govio-cli available: ${version}`);
-    return;
+    installed = parseVersion(await runGovioCliVersion());
   } catch {
     console.log("[govio] govio-cli not found, installing via uv...");
-    await installGovioCli();
-    const version = await runGovioCliVersion();
-    console.log(`[govio] govio-cli installed: ${version}`);
   }
+
+  if (installed && compareVersions(installed, MIN_GOVIO_CLI_VERSION) >= 0) {
+    console.log(`[govio] govio-cli ${installed} satisfies minimum ${MIN_GOVIO_CLI_VERSION}`);
+    return;
+  }
+
+  if (installed) {
+    console.log(`[govio] govio-cli ${installed} is below minimum ${MIN_GOVIO_CLI_VERSION}, upgrading via uv...`);
+  }
+  await installGovioCli();
+  const version = parseVersion(await runGovioCliVersion());
+  if (compareVersions(version, MIN_GOVIO_CLI_VERSION) < 0) {
+    throw new Error(
+      `govio-cli ${version} is still below the minimum supported version ${MIN_GOVIO_CLI_VERSION} after uv install`,
+    );
+  }
+  console.log(`[govio] govio-cli installed: ${version}`);
 }
 
 async function installGovioCli(): Promise<void> {

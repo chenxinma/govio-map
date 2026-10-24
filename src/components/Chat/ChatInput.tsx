@@ -229,14 +229,26 @@ export default function ChatInput({
           placeholder={
             needsConfig
               ? "请先配置 LLM Provider（右上角设置）"
-              : isConnected
-                ? "输入消息... (Enter 发送, Shift+Enter 换行)"
-                : "未连接到服务器..."
+              : !isConnected
+                ? "未连接到服务器..."
+                : isStreaming
+                  ? "输入消息插队，立即修正 Agent 行为... (Enter 发送, Shift+Enter 换行)"
+                  : "输入消息... (Enter 发送, Shift+Enter 换行)"
           }
           disabled={!isConnected || needsConfig}
           rows={1}
           className="flex-1 resize-none bg-bg-primary border border-border-default rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-dim focus:outline-none focus:border-brand/50 disabled:opacity-50"
         />
+        {isStreaming && value.trim() ? (
+          <button
+            onClick={handleSend}
+            disabled={!isConnected || needsConfig}
+            className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-brand/20 border border-brand/40 text-brand hover:bg-brand/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title="插队发送"
+          >
+            <Send size={14} />
+          </button>
+        ) : null}
         {isStreaming ? (
           <button
             onClick={onAbort}

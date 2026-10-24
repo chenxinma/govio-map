@@ -52,6 +52,10 @@ export interface ChatMessage {
   tools?: ToolCall[];
   isStreaming?: boolean;
   referencedNodes?: ReferencedNode[];
+  /** User message inserted while the agent was running (steering input). */
+  isSteering?: boolean;
+  /** Steering message still queued (not yet delivered to the model). */
+  isQueued?: boolean;
 }
 
 export interface PendingPermission {
@@ -92,6 +96,12 @@ interface WSEvent {
   nodes?: unknown[];
   edges?: unknown[];
   path?: string;
+  clientMsgId?: string;
+  disposition?: string;
+  pendingSteering?: number;
+  pendingFollowUp?: number;
+  clearedSteering?: number;
+  clearedFollowUp?: number;
 }
 
 let msgIdCounter = 0;
@@ -422,6 +432,31 @@ export function useChat() {
             isStreamingRef.current = false;
             setIsStreaming(false);
             finalizeRef.current();
+            // Any steering message still shown as queued never got delivered
+            // (the run ended first); surface it plainly so the user can resend.
+            setMessages((prev) =>
+              prev.map((m) => (m.isQueued ? { ...m, isQueued: undefined } : m))
+            );
+            break;
+
+          case "steer_queued":
+          case "followUp_queued": {
+            // The queue accepted the message: it will reach the model on the
+            // next turn boundary. Drop the local "queued" marker.
+            const { clientMsgId } = data;
+            if (clientMsgId) {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === clientMsgId ? { ...m, isQueued: undefined } : m))
+              );
+            }
+            break;
+          }
+
+          case "queue_cleared":
+            // Abort cleared the pending steering/follow-up queue.
+            setMessages((prev) =>
+              prev.map((m) => (m.isQueued ? { ...m, isQueued: undefined } : m))
+            );
             break;
 
           case "observe_list_result":
@@ -512,20 +547,27 @@ export function useChat() {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
+    const msgId = nextMsgId();
+    const isSteering = isStreamingRef.current;
     const userMsg: ChatMessage = {
-      id: nextMsgId(),
+      id: msgId,
       role: "user",
       content,
       referencedNodes: referencedNodes && referencedNodes.length > 0 ? referencedNodes : undefined,
+      isSteering: isSteering || undefined,
+      isQueued: isSteering || undefined,
     };
     setMessages((prev) => [...prev, userMsg]);
 
-    const payload: Record<string, unknown> = { content };
+    const payload: Record<string, unknown> = { content, clientMsgId: msgId };
     if (referencedNodes && referencedNodes.length > 0) {
       payload.referencedNodes = referencedNodes;
     }
 
-    if (isStreamingRef.current) {
+    if (isSteering) {
+      // Steering: inject the message into the running agent. Mark the local
+      // bubble as queued; it flips to delivered when the backend confirms the
+      // queue accepted it (steer_queued) or an assistant turn resumes.
       ws.send(JSON.stringify({ type: "steer", ...payload }));
     } else {
       ws.send(JSON.stringify({ type: "prompt", ...payload }));

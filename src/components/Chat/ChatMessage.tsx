@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ChevronDown, ChevronRight, Wrench, Check, X, Loader2, Database, Code, Table2, FileText, BarChart3 } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench, Check, X, Loader2, Database, Code, Table2, FileText, BarChart3, CornerDownLeft } from "lucide-react";
 import type { ChatMessage as ChatMessageType, ToolCall } from "../../hooks/useChat";
 import type { ReferencedNode, NodeType } from "../../types";
 
@@ -104,6 +104,12 @@ export default function ChatMessage({ message }: { message: ChatMessageType }) {
           <>
             {message.referencedNodes && message.referencedNodes.length > 0 && (
               <ReferenceChips nodes={message.referencedNodes} />
+            )}
+            {message.isSteering && (
+              <span className="inline-flex items-center gap-1 mb-1 px-1.5 py-0.5 rounded text-[10px] bg-brand/10 border border-brand/30 text-brand">
+                <CornerDownLeft size={9} />
+                <span>{message.isQueued ? "插队 · 等待送达" : "插队"}</span>
+              </span>
             )}
             <p className="whitespace-pre-wrap">{message.content}</p>
           </>
