@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import { ChevronDown, ChevronRight, Wrench, Check, X, Loader2, Database, Code, Table2, FileText, BarChart3, CornerDownLeft } from "lucide-react";
 import type { ChatMessage as ChatMessageType, ToolCall } from "../../hooks/useChat";
 import type { ReferencedNode, NodeType } from "../../types";
+import { MarkdownTable, MarkdownCode } from "./WideContent";
 
 const NODE_ICONS: Record<NodeType, typeof Database> = {
   sourceTable: Database,
@@ -119,7 +120,12 @@ export default function ChatMessage({ message }: { message: ChatMessageType }) {
             {message.tools && message.tools.length > 0 && <ToolPills tools={message.tools} />}
             {message.content ? (
               <div className="chat-markdown prose prose-invert prose-sm max-w-none">
-                <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+                <Markdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{ table: MarkdownTable, code: MarkdownCode }}
+                >
+                  {message.content}
+                </Markdown>
               </div>
             ) : message.isStreaming && !message.thinking ? (
               <div className="flex items-center gap-2 text-text-muted text-xs">

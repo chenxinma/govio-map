@@ -15,7 +15,7 @@ const SKILLS_ZIP_NAME = "govio-skills.zip";
  * 统一走 uv 安装/升级到最新版。
  * 升级 govio-map 时如依赖了新的 govio-cli 能力，请同步提升此版本号。
  */
-export const MIN_GOVIO_CLI_VERSION = "0.5.6";
+export const MIN_GOVIO_CLI_VERSION = "0.6.0";
 
 export async function runGovioCliVersion(): Promise<string> {
   return new Promise((resolve, reject) => {

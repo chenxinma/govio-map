@@ -138,6 +138,11 @@ html, body, #root {
   overflow-x: auto;
   margin: 0.5em 0;
 }
+/* Wide content wrapper (WideContent.tsx): margins move to the wrapper */
+.group\/wide > .chat-markdown pre,
+.group\/wide pre {
+  margin: 0;
+}
 .chat-markdown pre code {
   background: none;
   padding: 0;
@@ -148,6 +153,10 @@ html, body, #root {
   width: 100%;
   margin: 0.5em 0;
   font-size: 0.85em;
+}
+/* Wide content wrapper (WideContent.tsx): margins move to the wrapper */
+.group\/wide table {
+  margin: 0;
 }
 .chat-markdown th,
 .chat-markdown td {
