@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from "react";
-import { History, Trash2, Loader2 } from "lucide-react";
+import { createPortal } from "react-dom";
+import { History, Trash2, Loader2, Maximize2, Minimize2 } from "lucide-react";
 import { useChatContext } from "../../hooks/useChatContext";
 import { useCanvasStore } from "../../store/canvas-store";
 import ChatMessage from "./ChatMessage";
@@ -18,6 +19,17 @@ export default function ChatPanel({ width }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledRef = useRef(false);
   const [showSessions, setShowSessions] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  // 展开模式下 Esc 一键收回
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
 
   const toggleSessions = useCallback(() => {
     setShowSessions((prev) => {
@@ -48,14 +60,35 @@ export default function ChatPanel({ width }: ChatPanelProps) {
   }, [messages, pendingPermission]);
 
   return (
+    <>
+    {expanded &&
+      createPortal(
+        /* 展开遮罩：半透明黑蒙层压暗画布（画布仍隐约可见），Chat 浮在中央 */
+        <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setExpanded(false)} />,
+        document.body
+      )}
     <div
-      className="flex flex-col h-full bg-bg-canvas border-l border-border-subtle"
-      style={{ width, minWidth: 280, maxWidth: 600 }}
+      className={`
+        flex flex-col h-full bg-bg-canvas border-l border-border-subtle
+        ${expanded ? "fixed top-0 right-0 bottom-0 z-50 shadow-[0_8px_48px_rgba(0,0,0,0.35)]" : ""}
+      `}
+      style={
+        expanded
+          ? { width: "min(90vw, 1200px)" }
+          : { width, minWidth: 280, maxWidth: 600 }
+      }
     >
       {/* Header */}
       <div className="relative flex items-center justify-between px-4 py-3 border-b border-border-subtle flex-shrink-0">
         <span className="text-sm font-medium text-text-primary">对话</span>
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setExpanded((prev) => !prev)}
+            className="p-1 rounded hover:bg-bg-primary text-text-muted hover:text-text-primary"
+            title={expanded ? "收回侧栏 (Esc)" : "展开对话"}
+          >
+            {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
           <button
             onClick={toggleSessions}
             className={`p-1 rounded hover:bg-bg-primary ${showSessions ? "text-brand" : "text-text-muted"}`}
@@ -180,5 +213,6 @@ export default function ChatPanel({ width }: ChatPanelProps) {
         edges={useCanvasStore.getState().edges}
       />
     </div>
+    </>
   );
 }

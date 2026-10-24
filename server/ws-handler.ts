@@ -13,6 +13,7 @@ interface WSMessage {
   content?: string;
   referencedNodes?: Array<{ nodeId: string; label: string; type: string; data?: string }>;
   requestId?: string;
+  clientMsgId?: string;
   decision?: PermissionDecision;
   editedCommand?: string;
   reason?: string;
@@ -86,6 +87,15 @@ export function setupWebSocket(server: import("http").Server) {
           case "agent_end":
             console.log("[ws] Agent session ended");
             ws.send(JSON.stringify({ type: "agent_end" }));
+            break;
+          case "queue_update":
+            // Steering / follow-up queue changed (a message was queued or
+            // delivered). Lets the frontend show pending steering bubbles.
+            ws.send(JSON.stringify({
+              type: "queue_update",
+              pendingSteering: event.steering.length,
+              pendingFollowUp: event.followUp.length,
+            }));
             break;
         }
       } catch (err) {
@@ -190,15 +200,64 @@ export function setupWebSocket(server: import("http").Server) {
         }
         break;
       case "steer":
-        if (msg.content) session.steer(msg.content);
+        if (msg.content) {
+          // Steering message: inject into the currently running agent so it
+          // takes effect before the next LLM call (after the current tool calls
+          // finish). The clientMsgId lets the frontend mark its local bubble as
+          // delivered once the queue accepts the message.
+          const clientMsgId = msg.clientMsgId;
+          session
+            .steer(msg.content)
+            .then((disposition) => {
+              ws.send(JSON.stringify({
+                type: "steer_queued",
+                clientMsgId,
+                disposition,
+                pendingSteering: session.getSteeringMessages().length,
+                pendingFollowUp: session.getFollowUpMessages().length,
+              }));
+            })
+            .catch((err) => {
+              ws.send(JSON.stringify({
+                type: "error",
+                message: `steer failed: ${err instanceof Error ? err.message : String(err)}`,
+              }));
+            });
+        }
         break;
       case "followUp":
-        if (msg.content) session.followUp(msg.content);
+        if (msg.content) {
+          const clientMsgId = msg.clientMsgId;
+          session
+            .followUp(msg.content)
+            .then((disposition) => {
+              ws.send(JSON.stringify({
+                type: "followUp_queued",
+                clientMsgId,
+                disposition,
+                pendingSteering: session.getSteeringMessages().length,
+                pendingFollowUp: session.getFollowUpMessages().length,
+              }));
+            })
+            .catch((err) => {
+              ws.send(JSON.stringify({
+                type: "error",
+                message: `followUp failed: ${err instanceof Error ? err.message : String(err)}`,
+              }));
+            });
+        }
         break;
-      case "abort":
+      case "abort": {
+        const cleared = session.clearQueue();
         session.abort();
         permissionManager.denyPending("用户中止");
+        ws.send(JSON.stringify({
+          type: "queue_cleared",
+          clearedSteering: cleared.steering.length,
+          clearedFollowUp: cleared.followUp.length,
+        }));
         break;
+      }
       case "observe_list": {
         runGovioCli("observe list")
           .then((output) => {
