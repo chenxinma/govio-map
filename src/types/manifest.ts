@@ -7,7 +7,7 @@
  *
  * 下游消费者：
  * - T1.2 一键复跑：按 `sql` + `datasource` 重跑，用 `checksum` 判断漂移
- * - T1.3 权限审计：用 `permissionDecisionId` 关联确认记录
+ * - T1.3 权限审计：用 `permissionDecisionId` 回查 `.govio/sessions/` 下的确认记录
  * - T1.4 交付导出：Manifest 附录
  *
  * 本文件只放类型（前后端共享，服务端以 `../src/types/manifest.js` 导入）；
@@ -105,8 +105,11 @@ export interface AnalysisManifest {
   /** pi 会话 ID，用于回链 `.govio/sessions/` 下的 transcript */
   sessionId: string;
   /**
-   * 关联的权限决策 ID（预留，T1.3 权限审计落地后填充）。
-   * `null` = 本次结果未触发权限确认；`undefined` = 该字段尚未由服务端写入。
+   * 关联的权限决策 ID（T1.3 权限审计）。
+   * 值是确认门为这次取数生成的 `decisionId`，可在会话的审计 sidecar
+   * （`<session-file>.audit.jsonl`）里按该 ID 查到命令原文、决策、决策人与时间。
+   * `null` = 本次结果没有经过确认门（无 `-o` 的加载、SQL 编辑器人工执行等）；
+   * `undefined` = 旧节点尚未由服务端写入该字段。
    */
   permissionDecisionId?: string | null;
   /**

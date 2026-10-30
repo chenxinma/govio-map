@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-30T23:31:00+08:00",
+  "updatedAt": "2026-10-31T00:29:00+08:00",
   "statusFlow": ["pending", "in_progress", "done", "accepted", "rejected"],
   "conventions": {
     "planFile": "docs/task-plan.json",
@@ -83,7 +83,7 @@
           "id": "T1.3",
           "title": "权限确认记录进审计留痕",
           "kr": "KR3 取数确认门",
-          "status": "pending",
+          "status": "done",
           "dependsOn": ["T1.1"],
           "outputDir": "docs/tasks/T1.3-permission-audit-trail/",
           "scope": "permission-manager 的每次请求/决策（allow/deny/edit、命令、时间戳、原因）写入会话级审计日志，并在 Manifest 中关联对应节点的确认记录。",
@@ -94,7 +94,20 @@
             "npm run build 通过",
             "docs/tasks/T1.3-permission-audit-trail/ 下有三件套交付物"
           ],
-          "history": []
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-10-30T23:44:00+08:00",
+              "by": "worker",
+              "note": "开始实现：permission-manager 每次请求/决策生成 decisionId 并写会话级审计日志（.govio/sessions/<session>.jsonl.audit.jsonl），edit 记录改前改后命令，accept_all 记录模式变更事件，observe load 产生的 dataFrame 节点 Manifest 回填 permissionDecisionId"
+            },
+            {
+              "status": "done",
+              "at": "2026-10-31T00:29:00+08:00",
+              "by": "worker",
+              "note": "实现完成：新增 server/permission-audit.ts（JSONL 追加/读回/坏行容错/删除 + 会话归属解析器注入，写失败只告警不阻断确认流），permission-manager 为每次确认生成 decisionId（= 前端 requestId，pd-/pm- 前缀）并写「请求 + 决策」两条记录（allow/deny/edit、命令原文、edit 的 editedCommand、reason、source=user/accept-all/timeout/abort/reset、elapsedMs），setAcceptAll/clearAll 写 permission_mode 模式变更事件（放行期自动允许仍留痕，故删掉 govio-canvas 的 isAcceptAll 早退）；决策进 toolCallId/命令双索引，observe load 的 tool_result 用 decisionIdForExecution() 回填 Manifest.permissionDecisionId（edit 重发链用 followsDecisionId 串起）；审计 sidecar 随 deleteSession 一并删除。WS 协议与前端零改动。验证：npm run build 通过、npm run lint 0 error、npm run verify:audit 86 项断言全通过（含 stub pi 真实扩展事件流、deleteSession 清理、无会话归属不阻断）、verify:manifest 52 项与 verify:rerun 62 项无回归；并用一次性脚本产出真实 JSONL 样例 + jq 反查记入 verification.md。交付物：docs/tasks/T1.3-permission-audit-trail/{design,CHANGES,verification}.md，同步更新 docs/specs/10-observe-load-permission.md（新增审计留痕节 + 修正过期设计稿）与 06-backend.md；遗留问题 8 项记在 design.md 第 8 节（无读取 UI、无会话文件时丢留痕、SQL 编辑器/复跑不过确认门、闸门仅覆盖 load -o、decisionId 不上前端、无轮转、无防篡改、deny 后重试无链）"
+            }
+          ]
         },
         {
           "id": "T1.4",

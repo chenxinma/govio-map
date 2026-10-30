@@ -1,6 +1,7 @@
 import { SessionManager, type SessionEntry, type SessionMessageEntry, type SessionInfo } from "@earendil-works/pi-coding-agent";
 import { existsSync, unlinkSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve as resolvePath, sep } from "node:path";
+import { deletePermissionAudit } from "./permission-audit.js";
 
 export function getSessionDir(): string {
   return resolvePath(process.cwd(), ".govio", "sessions");
@@ -54,10 +55,13 @@ export function deleteSession(path: string): void {
   if (existsSync(resolved)) unlinkSync(resolved);
   const canvas = canvasPathFor(resolved);
   if (existsSync(canvas)) unlinkSync(canvas);
+  // 权限审计 sidecar 与会话同生命周期：会话删了，确认记录一并删。
+  deletePermissionAudit(resolved);
 }
 
 // ---- canvas sidecar ----
 
+/** 画布 sidecar 路径；同目录下还有权限审计 sidecar（`permission-audit.ts` 的 `auditPathFor`） */
 export function canvasPathFor(sessionFile: string): string {
   return sessionFile + ".canvas.json";
 }

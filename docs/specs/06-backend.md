@@ -18,8 +18,9 @@
 | `server/govio-cli-exec.ts` | 数组参数方式调用 govio-cli（SQL 全文不经 shell 拆分） |
 | `server/extensions/govio-canvas.ts` | Agent 扩展（工具注册 + 事件拦截 + treemap 解析） |
 | `server/parquet-api.ts` | HTTP API（parquet 预览 / SQL 执行 / DataFrame 复跑） |
-| `server/permission-manager.ts` | observe load 权限审批 |
-| `server/session-history.ts` | 会话列表/删除/画布 sidecar/transcript 分页 |
+| `server/permission-manager.ts` | observe load 权限审批（确认门）+ 决策 ID / 审计写入（Phase 1 KR3） |
+| `server/permission-audit.ts` | 权限确认审计留痕：`<session-file>.audit.jsonl` 追写 / 读回 / 删除（Phase 1 KR3） |
+| `server/session-history.ts` | 会话列表/删除（含 canvas 与审计 sidecar）/画布 sidecar/transcript 分页 |
 | `server/models-config.ts` | 多模型配置管理 (~/.pi/agent/models.json) |
 | `server/govio-installer.ts` | govio-cli + skills 自动安装 |
 | `server/cli.ts` | CLI 命令行入口 |
@@ -71,6 +72,9 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 - `sessionManager`: 首次调用 `SessionManager.continueRecent()` 恢复最近会话，后续 `SessionManager.create()` 新建
 - 会话文件：`.govio/sessions/<ts>_<id>.jsonl`
 - 画布 sidecar：`<session-file>.canvas.json`
+- 权限审计 sidecar：`<session-file>.audit.jsonl`（见 `permission-audit.ts`）
+
+模块加载时调用 `setAuditSessionResolver()`，把「当前会话 ID + transcript 文件路径」供给审计模块（会话单例在本模块，反向依赖会形成循环导入）。
 
 ### openSessionFile(path)
 
@@ -273,11 +277,53 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 
 `observe load` 120s（重查询比 SQL 编辑器的 30s 更宽），`observe release` 15s；均由 `govio-cli-exec.ts` 的 `runGovioCliWithArgs(args, timeoutMs)` 控制。
 
-复跑不经 agent（不消耗模型、不进 transcript），也不经 permission-manager（与现有 `/api/execute-sql` 一致；确认记录关联属于 T1.3）。
+复跑不经 agent（不消耗模型、不进 transcript），也不经 permission-manager（与现有 `/api/execute-sql` 一致）；因此复跑产生的对比记录没有 `decisionId`，审计只覆盖 agent 发起的取数（T1.3 已落地，详见 `permission-audit.ts` 一节）。
 
 ### 验证
 
 `npm run verify:rerun`（mock runner）/ `npm run verify:rerun -- --real`（额外走真实 govio-cli + `sales` 数据源），见 `docs/tasks/T1.2-dataframe-rerun-drift/verification.md`。
+
+## permission-audit.ts - 权限确认审计留痕
+
+把「这个数是谁批准的」落成可质证的记录（Phase 1 KR3）。设计约束：**只追加不回改**、**写失败不阻断确认流**、**不记数据内容**。
+
+### 存储
+
+| 项 | 值 |
+|------|------|
+| 路径 | `<session-file>.audit.jsonl`（`auditPathFor()`），与 `.canvas.json` 同目录同生命周期 |
+| 格式 | JSONL，一行一条记录（命令含换行也不拆行，JSON 转义保证） |
+| 删除 | `session-history.deleteSession()` 调 `deletePermissionAudit()`；幂等，文件不存在返回 false |
+| 会话归属 | `setAuditSessionResolver()` 注入（`agent.ts` 注册）；拿不到会话文件时条目丢弃并告警 |
+
+### 记录类型
+
+| `type` | 时机 | 关键字段 |
+|--------|------|----------|
+| `permission_request` | 确认门被触发（含放行模式下的自动确认） | `command` 原文、`gate`（`ask`/`accept-all`）、`followsDecisionId?` |
+| `permission_decision` | 决策落定 | `decision`、`command`（改前）、`editedCommand?`（改后）、`reason?`、`source`、`elapsedMs` |
+| `permission_mode` | Accept All 开关真正变更 | `acceptAll`、`reason`、`pendingAffected` |
+
+共有字段：`v`（结构版本 = `PERMISSION_AUDIT_VERSION`）、`at`、`decisionId`、`sessionId`、`sessionFile`。`source` 取值：`user` / `accept-all` / `timeout` / `abort` / `reset`。
+
+### 导出
+
+| 导出 | 职责 |
+|------|------|
+| `auditPathFor(sessionFile)` | 审计 sidecar 路径 |
+| `setAuditSessionResolver(fn)` / `currentAuditSession()` | 注册 / 读取当前会话归属（验证脚本可指向临时目录） |
+| `appendPermissionAudit(input)` | 追写一条，补齐 `v`/`sessionId`/`sessionFile`；失败返回 `null` 而不抛错 |
+| `parsePermissionAuditLine(line)` | 单行解析；坏行/空行返回 null |
+| `readPermissionAudit(sessionFile)` | 读回全部记录（文件不存在返回空数组） |
+| `deletePermissionAudit(sessionFile)` | 删除 sidecar |
+
+### 与 Manifest 的关联
+
+`permission-manager` 为每次确认生成 `decisionId`（= 前端回传的 `requestId`），并把「会导致执行」的决策（allow 的原命令 / edit 的改后命令）存入索引；`govio-canvas.ts` 在 `observe load` 的 `tool_result` 里用 `decisionIdForExecution(cmd, event.toolCallId)` 取值（toolCallId 精确匹配、命令文本兜底），写进 `node.data.manifest.permissionDecisionId`。反查：节点「详情」面板的决策 ID → 该会话 `.audit.jsonl` 按 `decisionId` 检索。
+
+### 验证
+
+`npm run verify:audit`（86 项断言，不调 govio-cli / 不调模型），见 `docs/tasks/T1.3-permission-audit-trail/verification.md`。
 
 ## cli.ts - 命令行入口
 

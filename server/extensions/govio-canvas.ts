@@ -427,6 +427,7 @@ async function handleLoadResult(
   cmd: string,
   stdout: string,
   context: ManifestSessionContext,
+  permissionDecisionId: string | null,
 ): Promise<void> {
   const args = parseLoadArgs(cmd);
   if (!args) return;
@@ -485,6 +486,9 @@ async function handleLoadResult(
       rowCount,
       columnCount,
       context,
+      // 本次加载过确认门时回填决策 ID（审计日志 `<session>.jsonl.audit.jsonl` 可回查）；
+      // 没带 `-o` 的加载不经确认门，为 null。
+      permissionDecisionId,
       ...(sourceDataFrames && sourceDataFrames.length > 0 ? { sourceDataFrames } : {}),
     }),
   });
@@ -699,9 +703,11 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
     if (!isToolCallEventType("bash", event)) return;
     const cmd = event.input.command;
     if (!shouldAskPermission(cmd)) return;
-    if (permissionManager.isAcceptAll()) return;
 
-    const result = await permissionManager.requestPermission(cmd);
+    // 全局放行也走 requestPermission（manager 内部会直接允许）：审计日志需要留下
+    // 「这条命令在放行模式下被执行过」的记录，否则放行期间的取数无任何留痕。
+    // toolCallId 一并传入：同一次调用的 tool_result 能精确对回本次决策。
+    const result = await permissionManager.requestPermission(cmd, event.toolCallId);
     if (result.decision === "allow") return;
     const reason = result.decision === "edit" && result.editedCommand
       ? `用户将该命令修改为：\n\`\`\`bash\n${result.editedCommand}\n\`\`\`\n请改用此命令执行。`
@@ -723,7 +729,14 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
 
     switch (subcommand) {
       case "load":
-        await handleLoadResult(cmd, stdout, piSessionContext(ctx));
+        // toolCallId（同一次工具调用）优先，命令文本兜底（edit 后重发的命令）：
+        // 用它把确认门的决策 ID 写进节点 Manifest（未过确认门的加载返回 null）。
+        await handleLoadResult(
+          cmd,
+          stdout,
+          piSessionContext(ctx),
+          permissionManager.decisionIdForExecution(cmd, event.toolCallId),
+        );
         break;
       case "compare":
         handleCompareResult(cmd, stdout);

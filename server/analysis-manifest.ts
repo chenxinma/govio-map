@@ -56,7 +56,7 @@ export interface BuildManifestInput {
   columnCount?: number;
   /** 会话与模型上下文 */
   context: ManifestSessionContext;
-  /** 关联权限决策 ID（T1.3 落地后填充，当前透传） */
+  /** 关联的权限决策 ID；只有 `observe-load` 且命令过了确认门时才有值，其余传 null */
   permissionDecisionId?: string | null;
   /** `--memory` 派生时的上游 DataFrame 名 */
   sourceDataFrames?: string[];
@@ -175,7 +175,7 @@ export function buildManifest(input: BuildManifestInput): AnalysisManifest {
     manifest.checksum = computeChecksum(input.sql, input.columns, rowCount, columnCount);
   }
   if (input.context.model) manifest.model = input.context.model;
-  // T1.3 之前恒为 null：显式写出「未关联权限决策」，与「旧节点没有该字段」区分开。
+  // 显式写 null 而不是省略：区分「本次结果没经过确认门」与「旧节点没有该字段」。
   manifest.permissionDecisionId = input.permissionDecisionId ?? null;
   if (input.sourceDataFrames && input.sourceDataFrames.length > 0) {
     manifest.sourceDataFrames = input.sourceDataFrames;
