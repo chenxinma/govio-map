@@ -2,7 +2,7 @@ import { app, BrowserWindow } from "electron";
 import { createServer } from "http";
 import { readFile, stat } from "fs/promises";
 import { createWriteStream, existsSync, mkdirSync } from "fs";
-import { join, extname, normalize } from "path";
+import { join, extname, normalize, sep } from "path";
 import { inspect } from "util";
 import dotenv from "dotenv";
 import { startBackend } from "../server/backend.js";
@@ -95,8 +95,9 @@ function startStaticServer(root: string) {
       if (pathname === "/") pathname = "/index.html";
 
       const filePath = normalize(join(root, pathname));
-      // Path traversal guard
-      if (!filePath.startsWith(normalizedRoot)) {
+      // Path traversal guard: must stay strictly inside root (compare with the
+      // trailing separator so sibling dirs like "dist-electron" cannot match "dist").
+      if (filePath !== normalizedRoot && !filePath.startsWith(normalizedRoot + sep)) {
         res.writeHead(403);
         res.end("Forbidden");
         return;
@@ -122,8 +123,9 @@ function startStaticServer(root: string) {
       res.end(String(err));
     }
   });
-  server.listen(STATIC_PORT, () => {
-    console.log(`[static] serving dist on port ${STATIC_PORT}`);
+  // Bind to loopback only: the static server and backend must not be exposed on the LAN.
+  server.listen(STATIC_PORT, "127.0.0.1", () => {
+    console.log(`[static] serving dist on 127.0.0.1:${STATIC_PORT}`);
   });
   return server;
 }

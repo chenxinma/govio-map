@@ -1,11 +1,12 @@
 import { IncomingMessage, ServerResponse } from "http";
 import { existsSync } from "fs";
-import { join } from "path";
+import { resolve as resolvePath, sep } from "path";
 import { asyncBufferFromFile, parquetReadObjects } from "hyparquet";
 import type { AsyncBuffer } from "hyparquet/src/types.js";
 import { runGovioCli, getLoadedSkills } from "./agent.js";
 import { pushGovioNode, emitFlushed, flushGovioNodes } from "./govio-node-queue.js";
 import { execFile } from "child_process";
+import { corsHeadersFor } from "./security.js";
 
 function runGovioCliWithArgs(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -22,13 +23,40 @@ function runGovioCliWithArgs(args: string[]): Promise<string> {
 
 const PARQUET_DIR = ".govio/observe/dataframes";
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+/** Max accepted POST body size (protects against memory-exhaustion DoS). */
+const MAX_BODY_BYTES = 2 * 1024 * 1024;
+
+/** DataFrame names are used as file names and CLI arguments: restrict to safe identifiers. */
+const SAFE_DF_NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
+
+function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error("Request body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf-8")));
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on("error", reject);
+  });
+}
 
 export async function handleParquetApi(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  // Per-request CORS headers: only local frontend origins are echoed back.
+  const CORS_HEADERS = corsHeadersFor(req);
+
   // 处理 CORS preflight
   if (req.method === "OPTIONS") {
     res.writeHead(204, CORS_HEADERS);
@@ -66,14 +94,19 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
 
   // POST /api/execute-sql - 执行SQL并加载为DataFrame
   if (req.url?.startsWith("/api/execute-sql") && req.method === "POST") {
-    let body = "";
-    req.on("data", (chunk) => { body += chunk; });
-    req.on("end", async () => {
+    (async () => {
       try {
-        const { datasource, name, sql } = JSON.parse(body);
+        const parsed = await readJsonBody(req);
+        const { datasource, name, sql } = (parsed ?? {}) as { datasource?: string; name?: string; sql?: string };
         if (!datasource || !name || !sql) {
           res.writeHead(400, { "Content-Type": "application/json", ...CORS_HEADERS });
           res.end(JSON.stringify({ error: "Missing required fields: datasource, name, sql" }));
+          return;
+        }
+        // name is passed to the CLI and later used as a file name: reject anything exotic.
+        if (!SAFE_DF_NAME_RE.test(name)) {
+          res.writeHead(400, { "Content-Type": "application/json", ...CORS_HEADERS });
+          res.end(JSON.stringify({ error: "Invalid DataFrame name: only letters, digits, '_', '-', '.' allowed" }));
           return;
         }
 
@@ -84,7 +117,7 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
         const loadOutput = await runGovioCliWithArgs(loadArgs);
         const loadResult = JSON.parse(loadOutput);
 
-        // 获取 DataFrame 信息
+        // 获取 DataFrame 信息（name 已通过 SAFE_DF_NAME_RE 校验，可安全拼接）
         const infoOutput = await runGovioCli(`observe info --name ${name} --rows 0`, true);
         const info = JSON.parse(infoOutput);
 
@@ -115,7 +148,7 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
         res.writeHead(500, { "Content-Type": "application/json", ...CORS_HEADERS });
         res.end(JSON.stringify({ error: message }));
       }
-    });
+    })();
     return true;
   }
 
@@ -130,7 +163,11 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
 
   const url = new URL(req.url, "http://localhost");
   const dfName = url.searchParams.get("df");
-  const rowLimit = parseInt(url.searchParams.get("rows") || "10", 10);
+  const requestedRows = parseInt(url.searchParams.get("rows") || "10", 10);
+  // Clamp the row limit to a sane range (NaN/negative/huge values -> defaults).
+  const rowLimit = Number.isFinite(requestedRows)
+    ? Math.min(Math.max(requestedRows, 1), 1000)
+    : 10;
 
   if (!dfName) {
     res.writeHead(400, { "Content-Type": "application/json", ...CORS_HEADERS });
@@ -138,7 +175,21 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
     return true;
   }
 
-  const parquetPath = join(process.cwd(), PARQUET_DIR, `${dfName}.parquet`);
+  // Reject anything that is not a plain DataFrame name before touching the filesystem.
+  if (!SAFE_DF_NAME_RE.test(dfName)) {
+    res.writeHead(400, { "Content-Type": "application/json", ...CORS_HEADERS });
+    res.end(JSON.stringify({ error: "Invalid 'df' parameter" }));
+    return true;
+  }
+
+  const parquetDir = resolvePath(process.cwd(), PARQUET_DIR);
+  const parquetPath = resolvePath(parquetDir, `${dfName}.parquet`);
+  // Defense in depth: the resolved path must stay inside the DataFrame directory.
+  if (!parquetPath.startsWith(parquetDir + sep)) {
+    res.writeHead(400, { "Content-Type": "application/json", ...CORS_HEADERS });
+    res.end(JSON.stringify({ error: "Invalid 'df' parameter" }));
+    return true;
+  }
   if (!existsSync(parquetPath)) {
     res.writeHead(404, { "Content-Type": "application/json", ...CORS_HEADERS });
     res.end(JSON.stringify({ error: `DataFrame '${dfName}' not found` }));
