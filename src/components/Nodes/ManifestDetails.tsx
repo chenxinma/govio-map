@@ -1,12 +1,6 @@
 import { memo } from 'react';
-import type { AnalysisManifest, ManifestOrigin } from '../../types';
-
-const ORIGIN_LABELS: Record<ManifestOrigin, string> = {
-  'observe-load': 'observe load',
-  'show-dataframe': 'show dataframe',
-  'sql-editor': 'SQL 编辑器',
-  'assistant-sql': '助手消息 SQL',
-};
+import type { AnalysisManifest } from '../../types';
+import { manifestModelLabel, manifestOriginLabel } from '../../utils/manifest-labels';
 
 function Row({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
@@ -15,13 +9,6 @@ function Row({ label, value, title }: { label: string; value: string; title?: st
       <span className="text-text-secondary break-all" title={title ?? value}>{value}</span>
     </div>
   );
-}
-
-function modelLabel(manifest: AnalysisManifest): string {
-  const m = manifest.model;
-  if (!m) return '—（人工执行）';
-  const base = [m.provider, m.id].filter(Boolean).join(' / ');
-  return m.responseModel && m.responseModel !== m.id ? `${base} → ${m.responseModel}` : base || '—';
 }
 
 /**
@@ -36,7 +23,7 @@ function ManifestDetails({ manifest }: { manifest: AnalysisManifest }) {
       <div className="text-[10px] font-mono uppercase tracking-[1.2px] text-text-muted">
         分析留痕 · Manifest v{manifest.schemaVersion}
       </div>
-      <Row label="来源" value={ORIGIN_LABELS[manifest.origin] ?? manifest.origin} />
+      <Row label="来源" value={manifestOriginLabel(manifest.origin)} />
       <Row label="数据源" value={manifest.datasource || '—'} />
       <Row label="执行时间" value={manifest.executedAt} />
       {manifest.dfName && <Row label="DataFrame" value={manifest.dfName} />}
@@ -50,7 +37,7 @@ function ManifestDetails({ manifest }: { manifest: AnalysisManifest }) {
           title={`规模 ${checksum.rowCount} 行 × ${checksum.columnCount} 列；结构哈希含列名与 dtype，不含数据内容`}
         />
       )}
-      <Row label="生成模型" value={modelLabel(manifest)} />
+      <Row label="生成模型" value={manifestModelLabel(manifest)} />
       <Row label="会话" value={manifest.sessionId || '—'} />
       <Row label="权限决策" value={manifest.permissionDecisionId ?? '未关联'} />
       {manifest.sourceDataFrames && manifest.sourceDataFrames.length > 0 && (

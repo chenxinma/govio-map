@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="generator" content="Govio Map 0.6.1">
+<title>Govio Map · 画布交付报告 · 2026-10-31</title>
+<style>
+:root{
+  --bg:#f5f5f5;--card:#ffffff;--surface:#f0f0f0;
+  --text:#121212;--text-2:#535353;--text-3:#727272;--text-4:#a7a7a7;
+  --border-1:#ececec;--border-2:#d4d4d4;--border-3:#b3b3b3;
+  --brand:#1db954;--warning:#f59b23;--error:#e22134;
+  --source:hsl(270,60%,60%);--sql:hsl(152,58%,52%);--df:hsl(25,75%,55%);
+  --report:hsl(270,60%,70%);--chart:hsl(200,70%,55%);
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",Roboto,"Helvetica Neue",sans-serif;
+  --mono:"JetBrains Mono","Cascadia Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:var(--bg);color:var(--text);
+  font-family:var(--sans);font-size:13px;line-height:1.55;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto}
+a{color:var(--brand);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:var(--mono);font-size:11px;background:var(--surface);
+  border:1px solid var(--border-1);border-radius:3px;padding:0 3px;word-break:break-all}
+
+/* ---- 报头 ---- */
+.report-head{background:var(--card);border:1px solid var(--border-2);border-radius:10px;padding:18px 20px}
+.report-head h1{margin:0;font-size:19px;letter-spacing:-.2px}
+.report-head .sub{margin:4px 0 0;font-size:12px;color:var(--text-3)}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px 18px;margin:16px 0 0;padding:0}
+.meta dt{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-4)}
+.meta dd{margin:2px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--text-2);word-break:break-all}
+
+/* ---- 章节与目录 ---- */
+section{margin-top:24px}
+h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;padding-bottom:6px;
+  font-size:15px;border-bottom:2px solid var(--brand)}
+h2 .n{font-family:var(--mono);font-size:12px;color:var(--brand)}
+h3{margin:18px 0 8px;font-size:13px;color:var(--text)}
+.lbl{margin:12px 0 4px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--text-3)}
+.note{margin:6px 0;font-size:11.5px;color:var(--text-3)}
+.toc{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border-1)}
+.toc a{font-family:var(--mono);font-size:11px;padding:2px 8px;border:1px solid var(--border-2);
+  border-radius:999px;background:var(--surface);color:var(--text-2)}
+.toc a:hover{border-color:var(--brand);color:var(--brand);text-decoration:none}
+
+/* ---- 摘要统计 ---- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:0;padding:0}
+.stats>div{background:var(--card);border:1px solid var(--border-2);border-radius:8px;padding:10px 12px}
+.stats dt{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-4)}
+.stats dd{margin:2px 0 0;font-size:19px;font-family:var(--mono);color:var(--text)}
+.stats dd.warn{color:var(--warning)}
+.stats dd.err{color:var(--error)}
+.box{border-radius:8px;padding:10px 12px;margin-top:10px;font-size:12px}
+.box .t{font-weight:600;margin-bottom:4px}
+.box ul{margin:4px 0 0;padding-left:18px}
+.box li{margin-bottom:2px}
+.box.warn{border:1px solid rgba(245,155,35,.55);background:rgba(245,155,35,.09);color:#7a4d00}
+.box.err{border:1px solid rgba(226,33,52,.45);background:rgba(226,33,52,.07);color:#8d1220}
+.box.info{border:1px solid var(--border-2);background:var(--card);color:var(--text-2)}
+.box.ok{border:1px solid rgba(29,185,84,.45);background:rgba(29,185,84,.08);color:#0d6b32}
+
+/* ---- 血缘图 ---- */
+.lineage-wrap{background:var(--card);border:1px solid var(--border-2);border-radius:8px;padding:12px;overflow:auto}
+svg.lineage{display:block;max-width:100%;height:auto}
+svg.lineage .lt{font-family:var(--sans);font-size:12px;font-weight:600;fill:var(--text)}
+svg.lineage .ls{font-family:var(--mono);font-size:10px;fill:var(--text-3)}
+svg.lineage a:hover rect.box{stroke:var(--brand);stroke-width:1.6}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;font-size:11px;color:var(--text-3)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px}
+
+/* ---- 节点卡片 ---- */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(370px,1fr));gap:14px;align-items:start}
+.card{background:var(--card);border:1px solid var(--border-2);border-left:3px solid var(--border-3);
+  border-radius:8px;overflow:hidden;break-inside:avoid}
+.card.drift{border-color:rgba(245,155,35,.6);border-left-color:var(--warning)}
+.card-hd{padding:10px 12px;border-bottom:1px solid var(--border-1)}
+.card-hd .row{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.card-hd .t{font-size:13px;font-weight:600;word-break:break-all}
+.card-hd .id{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text-4)}
+.card-hd .at{font-family:var(--mono);font-size:10px;color:var(--text-4)}
+.card-bd{padding:10px 12px}
+.card-ft{padding:8px 12px;border-top:1px solid var(--border-1);font-family:var(--mono);
+  font-size:10.5px;color:var(--text-3)}
+.badge{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;padding:1px 7px;border-radius:999px;border:1px solid var(--border-2);
+  background:var(--surface);color:var(--text-3)}
+.badge.drift{border-color:rgba(245,155,35,.6);background:rgba(245,155,35,.12);color:#8a5a00}
+.badge.ok{border-color:rgba(29,185,84,.5);background:rgba(29,185,84,.1);color:#0d6b32}
+.badge.err{border-color:rgba(226,33,52,.45);background:rgba(226,33,52,.08);color:#8d1220}
+
+.kv{display:grid;grid-template-columns:92px 1fr;gap:3px 10px;margin:0;padding:0;
+  font-family:var(--mono);font-size:11px}
+.kv dt{color:var(--text-4)}
+.kv dd{margin:0;color:var(--text-2);word-break:break-all}
+table.t{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px}
+table.t th{text-align:left;font-weight:500;color:var(--text-3);white-space:nowrap;
+  padding:4px 6px;border-bottom:1px solid var(--border-2)}
+table.t td{padding:4px 6px;border-bottom:1px solid var(--border-1);color:var(--text-2);
+  vertical-align:top;word-break:break-word}
+table.t tr:last-child td{border-bottom:0}
+table.t td.num,table.t th.num{text-align:right}
+table.t.wide{display:block;overflow-x:auto}
+.scroll{max-height:260px;overflow:auto;border:1px solid var(--border-1);border-radius:6px}
+pre.sql{margin:0;padding:8px 10px;background:var(--surface);border-radius:6px;
+  font-family:var(--mono);font-size:11px;line-height:1.5;color:var(--text);
+  white-space:pre-wrap;word-break:break-word}
+pre.sql.sm{font-size:10.5px;padding:6px 8px}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:4px;
+  background:var(--surface);border:1px solid var(--border-1);color:var(--text-3)}
+ul.plain{margin:4px 0 0;padding-left:16px;font-family:var(--mono);font-size:11px;color:var(--text-2)}
+ul.plain li{margin-bottom:3px}
+img.chart{display:block;max-width:100%;height:auto;border:1px solid var(--border-1);
+  border-radius:6px;background:#fff}
+details{margin-top:8px}
+summary{cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--text-3)}
+summary:hover{color:var(--brand)}
+
+/* ---- 报告正文（report 节点的极简 markdown） ---- */
+.md{font-size:12px;color:var(--text-2)}
+.md .h2{margin:10px 0 4px;font-size:12.5px;font-weight:600;color:var(--brand)}
+.md .h3{margin:8px 0 3px;font-size:12px;font-weight:600;color:var(--text)}
+.md .p{margin:3px 0}
+.md .li{margin:2px 0 2px 12px}
+.md table{margin:6px 0}
+.md strong{color:var(--text);font-weight:600}
+
+/* ---- 页脚 ---- */
+footer{margin-top:28px;padding-top:12px;border-top:1px solid var(--border-2);
+  font-size:11px;color:var(--text-4)}
+footer p{margin:3px 0}
+
+@media print{
+  body{background:#fff;padding:0;font-size:11px}
+  .card-grid{grid-template-columns:1fr}
+  .lineage-wrap{overflow:visible;border:0;padding:0}
+  .scroll{max-height:none;overflow:visible}
+  a{color:var(--text-2)}
+  section{break-inside:avoid-page}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="report-head">
+<h1>Govio Map · 画布交付报告</h1>
+<p class="sub">画布节点静态快照 + 血缘图 + 分析留痕（Manifest）+ 权限确认记录 · 自包含单文件，可离线打开</p>
+<dl class="meta">
+<div><dt>导出时间</dt><dd>2026-10-31 08:45:00</dd></div>
+<div><dt>导出时间（ISO）</dt><dd>2026-10-31T00:45:00.000Z</dd></div>
+<div><dt>应用版本</dt><dd>Govio Map v0.6.1</dd></div>
+<div><dt>会话</dt><dd>sess-sample-export</dd></div>
+<div><dt>节点 / 连线</dt><dd>10 / 9</dd></div>
+<div><dt>节点构成</dt><dd>数据源表 2 · SQL 查询 1 · DataFrame 4 · 分析报告 1 · 图表 2</dd></div>
+<div><dt>忽略的连线</dt><dd>2（端点不在画布上或自环）</dd></div>
+</dl>
+<nav class="toc">
+<a href="#summary">摘要</a><a href="#lineage">1. 血缘图</a><a href="#nodes">2. 节点卡片</a>
+<a href="#appendix-a">附录 A · Manifest</a><a href="#appendix-b">附录 B · 权限确认</a>
+</nav>
+</header>
+<section id="summary"><h2><span class="n">摘要</span> 交付概览与告警</h2><dl class="stats">
+<div><dt>节点</dt><dd>10</dd></div>
+<div><dt>血缘连线</dt><dd>9</dd></div>
+<div><dt>DataFrame</dt><dd>4</dd></div>
+<div><dt>漂移告警</dt><dd class="warn">1</dd></div>
+<div><dt>带 Manifest 的节点</dt><dd>4</dd></div>
+<div><dt>复跑次数</dt><dd>4</dd></div>
+<div><dt>确认记录（附录 B）</dt><dd>4</dd></div>
+</dl><div class="box warn"><div class="t">⚠ 1 个 DataFrame 处于漂移警告态</div><div class="note">最近一次复跑的结果与原留痕不一致。原 Manifest 未被覆盖，节点展示的仍是已交付结果；对比细节见卡片与附录 A。</div><ul><li><a href="#card-gov-2">DF: df_monthly_sales</a> <code>df_monthly_sales</code> — 行数 12 → 13（+1）；结构哈希变化</li></ul></div><div class="box err"><div class="t">✗ 1 个 DataFrame 最近一次复跑失败</div><ul><li><a href="#card-gov-3">DF: df_region_top</a> — 上游 DataFrame df_monthly_sales 已被释放（observe release）</li></ul></div><div class="box info"><div class="t">1 个 DataFrame 没有分析留痕</div><div class="note">这些节点不可一键复跑；附录 A 的表里仍占一行，但 Manifest 各列显示「—」。</div><ul><li><a href="#card-gov-4">DF: df_legacy_restored</a> <code>df_legacy_restored</code></li></ul></div><div class="box info"><div class="t">1 个图表降级为配置摘要</div><ul><li><a href="#card-gov-6">区域占比饼图</a> — 渲染失败：trace 类型 scattergl 不支持静态导出</li></ul></div></section>
+<section id="lineage"><h2><span class="n">1</span> 血缘连线图</h2><p class="note">按血缘层次从左到右排布（同源同层按画布顺序纵向排列），箭头表示数据流向；点击任意盒子跳到对应节点卡片。这是一张静态示意图，不复用画布的 ReactFlow 运行时，因此离线打开也能看。</p><div class="lineage-wrap"><svg class="lineage" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1474 248" width="1474" height="248" role="img" aria-label="画布血缘连线图"><defs><marker id="govio-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1db954"/></marker></defs><path d="M 230 46 C 273.2 46, 282.8 46, 326 46" fill="none" stroke="#1db954" stroke-width="1.6" marker-end="url(#govio-arrow)"><title>src-1 → gov-1</title></path><path d="M 230 124 C 273.2 124, 282.8 46, 326 46" fill="none" stroke="#1db954" stroke-width="1.6" marker-end="url(#govio-arrow)"><title>src-2 → gov-1</title></path><path d="M 536 46 C 579.2 46, 588.8 46, 632 46" fill="none" stroke="#1db954" stroke-width="1.6" marker-end="url(#govio-arrow)"><title>gov-1 → gov-2</title></path><path d="M 536 46 C 579.2 46, 588.8 124, 632 124" fill="none" stroke="#1db954" stroke-width="1.6" marker-end="url(#govio-arrow)"><title>gov-1 → gov-8</title></path><path d="M 842 46 C 885.2 46, 894.8 46, 938 46" fill="none" stroke="#1db954" stroke-width="1.6" marker-end="url(#govio-arrow)"><title>gov-2 → gov-3</title></path><path d="M 842 46 C 885.2 46, 894.8 124, 938 124" fill="none" stroke="#1db954" stroke-width="1.6" marker-end="url(#govio-arrow)"><title>gov-2 → gov-5</title></path><path d="M 1148 46 C 1191.2 46, 1200.8 46, 1244 46" fill="none" stroke="#1db954" stroke-width="1.6" marker-end="url(#govio-arrow)"><title>gov-3 → gov-6</title></path><path d="M 842 46 C 1022.9 46, 1063.1 124, 1244 124" fill="none" stroke="#1db954" stroke-width="1.6" marker-end="url(#govio-arrow)"><title>gov-2 → gov-7</title></path><path d="M 1148 46 C 1191.2 46, 1200.8 124, 1244 124" fill="none" stroke="#1db954" stroke-width="1.6" marker-end="url(#govio-arrow)"><title>gov-3 → gov-7</title></path><a href="#card-src-1" xlink:href="#card-src-1"><g transform="translate(20,20)"><rect class="box" width="210" height="52" rx="7" fill="#ffffff" stroke="#d4d4d4"/><rect width="4" height="52" rx="2" fill="hsl(270, 60%, 60%)"/><text class="lt" x="14" y="22">orders</text><text class="ls" x="14" y="39">数据源表 · src-1</text></g></a><a href="#card-src-2" xlink:href="#card-src-2"><g transform="translate(20,98)"><rect class="box" width="210" height="52" rx="7" fill="#ffffff" stroke="#d4d4d4"/><rect width="4" height="52" rx="2" fill="hsl(270, 60%, 60%)"/><text class="lt" x="14" y="22">customers</text><text class="ls" x="14" y="39">数据源表 · src-2</text></g></a><a href="#card-gov-4" xlink:href="#card-gov-4"><g transform="translate(20,176)"><rect class="box" width="210" height="52" rx="7" fill="#ffffff" stroke="#d4d4d4"/><rect width="4" height="52" rx="2" fill="hsl(25, 75%, 55%)"/><text class="lt" x="14" y="22">DF: df_legacy_restored</text><text class="ls" x="14" y="39">DataFrame · gov-4</text></g></a><a href="#card-gov-1" xlink:href="#card-gov-1"><g transform="translate(326,20)"><rect class="box" width="210" height="52" rx="7" fill="#ffffff" stroke="#d4d4d4"/><rect width="4" height="52" rx="2" fill="hsl(152, 58%, 52%)"/><text class="lt" x="14" y="22">月度销售额汇总 SQL</text><text class="ls" x="14" y="39">SQL 查询 · gov-1</text></g></a><a href="#card-gov-2" xlink:href="#card-gov-2"><g transform="translate(632,20)"><rect class="box" width="210" height="52" rx="7" fill="#ffffff" stroke="#d4d4d4"/><rect width="4" height="52" rx="2" fill="hsl(25, 75%, 55%)"/><text class="lt" x="14" y="22">DF: df_monthly_sales</text><text class="ls" x="14" y="39">DataFrame · gov-2</text></g></a><a href="#card-gov-8" xlink:href="#card-gov-8"><g transform="translate(632,98)"><rect class="box" width="210" height="52" rx="7" fill="#ffffff" stroke="#d4d4d4"/><rect width="4" height="52" rx="2" fill="hsl(25, 75%, 55%)"/><text class="lt" x="14" y="22">DF: df_channel_check</text><text class="ls" x="14" y="39">DataFrame · gov-8</text></g></a><a href="#card-gov-3" xlink:href="#card-gov-3"><g transform="translate(938,20)"><rect class="box" width="210" height="52" rx="7" fill="#ffffff" stroke="#d4d4d4"/><rect width="4" height="52" rx="2" fill="hsl(25, 75%, 55%)"/><text class="lt" x="14" y="22">DF: df_region_top</text><text class="ls" x="14" y="39">DataFrame · gov-3</text></g></a><a href="#card-gov-5" xlink:href="#card-gov-5"><g transform="translate(938,98)"><rect class="box" width="210" height="52" rx="7" fill="#ffffff" stroke="#d4d4d4"/><rect width="4" height="52" rx="2" fill="hsl(200, 70%, 55%)"/><text class="lt" x="14" y="22">月度销售额柱状图</text><text class="ls" x="14" y="39">图表 · gov-5</text></g></a><a href="#card-gov-6" xlink:href="#card-gov-6"><g transform="translate(1244,20)"><rect class="box" width="210" height="52" rx="7" fill="#ffffff" stroke="#d4d4d4"/><rect width="4" height="52" rx="2" fill="hsl(200, 70%, 55%)"/><text class="lt" x="14" y="22">区域占比饼图</text><text class="ls" x="14" y="39">图表 · gov-6</text></g></a><a href="#card-gov-7" xlink:href="#card-gov-7"><g transform="translate(1244,98)"><rect class="box" width="210" height="52" rx="7" fill="#ffffff" stroke="#d4d4d4"/><rect width="4" height="52" rx="2" fill="#f59b23"/><text class="lt" x="14" y="22">9 月 vs 10 月销售额差异分析</text><text class="ls" x="14" y="39">分析报告 · gov-7</text></g></a></svg></div><div class="legend"><span><i style="background:hsl(270, 60%, 60%)"></i>数据源表</span><span><i style="background:hsl(152, 58%, 52%)"></i>SQL 查询</span><span><i style="background:hsl(25, 75%, 55%)"></i>DataFrame</span><span><i style="background:hsl(270, 60%, 70%)"></i>分析报告</span><span><i style="background:hsl(200, 70%, 55%)"></i>图表</span></div></section>
+<section id="nodes"><h2><span class="n">2</span> 节点卡片（静态快照）</h2><p class="note">共 10 个节点，按血缘层次排列。卡片是导出时刻的静态快照：不含交互按钮，不含数据行内容（DataFrame 只有列名与 dtype）。</p><div class="card-grid"><article class="card" id="card-src-1" style="border-left-color:hsl(270, 60%, 60%)"><div class="card-hd"><div class="row"><span class="badge" style="border-color:hsl(270, 60%, 60%);color:hsl(270, 60%, 60%)">数据源表</span><span class="t">orders</span></div><div class="row"><span class="at">创建于 2026-10-31 06:00:00</span><span class="id">src-1</span></div></div><div class="card-bd"><dl class="kv"><dt>表名</dt><dd>orders</dd><dt>数据源</dt><dd>sales</dd><dt>行数</dt><dd>128,450</dd><dt>字段数</dt><dd>4</dd><dt>说明</dt><dd>订单事实表 &lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;</dd></dl><div class="lbl">字段结构（4）</div><div class="scroll"><table class="t"><thead><tr><th>#</th><th>字段</th><th>类型</th><th>可空</th><th>键 / 引用</th><th>说明</th></tr></thead><tbody><tr><td>0</td><td>order_id</td><td>BIGINT</td><td>否</td><td>PK</td><td>订单号</td></tr><tr><td>1</td><td>customer_id</td><td>BIGINT</td><td>否</td><td>FK→customers.id</td><td></td></tr><tr><td>2</td><td>amount</td><td>DOUBLE</td><td>是</td><td><span class="note">—</span></td><td>金额（元）</td></tr><tr><td>3</td><td>created_at</td><td>TIMESTAMP</td><td>否</td><td><span class="note">—</span></td><td></td></tr></tbody></table></div></div><div class="card-ft"><div>下游：<a href="#card-gov-1">月度销售额汇总 SQL</a></div></div></article><article class="card" id="card-src-2" style="border-left-color:hsl(270, 60%, 60%)"><div class="card-hd"><div class="row"><span class="badge" style="border-color:hsl(270, 60%, 60%);color:hsl(270, 60%, 60%)">数据源表</span><span class="t">customers</span></div><div class="row"><span class="at">创建于 2026-10-31 06:01:00</span><span class="id">src-2</span></div></div><div class="card-bd"><dl class="kv"><dt>表名</dt><dd>customers</dd><dt>数据源</dt><dd>sales</dd><dt>行数</dt><dd>8,420</dd><dt>字段数</dt><dd>3</dd></dl><div class="lbl">字段结构（3）</div><div class="scroll"><table class="t"><thead><tr><th>#</th><th>字段</th><th>类型</th><th>可空</th><th>键 / 引用</th><th>说明</th></tr></thead><tbody><tr><td>0</td><td>id</td><td>BIGINT</td><td>否</td><td>PK</td><td></td></tr><tr><td>1</td><td>区域</td><td>VARCHAR</td><td>是</td><td><span class="note">—</span></td><td>华东/华北/华南/西部</td></tr><tr><td>2</td><td>registered_at</td><td>DATE</td><td>是</td><td><span class="note">—</span></td><td></td></tr></tbody></table></div></div><div class="card-ft"><div>下游：<a href="#card-gov-1">月度销售额汇总 SQL</a></div></div></article><article class="card" id="card-gov-4" style="border-left-color:hsl(25, 75%, 55%)"><div class="card-hd"><div class="row"><span class="badge" style="border-color:hsl(25, 75%, 55%);color:hsl(25, 75%, 55%)">DataFrame</span><span class="t">DF: df_legacy_restored</span></div><div class="row"><span class="at">创建于 2026-10-31 07:40:00</span><span class="id">gov-4</span></div></div><div class="card-bd"><dl class="kv"><dt>DataFrame</dt><dd>df_legacy_restored</dd><dt>数据源</dt><dd>sales</dd><dt>行 × 列</dt><dd>900 × 2</dd><dt>内存占用</dt><dd>14 KB</dd></dl><div class="lbl">列结构（2）</div><div class="scroll"><table class="t"><thead><tr><th>#</th><th>列名</th><th>Non-Null</th><th>Dtype</th></tr></thead><tbody><tr><td>0</td><td>k</td><td>900</td><td>VARCHAR</td></tr><tr><td>1</td><td>v</td><td>890</td><td>DOUBLE</td></tr></tbody></table></div><p class="note">尚未复跑过：画布上点「复跑」可按留痕固化的 SQL 重新执行并对比。</p><p class="note">该节点没有分析留痕（Manifest）：由画布恢复 / 数据源面板补出，或早于 T1.1 上线。</p></div></article><article class="card" id="card-gov-1" style="border-left-color:hsl(152, 58%, 52%)"><div class="card-hd"><div class="row"><span class="badge" style="border-color:hsl(152, 58%, 52%);color:hsl(152, 58%, 52%)">SQL 查询</span><span class="t">月度销售额汇总 SQL</span></div><div class="row"><span class="at">创建于 2026-10-31 06:09:00</span><span class="id">gov-1</span></div></div><div class="card-bd"><div class="lbl">SQL</div><pre class="sql">-- 月度销售额汇总（口径：已支付订单）
+SELECT strftime(o.created_at, &#39;%Y-%m&#39;) AS 月份,
+       c.区域, SUM(o.amount) AS 销售额
+FROM orders o JOIN customers c ON o.customer_id = c.id
+WHERE o.status = &#39;paid&#39; AND o.amount &lt; 100000
+GROUP BY 1, 2
+ORDER BY 1 DESC</pre><div class="lbl">输出列</div><div class="chips"><span class="chip">月份</span><span class="chip">区域</span><span class="chip">销售额</span></div><div class="lbl">分析留痕 · Manifest v1</div><dl class="kv"><dt>来源</dt><dd>助手消息 SQL</dd><dt>数据源</dt><dd>sales</dd><dt>执行时间</dt><dd>2026-10-31 06:10:00</dd><dt>生成模型</dt><dd>anthropic / claude-sonnet-4-5 → claude-sonnet-4-5-20250929</dd><dt>权限决策</dt><dd><span class="note">未过确认门</span></dd><dt>会话</dt><dd>sess-sample-export</dd></dl></div><div class="card-ft"><div>上游：<a href="#card-src-1">orders</a> · <a href="#card-src-2">customers</a></div><div>下游：<a href="#card-gov-2">DF: df_monthly_sales</a> · <a href="#card-gov-8">DF: df_channel_check</a></div></div></article><article class="card drift" id="card-gov-2" style="border-left-color:hsl(25, 75%, 55%)"><div class="card-hd"><div class="row"><span class="badge" style="border-color:hsl(25, 75%, 55%);color:hsl(25, 75%, 55%)">DataFrame</span><span class="badge drift">漂移</span><span class="badge">已确认取数</span><span class="t">DF: df_monthly_sales</span></div><div class="row"><span class="at">创建于 2026-10-31 06:10:30</span><span class="id">gov-2</span></div></div><div class="card-bd"><div class="box warn"><div class="t">⚠ 漂移警告（最近一次复跑 2026-10-31 07:05）</div><div>行数 12 → 13（+1）；结构哈希变化</div><div class="note">原 Manifest 未被覆盖：下方的行 × 列仍是<strong>已交付</strong>的那份结果，新旧对比见复跑记录。</div></div><dl class="kv"><dt>DataFrame</dt><dd>df_monthly_sales</dd><dt>数据源</dt><dd>sales</dd><dt>行 × 列</dt><dd>12 × 3</dd><dt>内存占用</dt><dd>1.2 KB</dd></dl><div class="lbl">列结构（3）</div><div class="scroll"><table class="t"><thead><tr><th>#</th><th>列名</th><th>Non-Null</th><th>Dtype</th></tr></thead><tbody><tr><td>0</td><td>月份</td><td>12</td><td>VARCHAR</td></tr><tr><td>1</td><td>区域</td><td>12</td><td>VARCHAR</td></tr><tr><td>2</td><td>销售额</td><td>12</td><td>DOUBLE</td></tr></tbody></table></div><div class="lbl">复跑记录（2 次，最新在前）</div><ul class="plain"><li>#1 2026-10-31 07:05 · 漂移 · 原 12 行 × 3 列 · 本次 13 行 × 3 列 · 行数 12 → 13（+1）；结构哈希变化 · 耗时 3.2s · 临时 DF rerun_tmp_df_monthly_sales_lz4k2a91（比对后已释放）</li><li>#2 2026-10-31 06:40 · 复现一致 · 原 12 行 × 3 列 · 本次 12 行 × 3 列 · 耗时 2.9s · 临时 DF rerun_tmp_df_monthly_sales_lz4jx0b2（比对后已释放）</li></ul><div class="lbl">分析留痕 · Manifest v1</div><dl class="kv"><dt>来源</dt><dd>observe load</dd><dt>数据源</dt><dd>sales</dd><dt>执行时间</dt><dd>2026-10-31 06:10:00</dd><dt>DataFrame</dt><dd>df_monthly_sales</dd><dt>行 × 列</dt><dd>12 × 3</dd><dt>校验和</dt><dd><span title="规模 12 行 × 3 列；结构哈希含列名与 dtype，不含数据内容">schema-v1: schema a1b2c3d4e5f60718 · sql 0f1e2d3c4b5a6978</span></dd><dt>生成模型</dt><dd>anthropic / claude-sonnet-4-5 → claude-sonnet-4-5-20250929</dd><dt>权限决策</dt><dd><a href="#audit-pd-1111aaaa-2222">pd-1111aaaa-2222</a></dd><dt>会话</dt><dd>sess-sample-export</dd></dl><p class="note">完整字段与 SQL 全文见<a href="#appendix-a">附录 A</a>。</p></div><div class="card-ft"><div>上游：<a href="#card-gov-1">月度销售额汇总 SQL</a></div><div>下游：<a href="#card-gov-3">DF: df_region_top</a> · <a href="#card-gov-5">月度销售额柱状图</a> · <a href="#card-gov-7">9 月 vs 10 月销售额差异分析</a></div></div></article><article class="card" id="card-gov-8" style="border-left-color:hsl(25, 75%, 55%)"><div class="card-hd"><div class="row"><span class="badge" style="border-color:hsl(25, 75%, 55%);color:hsl(25, 75%, 55%)">DataFrame</span><span class="badge ok">复现一致</span><span class="t">DF: df_channel_check</span></div><div class="row"><span class="at">创建于 2026-10-31 06:45:30</span><span class="id">gov-8</span></div></div><div class="card-bd"><div class="box ok"><div class="t">✓ 最近一次复跑复现一致（2026-10-31 07:30）</div><div class="note">6 行 × 2 列，校验和与原留痕一致</div></div><dl class="kv"><dt>DataFrame</dt><dd>df_channel_check</dd><dt>数据源</dt><dd>sales</dd><dt>行 × 列</dt><dd>6 × 2</dd><dt>内存占用</dt><dd>640 B</dd></dl><div class="lbl">列结构（2）</div><div class="scroll"><table class="t"><thead><tr><th>#</th><th>列名</th><th>Non-Null</th><th>Dtype</th></tr></thead><tbody><tr><td>0</td><td>渠道</td><td>6</td><td>VARCHAR</td></tr><tr><td>1</td><td>单量</td><td>6</td><td>BIGINT</td></tr></tbody></table></div><div class="lbl">复跑记录（1 次，最新在前）</div><ul class="plain"><li>#1 2026-10-31 07:30 · 复现一致 · 原 6 行 × 2 列 · 本次 6 行 × 2 列 · 耗时 1.4s · 临时 DF rerun_tmp_df_channel_check_lz4k9c33（比对后已释放）</li></ul><div class="lbl">分析留痕 · Manifest v1</div><dl class="kv"><dt>来源</dt><dd>SQL 编辑器</dd><dt>数据源</dt><dd>sales</dd><dt>执行时间</dt><dd>2026-10-31 06:45:00</dd><dt>DataFrame</dt><dd>df_channel_check</dd><dt>行 × 列</dt><dd>6 × 2</dd><dt>校验和</dt><dd><span title="规模 6 行 × 2 列；结构哈希含列名与 dtype，不含数据内容">schema-v1: schema abcd1234abcd1234 · sql 5566778899aabbcc</span></dd><dt>生成模型</dt><dd>—（人工执行）</dd><dt>权限决策</dt><dd><span class="note">未过确认门</span></dd><dt>会话</dt><dd>sess-sample-export</dd></dl><p class="note">完整字段与 SQL 全文见<a href="#appendix-a">附录 A</a>。</p></div><div class="card-ft"><div>上游：<a href="#card-gov-1">月度销售额汇总 SQL</a></div></div></article><article class="card" id="card-gov-3" style="border-left-color:hsl(25, 75%, 55%)"><div class="card-hd"><div class="row"><span class="badge" style="border-color:hsl(25, 75%, 55%);color:hsl(25, 75%, 55%)">DataFrame</span><span class="badge err">复跑失败</span><span class="t">DF: df_region_top</span></div><div class="row"><span class="at">创建于 2026-10-31 06:31:30</span><span class="id">gov-3</span></div></div><div class="card-bd"><div class="box err"><div class="t">✗ 最近一次复跑失败（2026-10-31 07:20）</div><div>上游 DataFrame df_monthly_sales 已被释放（observe release）</div></div><dl class="kv"><dt>DataFrame</dt><dd>df_region_top</dd><dt>数据源</dt><dd>memory</dd><dt>行 × 列</dt><dd>4 × 2</dd><dt>内存占用</dt><dd>420 B</dd></dl><div class="lbl">列结构（2）</div><div class="scroll"><table class="t"><thead><tr><th>#</th><th>列名</th><th>Non-Null</th><th>Dtype</th></tr></thead><tbody><tr><td>0</td><td>区域</td><td>4</td><td>VARCHAR</td></tr><tr><td>1</td><td>合计</td><td>4</td><td>DOUBLE</td></tr></tbody></table></div><div class="lbl">复跑记录（1 次，最新在前）</div><ul class="plain"><li>#1 2026-10-31 07:20 · 复跑失败 · 原 4 行 × 2 列 · 原因：上游 DataFrame df_monthly_sales 已被释放（observe release） · 耗时 640ms</li></ul><div class="lbl">分析留痕 · Manifest v1</div><dl class="kv"><dt>来源</dt><dd>observe load</dd><dt>数据源</dt><dd>memory</dd><dt>执行时间</dt><dd>2026-10-31 06:31:00</dd><dt>DataFrame</dt><dd>df_region_top</dd><dt>行 × 列</dt><dd>4 × 2</dd><dt>校验和</dt><dd><span title="规模 4 行 × 2 列；结构哈希含列名与 dtype，不含数据内容">schema-v1: schema ffff0000eeee1111 · sql 2222333344445555</span></dd><dt>生成模型</dt><dd>anthropic / claude-sonnet-4-5</dd><dt>权限决策</dt><dd><span class="note">未过确认门</span></dd><dt>会话</dt><dd>sess-sample-export</dd><dt>上游 DF</dt><dd>df_monthly_sales</dd></dl><p class="note">完整字段与 SQL 全文见<a href="#appendix-a">附录 A</a>。</p></div><div class="card-ft"><div>上游：<a href="#card-gov-2">DF: df_monthly_sales</a></div><div>下游：<a href="#card-gov-6">区域占比饼图</a> · <a href="#card-gov-7">9 月 vs 10 月销售额差异分析</a></div></div></article><article class="card" id="card-gov-5" style="border-left-color:hsl(200, 70%, 55%)"><div class="card-hd"><div class="row"><span class="badge" style="border-color:hsl(200, 70%, 55%);color:hsl(200, 70%, 55%)">图表</span><span class="badge">bar</span><span class="t">月度销售额柱状图</span></div><div class="row"><span class="at">创建于 2026-10-31 06:15:00</span><span class="id">gov-5</span></div></div><div class="card-bd"><img class="chart" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiMxZGI5NTQiLz48L3N2Zz4=" width="680" height="400" alt="图表静态快照：月度销售额柱状图"><p class="note">导出时用节点已有的 Plotly 配置渲染为内联图片：静态、不可交互，不引用任何外部脚本或网络资源。</p><dl class="kv"><dt>图表类型</dt><dd>bar</dd><dt>数据源 DF</dt><dd>df_monthly_sales</dd></dl></div><div class="card-ft"><div>上游：<a href="#card-gov-2">DF: df_monthly_sales</a></div></div></article><article class="card" id="card-gov-6" style="border-left-color:hsl(200, 70%, 55%)"><div class="card-hd"><div class="row"><span class="badge" style="border-color:hsl(200, 70%, 55%);color:hsl(200, 70%, 55%)">图表</span><span class="badge">pie</span><span class="t">区域占比饼图</span></div><div class="row"><span class="at">创建于 2026-10-31 06:35:00</span><span class="id">gov-6</span></div></div><div class="card-bd"><div class="box info"><div class="t">图表未静态渲染，降级为配置摘要</div><div class="note">渲染失败：trace 类型 scattergl 不支持静态导出</div></div><dl class="kv"><dt>图表类型</dt><dd>pie</dd><dt>数据源 DF</dt><dd>df_region_top</dd></dl><dl class="kv"><dt>图表类型</dt><dd>pie</dd><dt>标题</dt><dd>区域占比</dd><dt>X 轴</dt><dd>—</dd><dt>Y 轴</dt><dd>—</dd><dt>trace 数</dt><dd>1</dd></dl><div class="lbl">trace 摘要（不含数据值）</div><table class="t"><thead><tr><th>#</th><th>类型</th><th>名称</th><th>数据点</th><th>模式 / 参数</th></tr></thead><tbody><tr><td>0</td><td>pie</td><td>区域占比</td><td>4</td><td>hole=0.4</td></tr></tbody></table><div class="lbl">布局键</div><div class="chips"><span class="chip">title</span><span class="chip">showlegend</span></div></div><div class="card-ft"><div>上游：<a href="#card-gov-3">DF: df_region_top</a></div></div></article><article class="card" id="card-gov-7" style="border-left-color:#f59b23"><div class="card-hd"><div class="row"><span class="badge" style="border-color:#f59b23;color:#f59b23">分析报告</span><span class="badge">差异对比</span><span class="t">9 月 vs 10 月销售额差异分析</span></div><div class="row"><span class="at">创建于 2026-10-31 06:50:00</span><span class="id">gov-7</span></div></div><div class="card-bd"><dl class="kv"><dt>报告类型</dt><dd>差异对比</dd></dl><div class="lbl">对比对象</div><div class="chips"><span class="chip">df_monthly_sales</span><span class="chip">df_region_top</span></div><div class="lbl">正文</div><div class="md"><div class="h2">结论</div><div class="li">• <strong>总销售额</strong>: 环比上升 8.4%</div><div class="li">• 华东区域贡献最大 <code>df_region_top</code></div><div class="h3">明细</div><table class="t"><thead><tr><th>区域</th><th>9 月</th><th>10 月</th><th>变化</th></tr></thead><tbody><tr><td>华东</td><td>100</td><td>120</td><td>+20%</td></tr><tr><td>华北</td><td>80</td><td>70</td><td>-12.5%</td></tr></tbody></table><div class="li">1. 复核口径：仅统计 status = &#39;paid&#39;</div><div class="li">2. 注入测试：&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;</div></div></div><div class="card-ft"><div>上游：<a href="#card-gov-2">DF: df_monthly_sales</a> · <a href="#card-gov-3">DF: df_region_top</a></div></div></article></div></section>
+<section id="appendix-a"><h2><span class="n">附录 A</span> DataFrame 分析留痕（Analysis Manifest）</h2><p class="note">共 4 个 dataFrame 节点，其中 3 个带 Manifest。Manifest 由服务端在结果产生时固化、只读；唯一的受控例外是复跑结论为「一致」时刷新 <code>executedAt</code>（原始时间保留在复跑记录的 <code>before</code> 里，见 T1.2 设计说明）。<code>permissionDecisionId</code> 为 <em>未过确认门</em> 表示这次取数没有触发取数确认门（例如不带 <code>-o</code> 的加载、SQL 编辑器人工执行）。</p><div class="scroll"><table class="t wide"><thead><tr><th>节点</th><th>DataFrame</th><th>来源</th><th>数据源</th><th>执行时间</th><th>行 × 列</th><th>结构哈希</th><th>SQL 哈希</th><th>生成模型</th><th>权限决策 ID</th><th>最近复跑</th></tr></thead><tbody><tr><td><a href="#card-gov-2">DF: df_monthly_sales</a></td><td>df_monthly_sales</td><td>observe load</td><td>sales</td><td>2026-10-31 06:10:00</td><td>12 × 3</td><td>a1b2c3d4e5f60718</td><td>0f1e2d3c4b5a6978</td><td>anthropic / claude-sonnet-4-5 → claude-sonnet-4-5-20250929</td><td><a href="#audit-pd-1111aaaa-2222">pd-1111aaaa-2222</a></td><td><span class="badge drift">漂移 · 2026-10-31 07:05</span></td></tr><tr><td><a href="#card-gov-3">DF: df_region_top</a></td><td>df_region_top</td><td>observe load</td><td>memory</td><td>2026-10-31 06:31:00</td><td>4 × 2</td><td>ffff0000eeee1111</td><td>2222333344445555</td><td>anthropic / claude-sonnet-4-5</td><td><span class="note">未过确认门</span></td><td><span class="note">复跑失败 · 2026-10-31 07:20</span></td></tr><tr><td><a href="#card-gov-4">DF: df_legacy_restored</a></td><td>df_legacy_restored</td><td>—</td><td>sales</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td><span class="note">无 Manifest</span></td><td><span class="note">未复跑</span></td></tr><tr><td><a href="#card-gov-8">DF: df_channel_check</a></td><td>df_channel_check</td><td>SQL 编辑器</td><td>sales</td><td>2026-10-31 06:45:00</td><td>6 × 2</td><td>abcd1234abcd1234</td><td>5566778899aabbcc</td><td>—（人工执行）</td><td><span class="note">未过确认门</span></td><td><span class="note">复现一致 · 2026-10-31 07:30</span></td></tr></tbody></table></div><details id="manifest-gov-2"><summary>SQL 全文与完整字段 · df_monthly_sales</summary><dl class="kv"><dt>schemaVersion</dt><dd>1</dd><dt>origin</dt><dd>observe-load</dd><dt>datasource</dt><dd>sales</dd><dt>dfName</dt><dd>df_monthly_sales</dd><dt>executedAt</dt><dd>2026-10-30T22:10:00.000Z</dd><dt>rowCount</dt><dd>12</dd><dt>columnCount</dt><dd>3</dd><dt>checksum</dt><dd>schema-v1 · rows 12 · cols 3 · schema a1b2c3d4e5f60718 · sql 0f1e2d3c4b5a6978</dd><dt>model</dt><dd>{&quot;provider&quot;:&quot;anthropic&quot;,&quot;id&quot;:&quot;claude-sonnet-4-5&quot;,&quot;responseModel&quot;:&quot;claude-sonnet-4-5-20250929&quot;}</dd><dt>sessionId</dt><dd>sess-sample-export</dd><dt>permissionDecisionId</dt><dd><a href="#audit-pd-1111aaaa-2222">pd-1111aaaa-2222</a></dd><dt>sourceDataFrames</dt><dd>—</dd><dt>可一键复跑</dt><dd>是（SQL 与数据源齐全）</dd></dl><div class="lbl">SQL 全文（原样固化）</div><pre class="sql">-- 月度销售额汇总（口径：已支付订单）
+SELECT strftime(o.created_at, &#39;%Y-%m&#39;) AS 月份,
+       c.区域, SUM(o.amount) AS 销售额
+FROM orders o JOIN customers c ON o.customer_id = c.id
+WHERE o.status = &#39;paid&#39; AND o.amount &lt; 100000
+GROUP BY 1, 2
+ORDER BY 1 DESC</pre></details><details id="manifest-gov-3"><summary>SQL 全文与完整字段 · df_region_top</summary><dl class="kv"><dt>schemaVersion</dt><dd>1</dd><dt>origin</dt><dd>observe-load</dd><dt>datasource</dt><dd>memory</dd><dt>dfName</dt><dd>df_region_top</dd><dt>executedAt</dt><dd>2026-10-30T22:31:00.000Z</dd><dt>rowCount</dt><dd>4</dd><dt>columnCount</dt><dd>2</dd><dt>checksum</dt><dd>schema-v1 · rows 4 · cols 2 · schema ffff0000eeee1111 · sql 2222333344445555</dd><dt>model</dt><dd>{&quot;provider&quot;:&quot;anthropic&quot;,&quot;id&quot;:&quot;claude-sonnet-4-5&quot;}</dd><dt>sessionId</dt><dd>sess-sample-export</dd><dt>permissionDecisionId</dt><dd><span class="note">未过确认门</span></dd><dt>sourceDataFrames</dt><dd>df_monthly_sales</dd><dt>可一键复跑</dt><dd>是（SQL 与数据源齐全）</dd></dl><div class="lbl">SQL 全文（原样固化）</div><pre class="sql">SELECT 区域, SUM(销售额) AS 合计 FROM df_monthly_sales GROUP BY 区域</pre></details><details id="manifest-gov-8"><summary>SQL 全文与完整字段 · df_channel_check</summary><dl class="kv"><dt>schemaVersion</dt><dd>1</dd><dt>origin</dt><dd>sql-editor</dd><dt>datasource</dt><dd>sales</dd><dt>dfName</dt><dd>df_channel_check</dd><dt>executedAt</dt><dd>2026-10-30T22:45:00.000Z</dd><dt>rowCount</dt><dd>6</dd><dt>columnCount</dt><dd>2</dd><dt>checksum</dt><dd>schema-v1 · rows 6 · cols 2 · schema abcd1234abcd1234 · sql 5566778899aabbcc</dd><dt>model</dt><dd>—（人工执行）</dd><dt>sessionId</dt><dd>sess-sample-export</dd><dt>permissionDecisionId</dt><dd><span class="note">未过确认门</span></dd><dt>sourceDataFrames</dt><dd>—</dd><dt>可一键复跑</dt><dd>是（SQL 与数据源齐全）</dd></dl><div class="lbl">SQL 全文（原样固化）</div><pre class="sql">SELECT 渠道, COUNT(*) AS 单量 FROM orders GROUP BY 渠道</pre></details></section>
+<section id="appendix-b"><h2><span class="n">附录 B</span> 权限确认记录（取数确认门）</h2><p class="note">来源：<code>.govio/sessions/2026-10-30T22-00-00-000Z_sample.jsonl.audit.jsonl</code>（服务端只读返回，仅限当前会话 <code>sess-sample-export</code>）。会话内共 6 条记录，本附录带出与画布节点 Manifest 的 <code>permissionDecisionId</code> 关联的 4 条（按 1 个 decisionId 过滤）。记录里只有命令原文与决策，<strong>不含任何查询结果</strong>。</p><div class="scroll"><table class="t wide"><thead><tr><th>时间</th><th>类型</th><th>决策</th><th>来源</th><th>decisionId</th><th class="num">耗时</th><th>命令（改前）</th><th>改后命令</th><th>备注 / 闸门</th><th>关联节点</th></tr></thead><tbody><tr id="audit-pd-1111aaaa-2222"><td>2026-10-31 06:09:50</td><td>确认请求</td><td>—</td><td>—</td><td><code>pd-1111aaaa-2222</code></td><td class="num">—</td><td><details><summary>govio-cli observe load --datasource sales --name df_monthly_sales -o out.json --sql &quot;-- 月度销售额汇总（口径：已支付订单） SELECT strftime(o.created_at, &#39;%Y-%m&#39;) AS 月份, c.区域, S…（全文 317 字符）</summary><pre class="sql sm">govio-cli observe load --datasource sales --name df_monthly_sales -o out.json --sql &quot;-- 月度销售额汇总（口径：已支付订单）
+SELECT strftime(o.created_at, &#39;%Y-%m&#39;) AS 月份,
+       c.区域, SUM(o.amount) AS 销售额
+FROM orders o JOIN customers c ON o.customer_id = c.id
+WHERE o.status = &#39;paid&#39; AND o.amount &lt; 100000
+GROUP BY 1, 2
+ORDER BY 1 DESC&quot;</pre></details></td><td><span class="note">—</span></td><td>闸门：人工确认</td><td><a href="#card-gov-2">DF: df_monthly_sales</a></td></tr><tr><td>2026-10-31 06:09:54</td><td>确认决策</td><td>修改后放行</td><td>用户</td><td><code>pd-1111aaaa-2222</code></td><td class="num">4.2s</td><td><pre class="sql sm">govio-cli observe load --datasource sales --name df_monthly_sales -o out.json --sql ...</pre></td><td><pre class="sql sm">govio-cli observe load --datasource sales --name df_monthly_sales --sql ...</pre></td><td>去掉 -o 全表导出，只保留加载</td><td><a href="#card-gov-2">DF: df_monthly_sales</a></td></tr><tr id="audit-pd-unrelated-9999"><td>2026-10-31 06:30:00</td><td>确认决策</td><td>拒绝</td><td>超时自动拒绝</td><td><code>pd-unrelated-9999</code></td><td class="num">300.0s</td><td><pre class="sql sm">govio-cli observe load --datasource sales --name df_x -o all.json --sql &#39;SELECT * FROM orders&#39;</pre></td><td><span class="note">—</span></td><td>—</td><td><span class="note">—</span></td></tr><tr id="audit-pm-cccc4444"><td>2026-10-31 06:32:00</td><td>放行模式变更</td><td>—</td><td>—</td><td><code>pm-cccc4444</code></td><td class="num">—</td><td><span class="note">—</span></td><td><span class="note">—</span></td><td>用户关闭全局放行 · acceptAll=关 · 影响挂起请求 0</td><td><span class="note">—</span></td></tr></tbody></table></div><p class="note">「来源」区分用户亲手决策与系统代答（超时 / 中止 / 会话重置 / 全局放行自动允许）；放行模式（Accept All）期间的自动允许同样留痕，<code>elapsedMs</code> 为 0。未与任何节点关联的确认记录与放行模式变更事件不在本附录范围内。</p></section>
+<footer>
+<p>本文件由 Govio Map v0.6.1 于 2026-10-31 08:45:00 从画布导出：10 个节点 / 9 条连线，内联 CSS 与 SVG，<strong>无外部脚本、字体、图片或网络请求</strong>，双击即可离线打开。</p>
+<p>内容范围：画布节点的结构与留痕（表结构、SQL 全文、列结构、Analysis Manifest、复跑与漂移记录、权限确认记录）与血缘关系。<strong>不含数据行内容</strong>——导出过程不读 parquet、不调 govio-cli、不调模型，只消费画布 store 已有数据与只读审计通道。</p>
+<p>校验和算法 schema-v1：sha256(行数|列数|列名:dtype) 与 sha256(SQL) 各取前 16 位，不含数据内容（见 <code>docs/tasks/T1.1-analysis-manifest/design.md</code>）；复跑与漂移语义见 <code>docs/tasks/T1.2-dataframe-rerun-drift/design.md</code>；权限审计记录模型见 <code>docs/tasks/T1.3-permission-audit-trail/design.md</code>。</p>
+<p>审计来源：<code>.govio/sessions/2026-10-30T22-00-00-000Z_sample.jsonl.audit.jsonl</code>（只读，仅当前会话）。</p>
+</footer>
+</div>
+</body>
+</html>

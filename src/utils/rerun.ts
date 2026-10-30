@@ -1,4 +1,4 @@
-import type { DataFrameNodeData, RerunRecord } from '../types';
+import type { DataFrameNodeData, RerunOutcome, RerunRecord } from '../types';
 
 /**
  * DataFrame 一键复跑的前端规则（ROADMAP Phase 1 / KR2）。
@@ -13,6 +13,16 @@ import type { DataFrameNodeData, RerunRecord } from '../types';
 
 /** `rerunHistory` 条数上限：防止长期复跑把 canvas sidecar 撑大，最近 20 次足够审计 */
 export const MAX_RERUN_HISTORY = 20;
+
+/**
+ * 复跑结论的展示措辞：节点状态条（`RerunStatus.tsx`）与交付报告
+ * （`export-report.ts`）共用同一份，避免同一个结论两种叫法。
+ */
+export const RERUN_OUTCOME_LABELS: Record<RerunOutcome, string> = {
+  identical: '复现一致',
+  drift: '漂移',
+  error: '复跑失败',
+};
 
 /** 最近一次复跑记录（`rerunHistory` 最新在前） */
 export function latestRerun(data: DataFrameNodeData): RerunRecord | undefined {

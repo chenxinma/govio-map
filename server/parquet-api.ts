@@ -8,10 +8,14 @@ import { pushGovioNode, emitFlushed, flushGovioNodes } from "./govio-node-queue.
 import { agentSessionContext, buildManifest } from "./analysis-manifest.js";
 import { rerunDataFrame } from "./dataframe-rerun.js";
 import { runGovioCliWithArgs } from "./govio-cli-exec.js";
+import { readPermissionAudit } from "./permission-audit.js";
 import { loadCanvas } from "./session-history.js";
 import type { AnalysisManifest } from "../src/types/manifest.js";
 
 const PARQUET_DIR = ".govio/observe/dataframes";
+
+/** 审计只读通道一次最多接受多少个 decisionId（附录 B 只需要画布节点引用的那些） */
+const MAX_AUDIT_DECISION_IDS = 500;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -175,6 +179,48 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
         send(500, { error: err instanceof Error ? err.message : String(err) });
       }
     });
+    return true;
+  }
+
+  // GET /api/permission-audit - 只读返回当前会话的权限确认记录（T1.4 交付报告附录 B）
+  //
+  // 安全边界（三条）：
+  //  1. **只读**：只调 readPermissionAudit()，不写、不删、不执行任何命令，也不读数据内容
+  //     （审计记录里本来就只有命令原文与决策，见 T1.3 的记录模型）
+  //  2. **只限当前会话**：sessionFile 取自服务端会话单例，不接受请求传路径，
+  //     因此没有目录穿越或越权读其他会话的可能
+  //  3. **只过滤不加工**：decisionIds 只用来挑选返回哪些条目，缺省时返回本会话全部记录
+  if (req.url?.startsWith("/api/permission-audit") && req.method === "GET") {
+    const send = (status: number, payload: unknown) => {
+      res.writeHead(status, { "Content-Type": "application/json", ...CORS_HEADERS });
+      res.end(JSON.stringify(payload));
+    };
+    try {
+      const session = getSession();
+      const sessionFile = session?.sessionManager.getSessionFile();
+      if (!sessionFile) {
+        send(409, { error: "当前没有已落盘的会话，读不到权限审计 sidecar", entries: [] });
+        return true;
+      }
+      const all = readPermissionAudit(sessionFile);
+      const url = new URL(req.url, "http://localhost");
+      const ids = (url.searchParams.get("decisionIds") ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, MAX_AUDIT_DECISION_IDS);
+      const wanted = new Set(ids);
+      const entries = wanted.size > 0 ? all.filter((e) => wanted.has(e.decisionId)) : all;
+      send(200, {
+        sessionId: session?.sessionId ?? "",
+        sessionFile,
+        total: all.length,
+        requested: ids.length,
+        entries,
+      });
+    } catch (err) {
+      send(500, { error: err instanceof Error ? err.message : String(err), entries: [] });
+    }
     return true;
   }
 

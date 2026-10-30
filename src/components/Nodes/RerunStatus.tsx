@@ -1,7 +1,7 @@
 import { memo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Loader2, XCircle } from 'lucide-react';
 import type { DataFrameNodeData, RerunOutcome, RerunRecord } from '../../types';
-import { formatRerunTime } from '../../utils/rerun';
+import { RERUN_OUTCOME_LABELS, formatRerunTime } from '../../utils/rerun';
 
 /**
  * DataFrame 复跑状态条（Phase 1 KR2）：三态展示 + 复跑记录。
@@ -13,10 +13,11 @@ import { formatRerunTime } from '../../utils/rerun';
  *    漂移时原 Manifest 不被覆盖，旧值/新值/时间都在记录里。
  */
 
+// 措辞取自 RERUN_OUTCOME_LABELS（交付报告共用），这里只补图标与颜色
 const OUTCOME_META: Record<RerunOutcome, { label: string; className: string; Icon: typeof CheckCircle2 }> = {
-  identical: { label: '复现一致', className: 'text-brand', Icon: CheckCircle2 },
-  drift: { label: '漂移', className: 'text-warning', Icon: AlertTriangle },
-  error: { label: '复跑失败', className: 'text-error', Icon: XCircle },
+  identical: { label: RERUN_OUTCOME_LABELS.identical, className: 'text-brand', Icon: CheckCircle2 },
+  drift: { label: RERUN_OUTCOME_LABELS.drift, className: 'text-warning', Icon: AlertTriangle },
+  error: { label: RERUN_OUTCOME_LABELS.error, className: 'text-error', Icon: XCircle },
 };
 
 function snapshotLabel(record: RerunRecord): string {

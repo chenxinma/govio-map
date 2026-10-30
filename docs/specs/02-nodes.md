@@ -21,7 +21,8 @@
 | `src/types/index.ts` | 所有节点数据类型定义 |
 | `src/types/manifest.ts` | Analysis Manifest 类型（前后端共享） |
 | `src/types/rerun.ts` | 复跑记录类型（前后端共享） |
-| `src/utils/rerun.ts` | 复跑记录的前端写入规则（追加/封顶/漂移判定，纯函数） |
+| `src/utils/rerun.ts` | 复跑记录的前端写入规则（追加/封顶/漂移判定，纯函数）+ 结论措辞 `RERUN_OUTCOME_LABELS` |
+| `src/utils/manifest-labels.ts` | Manifest 展示措辞（origin / 生成模型），节点详情面板与交付报告共用 |
 
 ## 节点类型注册
 
