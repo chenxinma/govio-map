@@ -6,20 +6,10 @@ import type { AsyncBuffer } from "hyparquet/src/types.js";
 import { runGovioCli, getLoadedSkills, getSession } from "./agent.js";
 import { pushGovioNode, emitFlushed, flushGovioNodes } from "./govio-node-queue.js";
 import { agentSessionContext, buildManifest } from "./analysis-manifest.js";
-import { execFile } from "child_process";
-
-function runGovioCliWithArgs(args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile("govio-cli", args, { encoding: "utf-8", timeout: 30000 }, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`[govio-cli] args=${JSON.stringify(args)} failed:`, stderr || error.message);
-        reject(error);
-      } else {
-        resolve(stdout);
-      }
-    });
-  });
-}
+import { rerunDataFrame } from "./dataframe-rerun.js";
+import { runGovioCliWithArgs } from "./govio-cli-exec.js";
+import { loadCanvas } from "./session-history.js";
+import type { AnalysisManifest } from "../src/types/manifest.js";
 
 const PARQUET_DIR = ".govio/observe/dataframes";
 
@@ -28,6 +18,28 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
+
+/**
+ * 从当前会话的 canvas sidecar（`<session-file>.canvas.json`）里取节点固化的 Manifest。
+ *
+ * 复跑的 SQL 只认服务端持久化的留痕，不接受前端传入：否则「一键复跑」会退化成
+ * 「重跑前端当前输入」，失去可复现验证的意义。sidecar 由前端 `canvas_save`
+ * 在节点变更后 1s 内写入，所以刚建好的节点也能读到。
+ */
+function readManifestFromCanvas(nodeId: string): AnalysisManifest | null {
+  try {
+    const file = getSession()?.sessionManager.getSessionFile();
+    if (!file) return null;
+    const canvas = loadCanvas(file);
+    const node = (canvas?.nodes ?? []).find(
+      (n) => (n as { id?: unknown }).id === nodeId,
+    ) as { data?: { manifest?: AnalysisManifest } } | undefined;
+    return node?.data?.manifest ?? null;
+  } catch (err) {
+    console.warn(`[rerun] 读取 canvas sidecar 失败（nodeId=${nodeId}）:`, err instanceof Error ? err.message : String(err));
+    return null;
+  }
+}
 
 export async function handleParquetApi(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   // 处理 CORS preflight
@@ -129,6 +141,38 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
         const message = err instanceof Error ? err.message : String(err);
         res.writeHead(500, { "Content-Type": "application/json", ...CORS_HEADERS });
         res.end(JSON.stringify({ error: message }));
+      }
+    });
+    return true;
+  }
+
+  // POST /api/rerun-dataframe - 按 Manifest 固化的 SQL 复跑 DataFrame 并对比漂移（Phase 1 KR2）
+  if (req.url?.startsWith("/api/rerun-dataframe") && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", async () => {
+      const send = (status: number, payload: unknown) => {
+        res.writeHead(status, { "Content-Type": "application/json", ...CORS_HEADERS });
+        res.end(JSON.stringify(payload));
+      };
+      try {
+        const { nodeId } = JSON.parse(body || "{}") as { nodeId?: unknown };
+        if (typeof nodeId !== "string" || !nodeId) {
+          send(400, { error: "Missing required field: nodeId" });
+          return;
+        }
+        const manifest = readManifestFromCanvas(nodeId);
+        if (!manifest) {
+          send(409, {
+            error: `当前会话画布里找不到节点 ${nodeId} 的分析留痕（Manifest），无法复跑；请确认画布已保存或重开该会话`,
+          });
+          return;
+        }
+        // 复跑失败 / 不可复跑也返回记录（outcome='error'），前端追加到 rerunHistory 留痕。
+        const record = await rerunDataFrame(manifest, { sessionId: getSession()?.sessionId ?? "" });
+        send(200, { record });
+      } catch (err) {
+        send(500, { error: err instanceof Error ? err.message : String(err) });
       }
     });
     return true;

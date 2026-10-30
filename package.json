@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "ask": "tsx server/cli.ts",
     "verify:manifest": "tsx scripts/verify-manifest-roundtrip.ts",
+    "verify:rerun": "tsx scripts/verify-rerun-drift.ts",
     "compile:electron": "esbuild electron/main.ts --bundle --packages=external --platform=node --format=esm --outfile=dist-electron/main.js",
     "build:electron": "tsc -b && vite build && npm run compile:electron && electron-builder"
   },

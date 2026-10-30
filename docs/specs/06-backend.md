@@ -14,8 +14,10 @@
 | `server/agent.ts` | pi-coding-agent 会话管理（持久化） |
 | `server/govio-node-queue.ts` | 节点事件批量队列 |
 | `server/analysis-manifest.ts` | Analysis Manifest 构建与校验和计算（Phase 1 KR1） |
+| `server/dataframe-rerun.ts` | DataFrame 一键复跑与漂移判定（Phase 1 KR2） |
+| `server/govio-cli-exec.ts` | 数组参数方式调用 govio-cli（SQL 全文不经 shell 拆分） |
 | `server/extensions/govio-canvas.ts` | Agent 扩展（工具注册 + 事件拦截 + treemap 解析） |
-| `server/parquet-api.ts` | Parquet 文件预览 API |
+| `server/parquet-api.ts` | HTTP API（parquet 预览 / SQL 执行 / DataFrame 复跑） |
 | `server/permission-manager.ts` | observe load 权限审批 |
 | `server/session-history.ts` | 会话列表/删除/画布 sidecar/transcript 分页 |
 | `server/models-config.ts` | 多模型配置管理 (~/.pi/agent/models.json) |
@@ -182,20 +184,30 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 3. 提取 DataFrame 名称（匹配 "命名"/"df_" 模式，或自动递增 `df_query_N`）
 4. 对每个 SQL 块 `pushGovioNode({nodeType: "sqlQuery", ...})`
 
-## parquet-api.ts - Parquet 预览 API
+## parquet-api.ts - HTTP API
 
 ### 路由
 
-`GET /api/preview`
+| 路由 | 方法 | 说明 |
+|------|------|------|
+| `/api/preview` | GET | 读 parquet 返回预览数据行 |
+| `/api/sql-editor-init` | GET | SQL 编辑器的数据源与 DataFrame 列表 |
+| `/api/skills` | GET | pi 已加载的 skill 列表 |
+| `/api/execute-sql` | POST | SQL 编辑器人工执行（`observe load`）并建节点 |
+| `/api/rerun-dataframe` | POST | 按 Manifest 固化的 SQL 复跑 DataFrame 并对比漂移（Phase 1 KR2） |
 
-### 参数
+所有路由都由 `handleParquetApi` 处理（dev 的 Vite 插件与 Electron 生产模式共用）；dev 下前端经 Vite 的 `/api` 代理，Electron 下前端直接请求 `localhost:{port+1}`。
+
+### GET /api/preview
+
+#### 参数
 
 | 参数 | 类型 | 默认 | 说明 |
 |------|------|------|------|
 | df | string | 必填 | DataFrame 名称（对应 .parquet 文件） |
 | rows | number | 10 | 返回行数上限 |
 
-### 流程
+#### 流程
 
 1. 解析路径：`.govio/observe/dataframes/{df}.parquet`
 2. 检查文件存在性
@@ -203,15 +215,69 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 4. JSON 序列化：bigint 转 string，非原生对象转 `[ClassName]`
 5. 设置 Content-Length，返回 JSON
 
-### 错误处理
+#### 错误处理
 
 - 缺少 df 参数 → 400
 - 文件不存在 → 404
 - 读取失败 → 500
 
+### POST /api/rerun-dataframe
+
+请求体：`{ nodeId }`（**仅此一个字段**）。
+
+| 响应 | 含义 |
+|------|------|
+| 200 `{ record }` | 复跑执行完成，`record` 为 `RerunRecord`（`outcome` 为 identical / drift / error），前端追加到 `node.data.rerunHistory` |
+| 400 | 缺 `nodeId` |
+| 409 | 当前会话的 canvas sidecar 里找不到该节点的 Manifest（画布未保存或会话不匹配） |
+| 500 | 未预期异常 |
+
+流程：
+1. `readManifestFromCanvas(nodeId)`：`getSession().sessionManager.getSessionFile()` → `loadCanvas()` → 按 nodeId 取 `data.manifest`。复跑的 SQL **只认服务端持久化的留痕**，不接受前端传入，避免「复跑」退化成「重跑当前输入」
+2. `rerunDataFrame(manifest, { sessionId })`（`server/dataframe-rerun.ts`）执行并对比
+3. 不可复跑 / CLI 失败 也返回 200 + `outcome: 'error'` 的记录（复跑失败也要留痕）；只有「找不到留痕」这类请求级错误走 4xx
+
 ### CORS
 
 完全开放（Allow-Origin: *），支持 GET/OPTIONS。
+
+## dataframe-rerun.ts - DataFrame 复跑与漂移判定
+
+复跑是**验证动作**，不是重新取数：
+
+1. 用 Manifest 固化的 `sql` + `datasource` 执行 `observe load`，但写入临时名 `rerun_tmp_<dfName>_<ts><rand>`，**不覆盖已交付的同名 DataFrame**（否则节点留痕与 ObserveStore 里的实际数据不一致，漂移时还会销毁业务方已拿到的结果）
+2. 用 T1.1 同一套 `computeChecksum` 对比原 Manifest；不读任何数据内容，只用 `observe load` 输出的 `rows` / `columns` / `column_info`
+3. 无论成败都在 `finally` 里 `observe release` 临时 DataFrame，避免残留被 `restoreCanvas`（`observe list`）补成画布节点；释放失败只告警，记录里带 `tempDfName` 可手工清理
+
+### 导出函数
+
+| 函数 | 职责 |
+|------|------|
+| `rerunBlockReason(manifest)` | 复跑前置校验（SQL / 数据源 / dfName 缺一不可），返回不可复跑原因或 null |
+| `tempDfNameFor(dfName, now)` | 归一化成 CLI 安全的临时 DataFrame 名 |
+| `buildRerunLoadArgs(manifest, tempName)` | 组装 `observe load` 数组参数（`datasource === 'memory'` 走 `--memory`） |
+| `parseLoadOutput(stdout)` | 解析 load/info 输出（兼容 `column_info.name` 与 `schema.column`），截断/`success: false` 返回 null |
+| `compareRerunResult(manifest, result)` | 判定 identical / drift 并生成中文差异摘要 |
+| `manifestSnapshot(manifest)` | 原 Manifest 的对比基线快照（记录的 `before`） |
+| `rerunDataFrame(manifest, options)` | 完整复跑（永不抛错，失败转 `outcome: 'error'` 记录）；`options.runCli` / `now` 可注入，供验证脚本使用 |
+
+### 漂移判定优先级
+
+1. 双方都有校验和 → 比 `schemaHash`（覆盖行数、列数、列名、dtype、列顺序）
+2. 原留痕无校验和但有行数 → 退化到行数/列数对比（不能因为「哈希缺失」就报漂移）
+3. 原留痕连行数也没有 → `diff.baselineIncomplete = true`，按漂移处理（宁可告警，也不给假的「复现一致」绿灯）
+
+`sqlHash` 不参与判定：复跑用的就是 Manifest 里那份 SQL，重算必然相同。
+
+### 超时
+
+`observe load` 120s（重查询比 SQL 编辑器的 30s 更宽），`observe release` 15s；均由 `govio-cli-exec.ts` 的 `runGovioCliWithArgs(args, timeoutMs)` 控制。
+
+复跑不经 agent（不消耗模型、不进 transcript），也不经 permission-manager（与现有 `/api/execute-sql` 一致；确认记录关联属于 T1.3）。
+
+### 验证
+
+`npm run verify:rerun`（mock runner）/ `npm run verify:rerun -- --real`（额外走真实 govio-cli + `sales` 数据源），见 `docs/tasks/T1.2-dataframe-rerun-drift/verification.md`。
 
 ## cli.ts - 命令行入口
 

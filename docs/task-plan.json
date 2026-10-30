@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-30T22:48:06+08:00",
+  "updatedAt": "2026-10-30T23:31:00+08:00",
   "statusFlow": ["pending", "in_progress", "done", "accepted", "rejected"],
   "conventions": {
     "planFile": "docs/task-plan.json",
@@ -53,7 +53,7 @@
           "id": "T1.2",
           "title": "DataFrame 一键复跑与漂移提示",
           "kr": "KR2 复跑验证",
-          "status": "pending",
+          "status": "done",
           "dependsOn": ["T1.1"],
           "outputDir": "docs/tasks/T1.2-dataframe-rerun-drift/",
           "scope": "DataFrame 节点提供复跑入口：后端按 Manifest 固化的 SQL 重新执行 observe load，对比行数与校验和；不一致时节点显示漂移警告标记，不静默覆盖原结果。",
@@ -64,7 +64,20 @@
             "npm run build 通过",
             "docs/tasks/T1.2-dataframe-rerun-drift/ 下有三件套交付物"
           ],
-          "history": []
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-10-30T23:05:00+08:00",
+              "by": "worker",
+              "note": "开始实现：DataFrameNode 复跑入口 + server/dataframe-rerun.ts（按 Manifest 固化 SQL 重跑 observe load 并对比行数/校验和）+ POST /api/rerun-dataframe + 复跑记录随 node.data 落 canvas sidecar"
+            },
+            {
+              "status": "done",
+              "at": "2026-10-30T23:31:00+08:00",
+              "by": "worker",
+              "note": "实现完成：DataFrameNode 新增「复跑」按钮与 RerunStatus 三态状态条（进行中/复现一致/漂移，外加失败态）+ 头部漂移警告标签；后端 POST /api/rerun-dataframe 只收 nodeId，SQL/数据源由服务端从 canvas sidecar 里固化的 Manifest 读取（前端无上传 SQL 的通道）；server/dataframe-rerun.ts 用临时 DataFrame 名重跑 observe load（不覆盖已交付结果）、复用 T1.1 computeChecksum 对比行数/校验和、finally 释放临时 DF；一致刷新 manifest.executedAt，漂移保留原 Manifest 并追加 RerunRecord 到 node.data.rerunHistory（封顶 20），随 canvas_save → sidecar 持久化。验证：npm run build 通过、npm run lint 0 error、npm run verify:rerun 62 项断言全通过、npm run verify:rerun -- --real 74 项全通过（真实 govio-cli + sales 数据源：复跑 identical、原 DF 未被覆盖、无临时残留、伪造基线可检出漂移）、npm run verify:manifest 52 项无回归。交付物：docs/tasks/T1.2-dataframe-rerun-drift/{design,CHANGES,verification}.md；遗留问题 8 项记在 design.md 第 11 节（值级漂移检不出、无「采纳新结果」动作、复跑不过权限门→T1.3、浏览器点击路径未人工冒烟）"
+            }
+          ]
         },
         {
           "id": "T1.3",
