@@ -122,6 +122,7 @@ export const useCanvasStore = create<CanvasStore>()(
             createdAt: now,
             sql: event.sql || "",
             outputColumns: event.outputColumns || [],
+            ...(event.manifest ? { manifest: event.manifest } : {}),
           },
         };
         break;
@@ -135,6 +136,18 @@ export const useCanvasStore = create<CanvasStore>()(
             (n.data as unknown as DataFrameNodeData).dfName === (event.dfName || ""),
         );
         if (dupDf) {
+          // 已有节点还没有 Manifest（先由 restoreCanvas / show-dataframe 建节点，
+          // 或本功能上线前的历史 sidecar）时回填，保证去重不丢留痕。
+          // 已有 Manifest 则不覆盖：同一 dfName 重跑的差异属于 T1.2 漂移对比职责。
+          const dupData = dupDf.data as unknown as DataFrameNodeData;
+          if (event.manifest && !dupData.manifest) {
+            const manifest = event.manifest;
+            set((state) => ({
+              nodes: state.nodes.map((n) =>
+                n.id === dupDf.id ? { ...n, data: { ...n.data, manifest } } : n
+              ),
+            }));
+          }
           // Duplicate dfName — still create edges from sourceRefs so lineage is
           // preserved (e.g. after restoreCanvas or govio_show_dataframe created
           // the node without sourceRefs).
@@ -181,6 +194,7 @@ export const useCanvasStore = create<CanvasStore>()(
             memoryUsage: event.memoryUsage || "0 B",
             columns: event.columns || [],
             previewData: [],
+            ...(event.manifest ? { manifest: event.manifest } : {}),
           },
         };
         break;

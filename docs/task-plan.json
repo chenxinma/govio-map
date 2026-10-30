@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-09-20T00:00:00+08:00",
+  "updatedAt": "2026-10-30T22:48:06+08:00",
   "statusFlow": ["pending", "in_progress", "done", "accepted", "rejected"],
   "conventions": {
     "planFile": "docs/task-plan.json",
@@ -22,7 +22,7 @@
           "id": "T1.1",
           "title": "Analysis Manifest 数据模型与持久化",
           "kr": "KR1 分析留痕",
-          "status": "pending",
+          "status": "done",
           "dependsOn": [],
           "outputDir": "docs/tasks/T1.1-analysis-manifest/",
           "scope": "为 dataFrame/sqlQuery 节点固化分析上下文：SQL 全文、数据源标识、执行时间、行数/列数校验和、生成模型与会话 ID。Manifest 随 canvas sidecar（.canvas.json）持久化，会话重开后完整恢复。",
@@ -34,7 +34,20 @@
             "npm run build 通过",
             "docs/tasks/T1.1-analysis-manifest/ 下有 design.md、CHANGES.md、verification.md"
           ],
-          "history": []
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-10-30T22:24:22+08:00",
+              "by": "worker",
+              "note": "开始实现：src/types/manifest.ts 类型定义 + server/analysis-manifest.ts 构建器 + 节点事件填充 + 前端详情展示 + 往返验证脚本"
+            },
+            {
+              "status": "done",
+              "at": "2026-10-30T22:48:06+08:00",
+              "by": "worker",
+              "note": "实现完成：src/types/manifest.ts（AnalysisManifest/Checksum/Model/Origin，字段级注释）+ server/analysis-manifest.ts（构建器与 schema-v1 校验和）；observe load / show-dataframe / assistant-sql / sql-editor 四条路径自动填充 Manifest；随 node.data 走 canvas_save→sidecar→canvas_restore 往返；DataFrameNode/SQLQueryNode 新增「详情」只读面板。验证：npm run build 通过、npm run lint 0 error、npm run verify:manifest 52 项断言全通过（含 saveCanvas→loadCanvas→hydrateSession 往返与扩展事件流实产出）。交付物：docs/tasks/T1.1-analysis-manifest/{design,CHANGES,verification}.md；遗留问题 8 项记在 design.md 第 8 节"
+            }
+          ]
         },
         {
           "id": "T1.2",

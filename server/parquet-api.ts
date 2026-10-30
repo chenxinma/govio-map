@@ -3,8 +3,9 @@ import { existsSync } from "fs";
 import { join } from "path";
 import { asyncBufferFromFile, parquetReadObjects } from "hyparquet";
 import type { AsyncBuffer } from "hyparquet/src/types.js";
-import { runGovioCli, getLoadedSkills } from "./agent.js";
+import { runGovioCli, getLoadedSkills, getSession } from "./agent.js";
 import { pushGovioNode, emitFlushed, flushGovioNodes } from "./govio-node-queue.js";
+import { agentSessionContext, buildManifest } from "./analysis-manifest.js";
 import { execFile } from "child_process";
 
 function runGovioCliWithArgs(args: string[]): Promise<string> {
@@ -90,19 +91,33 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
 
         // 创建 canvas 节点
         if (info && info.schema) {
+          const columns = info.schema.map((col: { column: string; dtype: string }) => ({
+            name: col.column,
+            nonNull: 0,
+            dtype: col.dtype,
+          }));
+          const rowCount = info.rows || 0;
+          const columnCount = info.columns || info.schema.length;
           pushGovioNode({
             nodeType: "dataFrame",
             title: name,
             dfName: name,
             sourceName: datasource,
-            totalRows: info.rows || 0,
-            totalColumns: info.columns || info.schema.length,
+            totalRows: rowCount,
+            totalColumns: columnCount,
             memoryUsage: "unknown",
-            columns: info.schema.map((col: { column: string; dtype: string }) => ({
-              name: col.column,
-              nonNull: 0,
-              dtype: col.dtype,
-            })),
+            columns,
+            // SQL 编辑器人工执行：SQL 与数据源由前端原文传入，无生成模型。
+            manifest: buildManifest({
+              origin: "sql-editor",
+              sql,
+              datasource,
+              dfName: name,
+              columns: columns.map((c: { name: string; dtype: string }) => ({ name: c.name, dtype: c.dtype })),
+              rowCount,
+              columnCount,
+              context: agentSessionContext(getSession()),
+            }),
           });
           const events = flushGovioNodes();
           emitFlushed(events);

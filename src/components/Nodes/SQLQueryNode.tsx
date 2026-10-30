@@ -1,9 +1,10 @@
 import { memo, useState, useCallback, useRef, useEffect } from 'react';
 import { Handle, Position, type NodeProps, type Edge } from '@xyflow/react';
-import { Maximize2, Quote, Trash2 } from 'lucide-react';
+import { Maximize2, Quote, Trash2, ScrollText } from 'lucide-react';
 import type { SQLQueryNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
 import SQLModal from './SQLModal';
+import ManifestDetails from './ManifestDetails';
 
 // SQL关键字高亮
 const SQL_KEYWORDS = [
@@ -44,6 +45,7 @@ function SQLNode({ data, id }: NodeProps) {
   const [isEditing, setIsEditing] = useState(nodeData.sql === '');
   const [editValue, setEditValue] = useState(nodeData.sql);
   const [showModal, setShowModal] = useState(false);
+  const [showManifest, setShowManifest] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-resize textarea
@@ -137,6 +139,12 @@ function SQLNode({ data, id }: NodeProps) {
         </div>
       </div>
 
+      {showManifest && nodeData.manifest && (
+        <div className="border-t border-border-subtle px-4 py-2">
+          <ManifestDetails manifest={nodeData.manifest} />
+        </div>
+      )}
+
       <div className="border-t border-border-subtle px-4 py-2 flex gap-2">
         <button
           onClick={(e) => { e.stopPropagation(); addReference(id); }}
@@ -152,6 +160,16 @@ function SQLNode({ data, id }: NodeProps) {
           <Maximize2 size={12} />
           <span>编辑</span>
         </button>
+        {nodeData.manifest && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowManifest(!showManifest); }}
+            title="查看分析留痕（Manifest）"
+            className="flex items-center gap-1 text-xs text-text-muted hover:text-brand transition-colors px-2 py-1 rounded-md hover:bg-brand/5"
+          >
+            <ScrollText size={12} />
+            <span>详情</span>
+          </button>
+        )}
         <button
           onClick={(e) => { e.stopPropagation(); deleteNodes([id]); }}
           className="ml-auto flex items-center text-text-muted hover:text-error transition-colors p-1 rounded-md hover:bg-error/10"

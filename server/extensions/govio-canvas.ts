@@ -3,6 +3,12 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import { permissionManager } from "../permission-manager.js";
+import {
+  buildManifest,
+  piSessionContext,
+  toManifestModelFromMessage,
+  type ManifestSessionContext,
+} from "../analysis-manifest.js";
 
 const OBSERVE_LOAD_RE = /\bgovio-cli\s+observe\s+load\b/;
 const OUTPUT_FLAG_RE = /(?:^|\s|=)(?:-o|--output)(?=\s|=|$)/;
@@ -34,6 +40,31 @@ function extractNamedArg(cmd: string, flag: string): string | null {
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * 从 `observe load` 命令中取出 `--sql` 的完整值（Manifest 固化 SQL 全文用）。
+ * 支持 `--sql "..."`、`--sql '...'`、`--sql=...` 与多行 SQL；引号内的转义引号
+ * 会被还原。取不到时返回空串（不猜测、不回退到整条命令，避免把 shell 参数
+ * 当成 SQL 固化进留痕）。
+ */
+export function extractSqlFromCommand(cmd: string): string {
+  const flag = /--sql(?:=|\s+)/.exec(cmd);
+  if (!flag) return "";
+  const rest = cmd.slice(flag.index + flag[0].length);
+  const quote = rest[0];
+  if (quote === '"' || quote === "'") {
+    for (let i = 1; i < rest.length; i++) {
+      if (rest[i] === "\\") { i++; continue; }
+      if (rest[i] === quote) {
+        return rest.slice(1, i).replace(new RegExp(`\\\\([${quote}\\\\])`, "g"), "$1");
+      }
+    }
+    // 引号未闭合（多行 SQL 被 shell 折行）：取余下全部内容。
+    return rest.slice(1);
+  }
+  // 未加引号：取到下一个 flag 之前，避免把 `-o out.parquet` 之类尾巴算进 SQL。
+  return rest.split(/\s+(?=-{1,2}[\w-])/)[0].trim();
 }
 
 function parseObserveSubcommand(cmd: string): string | null {
@@ -392,7 +423,11 @@ function extractExploreSources(parsed: {
 
 // ── Event Handlers ─────────────────────────────────────────────────
 
-async function handleLoadResult(cmd: string, stdout: string): Promise<void> {
+async function handleLoadResult(
+  cmd: string,
+  stdout: string,
+  context: ManifestSessionContext,
+): Promise<void> {
   const args = parseLoadArgs(cmd);
   if (!args) return;
   // Validate dfName to prevent injection into downstream commands or display issues.
@@ -417,26 +452,41 @@ async function handleLoadResult(cmd: string, stdout: string): Promise<void> {
   // Filter to names that appear in the SQL so lineage edges stay precise.
   // Extract only the SQL portion from the command to avoid false matches
   // against --name or other flag values.
-  const sqlMatch = cmd.match(/--sql\s+"([^"]*)"/);
-  const sqlText = sqlMatch ? sqlMatch[1] : cmd;
+  const sqlText = extractSqlFromCommand(cmd);
   // source_tables only exists on the load output (not on observe info), so a
   // mangled --memory stdout simply loses the lineage edges.
-  const sourceRefs =
-    args.memory && Array.isArray(parsed.source_tables) && parsed.source_tables.length > 0
-      ? parsed.source_tables
-          .filter((t: string) => new RegExp(`\\b${escapeRegex(t)}\\b`).test(sqlText))
-          .map((t: string) => ({ label: t }))
+  // 取不到 --sql 时退回整条命令做血缘匹配（保持原行为），但 Manifest 仍只固化 SQL 本身。
+  const lineageText = sqlText || cmd;
+  const sourceDataFrames =
+    args.memory && Array.isArray(parsed.source_tables)
+      ? parsed.source_tables.filter((t: string) => new RegExp(`\\b${escapeRegex(t)}\\b`).test(lineageText))
       : undefined;
+  const sourceRefs = sourceDataFrames && sourceDataFrames.length > 0
+    ? sourceDataFrames.map((t: string) => ({ label: t }))
+    : undefined;
+  const rowCount = parsed.rows || 0;
+  const columnCount = parsed.columns || columns.length;
   pushGovioNode({
     nodeType: "dataFrame",
     title: `DF: ${args.name}`,
     dfName: args.name,
     sourceName,
-    totalRows: parsed.rows || 0,
-    totalColumns: parsed.columns || columns.length,
-    memoryUsage: estimateMemoryUsage(parsed.rows || 0, parsed.columns || columns.length),
+    totalRows: rowCount,
+    totalColumns: columnCount,
+    memoryUsage: estimateMemoryUsage(rowCount, columnCount),
     columns,
     ...(sourceRefs ? { sourceRefs } : {}),
+    manifest: buildManifest({
+      origin: "observe-load",
+      sql: sqlText,
+      datasource: sourceName,
+      dfName: args.name,
+      columns: columns.map((c) => ({ name: c.name, dtype: c.dtype })),
+      rowCount,
+      columnCount,
+      context,
+      ...(sourceDataFrames && sourceDataFrames.length > 0 ? { sourceDataFrames } : {}),
+    }),
   });
 }
 
@@ -604,7 +654,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
       title: Type.Optional(Type.String({ description: "Node title, e.g. 'DF: channel_country_cartesian'" })),
       sourceName: Type.Optional(Type.String({ description: "Source label: datasource name for --datasource loads, or 'memory' for --memory loads" })),
     }),
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
       // dfName is interpolated into a shell command — readObserveInfo validates it.
       const info = await readObserveInfo(params.dfName);
       if (!info) {
@@ -625,6 +675,18 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         totalColumns: cols,
         memoryUsage: estimateMemoryUsage(rows, cols),
         columns,
+        // 展示已加载的 DataFrame：本次事件流里没有它的加载命令，故 SQL 为空串
+        // （节点不可一键复跑），但会话/模型/规模/校验和仍然固化。
+        manifest: buildManifest({
+          origin: "show-dataframe",
+          sql: "",
+          datasource: params.sourceName || "",
+          dfName: params.dfName,
+          columns: columns.map((c) => ({ name: c.name, dtype: c.dtype })),
+          rowCount: rows,
+          columnCount: cols,
+          context: piSessionContext(ctx),
+        }),
       });
       return {
         content: [{ type: "text", text: `Created DataFrame node: ${params.dfName} (${rows} rows × ${cols} cols)` }],
@@ -647,7 +709,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
     return { block: true, reason };
   });
 
-  pi.on("tool_result", async (event) => {
+  pi.on("tool_result", async (event, ctx) => {
     if (event.toolName !== "bash" || event.isError) return;
 
     const cmd = extractBashCommand(event.input);
@@ -661,7 +723,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
 
     switch (subcommand) {
       case "load":
-        await handleLoadResult(cmd, stdout);
+        await handleLoadResult(cmd, stdout, piSessionContext(ctx));
         break;
       case "compare":
         handleCompareResult(cmd, stdout);
@@ -675,7 +737,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
     }
   });
 
-  pi.on("message_end", (event) => {
+  pi.on("message_end", (event, ctx) => {
     if (event.message.role !== "assistant") return;
     if (!event.message.content) return;
 
@@ -683,6 +745,16 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
     if (!text) return;
 
     const sqlBlocks = extractSqlCodeBlocks(text);
+    if (sqlBlocks.length === 0) return;
+
+    // 会话 ID 取自 pi 上下文；生成模型优先取助手消息自带的 provider/model
+    // （比 ctx.model 准确：本轮中途切模型时记录的是真实来源）。
+    const sessionContext = piSessionContext(ctx);
+    const model = toManifestModelFromMessage(event.message) ?? sessionContext.model;
+    const executedAt =
+      typeof event.message.timestamp === "number"
+        ? new Date(event.message.timestamp).toISOString()
+        : undefined;
 
     for (const block of sqlBlocks) {
       const dfName = extractDfName(text) || nextDfName();
@@ -695,6 +767,15 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         // extractSelectColumns 解析不出列（如 SELECT *）时回退到 tableName.*
         outputColumns:
           block.outputColumns.length > 0 ? block.outputColumns : [tableName ? `${tableName}.*` : "result"],
+        // SQL 代码块不带数据源信息，故 datasource 为空串；执行后的数据源与
+        // 结果校验和由对应的 dataFrame 节点 Manifest 固化。
+        manifest: buildManifest({
+          origin: "assistant-sql",
+          sql: block.sql,
+          datasource: "",
+          context: { ...sessionContext, model },
+          ...(executedAt ? { executedAt } : {}),
+        }),
       });
     }
   });

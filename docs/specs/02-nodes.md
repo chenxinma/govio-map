@@ -56,6 +56,7 @@ const nodeTypes: NodeTypes = {
 | createdAt | string | 创建时间 |
 | sql | string | SQL 语句 |
 | outputColumns | string[] | 输出列名 |
+| manifest? | AnalysisManifest | 分析留痕：SQL 全文 + 来源（origin/模型/会话/时间），见 `src/types/manifest.ts` |
 
 ### DataFrameNodeData
 
@@ -71,6 +72,7 @@ const nodeTypes: NodeTypes = {
 | memoryUsage | string | 内存占用（如 "1.2 MB"） |
 | columns | DataFrameColumn[] | 列信息（name, nonNull, dtype） |
 | previewData | Record<string, unknown>[] | 预览数据行 |
+| manifest? | AnalysisManifest | 分析留痕：SQL 全文、数据源、执行时间、行列数与校验和、模型/会话 ID，见 `src/types/manifest.ts` |
 
 ### ReportNodeData
 

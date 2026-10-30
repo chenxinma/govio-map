@@ -13,6 +13,7 @@
 | `server/ws-handler.ts` | WebSocket 消息处理 |
 | `server/agent.ts` | pi-coding-agent 会话管理（持久化） |
 | `server/govio-node-queue.ts` | 节点事件批量队列 |
+| `server/analysis-manifest.ts` | Analysis Manifest 构建与校验和计算（Phase 1 KR1） |
 | `server/extensions/govio-canvas.ts` | Agent 扩展（工具注册 + 事件拦截 + treemap 解析） |
 | `server/parquet-api.ts` | Parquet 文件预览 API |
 | `server/permission-manager.ts` | observe load 权限审批 |
@@ -118,6 +119,7 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 | fields | sourceTable | 字段列表 |
 | config | chart | Plotly figure {type, data[], layout?} |
 | sourceDf | chart | 数据源 DataFrame 名称 |
+| manifest | dataFrame/sqlQuery | 分析留痕 Analysis Manifest（类型见 `src/types/manifest.ts`，服务端填充后写入 `node.data.manifest`） |
 | referencedNodes | 全部 | 引用节点（自动附加） |
 
 ## govio-canvas.ts - Agent 扩展

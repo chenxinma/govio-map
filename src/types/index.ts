@@ -1,3 +1,14 @@
+import type { AnalysisManifest } from './manifest';
+
+// 分析留痕类型（前后端共享定义见 ./manifest.ts）
+export type {
+  AnalysisManifest,
+  ManifestChecksum,
+  ManifestChecksumAlgorithm,
+  ManifestModel,
+  ManifestOrigin,
+} from './manifest';
+
 export interface TableField {
   name: string;
   type: string;
@@ -28,6 +39,8 @@ export interface SQLQueryNodeData {
   createdAt: string;
   sql: string;
   outputColumns: string[];
+  /** 分析留痕：SQL 全文 + 来源模型/会话（服务端事件流填充，可为空表示旧节点） */
+  manifest?: AnalysisManifest;
   [key: string]: unknown;
 }
 
@@ -48,6 +61,8 @@ export interface DataFrameNodeData {
   memoryUsage: string;
   columns: DataFrameColumn[];
   previewData: Record<string, unknown>[];
+  /** 分析留痕：SQL 全文、数据源、执行时间、行列数与校验和（服务端事件流填充） */
+  manifest?: AnalysisManifest;
   [key: string]: unknown;
 }
 

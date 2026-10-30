@@ -1,3 +1,5 @@
+import type { AnalysisManifest } from '../types';
+
 export interface CanvasEvent {
   type: "govio_node_create";
   nodeType: "sqlQuery" | "dataFrame" | "report" | "sourceTable" | "chart";
@@ -24,6 +26,8 @@ export interface CanvasEvent {
     layout?: Record<string, unknown>;
   };
   sourceDf?: string;
+  /** 分析留痕（Phase 1 KR1）：服务端事件流填充，写入 node.data.manifest */
+  manifest?: AnalysisManifest;
 }
 
 export interface CanvasService {
