@@ -23,14 +23,86 @@ cp -r "D:/work/python/govio/skills/". .agents/skills/
 diff -rq "D:/work/python/govio/skills" .agents/skills
 ```
 
+## SQL 生成纪律
+
+agent（pi 会话）生成/执行 SQL 时必须遵守的硬规则。动机案例：`docs/tasks/BUGFIX-load-parse.md`（盲猜限定名三次试错，jq 摘要管道又把失败投影成全 null，固化了错误 SQL）。
+
+1. **表引用必须取 sourceTable 节点的 `qualifiedName`**（或图谱查询/数据源声明给出的全限定名），禁止凭表名猜测段数与拼写。节点缺 `qualifiedName` 时先补查图谱（`govio-cli query`）与数据源声明，而不是向 CLI 盲试表名。
+2. **各数据源类型的限定名规则见 `docs/specs/11-datasource-schema-conventions.md`**（duckdb 文件库三段式 `catalog.schema.table`、postgres 两段式 `schema.table` 等），此处不重复展开；`datasourceType` 为 `unknown` 或缺失时不得凭类型构造 SQL 引用名。
+3. **遇到 Catalog Error / Binder Error 先查元数据再改 SQL**：确认表的 schema/catalog 归属后修正引用，禁止盲目穷举限定名变体试错；DuckDB 报错常附 `Did you mean <catalog>.<schema>.<table>` 提示，直接采纳。
+4. **跨数据源 join 必须走两段式**：一次 `observe load` 只连一个 `--datasource`（CLI 单连接执行、无跨源联邦能力），禁止假设单条 SQL 能引用多个数据源的表。正确做法：分别 `observe load` 各源 DataFrame，再 `observe load --memory --sql "... JOIN ..."` 合并（见 `docs/tasks/CLI-cross-schema-analysis.md` 场景 B）。
+5. **observe load 的 jq 摘要配方必须保留失败信号**：CLI 在 SQL 失败时可能退出码 0 只返回 `{success:false, error}`，摘要只用
+   ```bash
+   govio-cli observe load ... 2>&1 | jq '{success, error, name, rows, columns}'
+   ```
+   旧配方 `{name, rows, columns}` 会把失败投影成全 null、抹掉 `success:false`（BUGFIX-load-parse 诱因之一），禁止再用。
+6. **禁止 `head` / `tail` / `sed` 截断 observe load 输出**（既有纪律）：stdout 是完整 JSON，后端依赖它建画布节点并固化 Manifest；控制输出量只用 CLI 自身参数（`observe info --rows 0`、load 不带 `-o`）或上述 jq 字段投影。
+
 ## Commands
 
 ```bash
 npm run dev      # Start Vite dev server (port 5173) + WebSocket (port 5174)
 npm run build    # TypeScript check + Vite build
 npm run lint     # ESLint
+npm run verify   # 聚合验证脚本（manifest/rerun/audit/export/source-table，全部必须绿）
 npm run preview  # Preview production build
 ```
+
+## 任务模式（Task Mode）
+
+本仓库的功能开发/修复/文档任务按「计划 JSON + 子代理执行 + 主会话验收」模式运作。主会话（pi 交互会话）是唯一的循环控制者与验收人；子代理（subagent worker）只做实现，不得再编排子任务。
+
+### 工件与目录约定
+
+| 工件 | 位置 | 说明 |
+|---|---|---|
+| 任务计划 | `docs/task-plan.json` | 唯一事实源：phases（P1-P3，对齐 docs/ROADMAP.md）+ crossCutting（X1-Xn）；每任务含 id/title/kr/status/dependsOn/outputDir/scope/acceptance/history |
+| 任务交付物 | `docs/tasks/<任务ID-短名>/` | 三件套必交：`design.md`（方案与取舍 + 「遗留问题」小节）、`CHANGES.md`（文件清单+每处摘要）、`verification.md`（验证命令与关键输出） |
+| 审查/修复记录 | `docs/tasks/REVIEW-R<n>-fixes.md`、`docs/tasks/BUGFIX-*.md` | 审查循环与验收后 bug 的留痕 |
+
+### 状态机与写权
+
+```
+pending → in_progress → done → accepted / rejected
+```
+
+- 状态变更必须同步追加 `history` 条目 `{status, at(ISO), by, note}` 并刷新顶层 `updatedAt`
+- **worker 只能改自己的任务条目**，完成置 `done`，绝不自置 `accepted`；`accepted/rejected` 只能由主会话写入
+- 同一分支同一时刻**只允许一个写者**（单 worker 串行，或主会话亲自改），避免 `git add -A` 互扰
+
+### 主会话：派发协议
+
+任务书必须自包含（worker 是 fresh context，不共享对话历史），固定八段：
+1. **背景与动机**：为什么做，关联的 bug/前置任务文档路径
+2. **先读清单**（按序）：AGENTS.md、task-plan 中本任务条目、相关 specs/design、关键源码文件:行号
+3. **实证事实**：主会话已调研到的结论（避免 worker 重复踩坑）
+4. **实现范围**：逐项编号，对齐 acceptance
+5. **范围纪律**：明确不做什么；新发现一律写 design.md 遗留问题，不顺带重构
+6. **环境与协议**：分支（不切不 push）、Windows Git Bash 约定（正斜杠、jq、python 不可用）、状态协议、验证门槛、commit message 前缀（`<任务ID>: ...`）
+7. **时间预算**：timeoutMs + checkpointBeforeDeadlineMs（到期前先 checkpoint 已改文件/验证状态/剩余工作，超时不是变更安全边界）
+8. **最终输出格式**：≤15 行摘要（status/交付物/commit/断言数变化/遗留）
+
+### worker：完成定义（缺一不可提交）
+
+- 验证门槛全绿：`npm run build`、`npm run lint`、`npm run verify`（含本任务新增脚本，既有断言零回归），且 verify 全跑后 `git status --porcelain` 干净
+- 三件套落盘 + task-plan 状态置 `done` + 单次 commit（ID 前缀）
+- 未完成项如实报告，禁止虚报验证结果
+
+### 主会话：验收协议
+
+1. 独立复跑验证门槛（不转述 worker 报告），确认断言数变化与新增用例吻合
+2. 抽查关键实现源码（至少验最关键的 2-3 处声明）与交付物齐全性
+3. 通过 → jq 置 `accepted` + history 记录验收证据 + 单独 commit（`chore(plan): accept <ID>`）；不通过 → 列明缺口后 resume/重新派发
+4. 验收后的后续动作（如更新下游任务定义）由主会话执行
+
+### 审查循环（用于阶段性大 diff，非每任务必做）
+
+- 每轮用 **fresh-context reviewer 并行**（只读，直接从仓库取证，不依赖对话历史），按变更选角度（正确性/安全/测试与文档），上限 3 轮
+- 发现只报有证据项，标 P0（阻断）/P1（发布前修）/P2（记录），结尾 `Merge verdict: BLOCK/OK/OK with notes`
+- 主会话综合后派**单个 forked worker** 修 P1+采纳的 P2；修复有实质变更才进下一轮（定向三问：解决？新缺陷？旧结论仍成立？）；终审用 blockers-only
+- 延后项必须落入 task-plan（crossCutting 或任务遗留）而非口头搜置
+
+实例参考：Phase 1 完整循环见 `docs/task-plan.json → phases[0].reviewLoop` 与 `docs/tasks/REVIEW-R1/R2-fixes.md`。
 
 ## Architecture
 

@@ -1,5 +1,11 @@
 import { computeChecksum, type ManifestColumn } from "./analysis-manifest.js";
 import { runGovioCliWithArgs } from "./govio-cli-exec.js";
+import {
+  isLoadFailure,
+  observeColumnName,
+  parseObserveLoadOutput,
+  type ObserveLoadOutput,
+} from "./observe-load-schema.js";
 import type { AnalysisManifest } from "../src/types/manifest.js";
 import type { RerunDiff, RerunOutcome, RerunRecord, RerunSnapshot } from "../src/types/rerun.js";
 
@@ -32,17 +38,6 @@ export const RERUN_LOAD_TIMEOUT_MS = 120_000;
 
 /** `observe release` 是收尾动作，短超时即可 */
 export const RERUN_RELEASE_TIMEOUT_MS = 15_000;
-
-/** `observe load` / `observe info` 输出的结果结构（两种命令的列键名不同） */
-interface ObserveLoadOutput {
-  success?: boolean;
-  rows?: number;
-  columns?: number;
-  column_info?: Array<Record<string, unknown>>;
-  schema?: Array<Record<string, unknown>>;
-  error?: string;
-  message?: string;
-}
 
 export interface RerunLoadResult {
   rowCount: number;
@@ -116,22 +111,17 @@ export function buildRerunLoadArgs(manifest: AnalysisManifest, tempName: string)
 }
 
 /**
- * 解析 `observe load` 输出。
+ * 解析 `observe load` 输出（形状契约见 `observe-load-schema.ts`，X5 共享校验器）。
  * 列键名兼容 `name`（load 输出）/ `column`（info 输出）/ `col`，与
- * `extensions/govio-canvas.ts` 的 `mapColumnInfo` 保持同一套容错。
- * 输出不是合法 JSON（例如被 shell 管道截断）或 `success: false` 时返回 null。
+ * `extensions/govio-canvas.ts` 的 `mapColumnInfo` 同走 `observeColumnName` 归一。
+ * 输出不是合法 JSON（例如被 shell 管道截断）、形状漂移或 `success: false` 时返回 null。
  */
 export function parseLoadOutput(stdout: string): RerunLoadResult | null {
-  let parsed: ObserveLoadOutput;
-  try {
-    parsed = JSON.parse(stdout) as ObserveLoadOutput;
-  } catch {
-    return null;
-  }
-  if (!parsed || parsed.success === false) return null;
+  const parsed = parseObserveLoadOutput(stdout);
+  if (!parsed || isLoadFailure(parsed)) return null;
   const raw = parsed.column_info ?? parsed.schema ?? [];
   const columns: ManifestColumn[] = raw.map((c) => ({
-    name: String(c.name ?? c.column ?? c.col ?? "unknown"),
+    name: observeColumnName(c),
     dtype: String(c.dtype ?? ""),
   }));
   const rowCount = typeof parsed.rows === "number" ? parsed.rows : 0;
@@ -144,16 +134,11 @@ export function parseLoadOutput(stdout: string): RerunLoadResult | null {
  *
  * 区分两种失败，避免把「SQL 执行失败」误报成「输出无法解析」：
  *  - CLI 明确返回 `{success:false, error}` → 透传 error/message（SQL 错误、表不存在等）
- *  - 输出不是合法 JSON（被管道截断等）→ 返回 null，由调用方回退到通用「无法解析」文案
+ *  - 输出不是合法 JSON（被管道截断等）或形状漂移 → 返回 null，由调用方回退到通用「无法解析」文案
  */
 export function extractLoadError(stdout: string): string | null {
-  let parsed: ObserveLoadOutput;
-  try {
-    parsed = JSON.parse(stdout) as ObserveLoadOutput;
-  } catch {
-    return null;
-  }
-  if (parsed && parsed.success === false) {
+  const parsed: ObserveLoadOutput | null = parseObserveLoadOutput(stdout);
+  if (isLoadFailure(parsed)) {
     const reason = parsed.error || parsed.message;
     return reason ? `observe load 执行失败：${reason}` : "observe load 执行失败（CLI 返回 success:false，未提供错误详情）";
   }

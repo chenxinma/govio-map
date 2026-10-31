@@ -1,5 +1,5 @@
-import type { AnalysisManifest } from './manifest';
-import type { RerunRecord } from './rerun';
+import type { AnalysisManifest } from './manifest.js';
+import type { RerunRecord } from './rerun.js';
 
 // 分析留痕类型（前后端共享定义见 ./manifest.ts）
 export type {
@@ -8,7 +8,7 @@ export type {
   ManifestChecksumAlgorithm,
   ManifestModel,
   ManifestOrigin,
-} from './manifest';
+} from './manifest.js';
 
 // 复跑记录类型（前后端共享定义见 ./rerun.ts）
 export type {
@@ -16,7 +16,7 @@ export type {
   RerunOutcome,
   RerunRecord,
   RerunSnapshot,
-} from './rerun';
+} from './rerun.js';
 
 export interface TableField {
   name: string;
@@ -30,6 +30,25 @@ export interface TableField {
 
 export type NodeType = 'sourceTable' | 'sqlQuery' | 'dataFrame' | 'report' | 'chart';
 
+/**
+ * sourceTable 节点允许的数据源类型（T2.0）。
+ * 前六个对应 CLI 元数据层 DatasourceDef.source_type 枚举（govio/metadata/datasource.py）；
+ * `sqlalchemy-generic` 表示 observe 侧走 SQLAlchemy 连接但类型无法进一步判定；
+ * `unknown` 表示确认存在数据源但类型未知。枚举外的 source_type 取值（如 tds）不落盘（省略字段）。
+ */
+export const DATASOURCE_TYPES = [
+  'duckdb',
+  'postgres',
+  'mysql',
+  'oracle',
+  'hive',
+  'trino',
+  'sqlalchemy-generic',
+  'unknown',
+] as const;
+
+export type DatasourceType = (typeof DATASOURCE_TYPES)[number];
+
 export interface SourceTableNodeData {
   type: 'sourceTable';
   title: string;
@@ -39,6 +58,32 @@ export interface SourceTableNodeData {
   database: string;
   fields: TableField[];
   rowCount?: number;
+  /**
+   * 数据源名（T2.0，可选）：observe `config.yaml` datasources 键，即 `observe load --datasource`
+   * 的取值（如 "chocolate"）。来源：图谱 Datasource 节点 datasource_name、数据源声明文件或
+   * 用户指令。拿不到就省略（禁止猜测）；旧节点无此字段（undefined），UI 回退旧显示。
+   */
+  datasource?: string;
+  /**
+   * 数据源类型（T2.0，可选），决定 SQL 表引用段式，规则见 docs/specs/11-datasource-schema-conventions.md。
+   * 来源（按序）：图谱 Datasource 节点 source_type（若已导入）、数据源声明文件 source_type、
+   * observe config.yaml 该数据源 url scheme（duckdb:// → 'duckdb'）。拿不到就省略——禁止猜测；
+   * 旧节点为 undefined，UI 不渲染类型徽标。
+   */
+  datasourceType?: DatasourceType;
+  /**
+   * 所属 schema（T2.0，可选）：取图谱 PhysicalTable 查询结果的 `schema` 属性。
+   * 拿不到就省略；旧节点为 undefined。
+   */
+  schema?: string;
+  /**
+   * SQL 中应使用的全限定表名（T2.0，可选）：duckdb 三段式 catalog.schema.table
+   * （如 "chocolate.chocolate.dim_product"）、postgres 两段式 schema.table、mysql 裸表名或
+   * db.table。agent 写 SQL 时表引用必须取此字段（提示词规则落地属 X5）。
+   * 构造规则见 docs/specs/11-datasource-schema-conventions.md；构造不出就省略——禁止猜测；
+   * 旧节点为 undefined，UI 不渲染全限定名行。
+   */
+  qualifiedName?: string;
   [key: string]: unknown;
 }
 

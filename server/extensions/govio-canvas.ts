@@ -1,8 +1,16 @@
 import { pushGovioNode, type GovioNodeCreateEvent } from "../govio-node-queue.js";
+import {
+  isLoadFailure,
+  observeColumnName,
+  parseObserveLoadOutput,
+  type ObserveColumn,
+  type ObserveLoadOutput,
+} from "../observe-load-schema.js";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import { permissionManager } from "../permission-manager.js";
+import { DATASOURCE_TYPES, type DatasourceType } from "../../src/types/index.js";
 import {
   buildManifest,
   piSessionContext,
@@ -34,6 +42,12 @@ const DANGEROUS_COMMAND_PATTERNS: RegExp[] = [
 
 function isDangerousCommand(cmd: string): boolean {
   return DANGEROUS_COMMAND_PATTERNS.some((re) => re.test(cmd));
+}
+
+/** 枚举外的 datasourceType 取值（如 tds）不落盘：省略字段而非猜测/造値（T2.0） */
+function normalizeDatasourceType(value: string | undefined): DatasourceType | undefined {
+  if (!value) return undefined;
+  return (DATASOURCE_TYPES as readonly string[]).includes(value) ? (value as DatasourceType) : undefined;
 }
 
 export function shouldAskPermission(cmd: string): boolean {
@@ -131,17 +145,6 @@ function parseExploreArgs(cmd: string): { dataframes: string[] } | null {
 }
 
 
-interface ObserveInfo {
-  success?: boolean;
-  name?: string;
-  rows?: number;
-  columns?: number;
-  error?: string;
-  schema?: Array<{ name?: string; column?: string; col?: string; dtype: string }>;
-  column_info?: Array<{ name?: string; column?: string; col?: string; dtype: string }>;
-  source_tables?: string[];
-}
-
 /**
  * 判断一段已解析的 `observe load` 输出是否是「可信的成功载荷」。
  *
@@ -154,8 +157,12 @@ interface ObserveInfo {
  *
  * 规则：只有出现真实的成功信号——数值型 `rows`、或 `column_info`/`schema` 数组、
  * 或显式 `success === true`——才可信；否则视为失败/摘要噪声，交由 ObserveStore 复核。
+ *
+ * 与 `observe-load-schema.ts` 的分工（X5）：schema 校验（parseObserveLoadOutput）
+ * 拦「形状不合法」（非法 JSON、字段类型漂移），本谓词拦「形状合法但语义不可信」
+ * （jq 全 null 投影没有 success:false 可拦截，也没有任何成功信号）。两层缺一不可。
  */
-export function isTrustworthyLoadOutput(load: ObserveInfo | null): boolean {
+export function isTrustworthyLoadOutput(load: ObserveLoadOutput | null): boolean {
   if (!load || load.success === false) return false;
   if (load.success === true) return true;
   return typeof load.rows === "number" || Array.isArray(load.column_info) || Array.isArray(load.schema);
@@ -167,13 +174,13 @@ export function isTrustworthyLoadOutput(load: ObserveInfo | null): boolean {
  * stdout of `observe load` cannot be trusted for node creation.
  * Returns null for an invalid name, a missing DataFrame, or a CLI failure.
  */
-async function readObserveInfo(dfName: string): Promise<ObserveInfo | null> {
+async function readObserveInfo(dfName: string): Promise<ObserveLoadOutput | null> {
   // dfName is interpolated into a shell command - restrict to safe identifiers.
   if (!/^[A-Za-z0-9_]+$/.test(dfName)) return null;
   try {
     const { runGovioCli } = await import("../agent.js");
     // --rows 0 avoids pulling sample data (schema only).
-    const info: ObserveInfo = JSON.parse(await runGovioCli(`observe info --name ${dfName} --rows 0`));
+    const info = parseObserveLoadOutput(await runGovioCli(`observe info --name ${dfName} --rows 0`));
     return info && info.success !== false ? info : null;
   } catch {
     return null;
@@ -181,12 +188,12 @@ async function readObserveInfo(dfName: string): Promise<ObserveInfo | null> {
 }
 
 function mapColumnInfo(
-  columns: Array<{ name?: string; column?: string; col?: string; dtype: string }>,
+  columns: ObserveColumn[],
   totalRows: number,
 ): Array<{ name: string; dtype: string; nonNull: number }> {
   return columns.map((c) => ({
-    name: c.name ?? c.column ?? c.col ?? "unknown",
-    dtype: c.dtype,
+    name: observeColumnName(c),
+    dtype: c.dtype ?? "",
     nonNull: totalRows,
   }));
 }
@@ -478,15 +485,13 @@ async function handleLoadResult(
   if (!args) return;
   // Validate dfName to prevent injection into downstream commands or display issues.
   if (!/^[A-Za-z0-9_]+$/.test(args.name)) return;
-  let load: ObserveInfo | null = null;
-  try {
-    load = JSON.parse(stdout);
-  } catch (err) {
-    // stdout is not valid JSON — typically caused by `| head` truncating the
-    // output. Fall back to the ObserveStore below.
-    console.warn(`[govio-canvas] handleLoadResult JSON parse failed for '${args.name}': ${err instanceof Error ? err.message : String(err)} (stdout length: ${stdout.length}, first 120 chars: ${JSON.stringify(stdout.slice(0, 120))})`);
+  // stdout is not valid JSON (typically `| head` truncation) or drifts from the
+  // shared ObserveLoadOutput contract — fall back to the ObserveStore below.
+  const load = parseObserveLoadOutput(stdout);
+  if (!load) {
+    console.warn(`[govio-canvas] handleLoadResult output rejected for '${args.name}': invalid JSON or schema drift (stdout length: ${stdout.length}, first 120 chars: ${JSON.stringify(stdout.slice(0, 120))})`);
   }
-  if (load && load.success === false) return;
+  if (isLoadFailure(load)) return;
   // stdout 可能被摘要管道（jq/head）改写成合法但不可信的 JSON（失败加载投影成
   // 全 null 字段）。只有可信的成功载荷才直接采用；否则回退到 ObserveStore 复核，
   // 复核不到（说明确实没加载成功）就不建节点，避免为失败加载固化错误 Manifest。
@@ -607,7 +612,11 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "govio_create_source_table",
     label: "Govio Source Table",
-    description: "Create a source table node on the canvas showing the column schema. Each field must carry all three parts from the govio physical-table column query result: column name (column_name), description name (name) and data type (data_type). Call this after querying a PhysicalTable's column structure via govio-cli query.",
+    description:
+      "Create a source table node on the canvas showing the column schema. Each field must carry all three parts from the govio physical-table column query result: column name (column_name), description name (name) and data type (data_type). Call this after querying a PhysicalTable's column structure via govio-cli query. " +
+      "Datasource annotation (datasource/datasourceType/schema/qualifiedName) must come from authoritative sources, NEVER guessed: the graph query result (PhysicalTable `schema`/`full_table_name`; Datasource node `datasource_name`/`source_type` when present) or the datasource declaration (meta datasource file `source_type`; observe config.yaml datasources url scheme, e.g. duckdb:// means duckdb). " +
+      "qualifiedName is the table reference to use inside SQL: duckdb needs three-part catalog.schema.table (e.g. chocolate.chocolate.dim_product - a bare table name fails with 'does not exist' and two parts with 'Ambiguous reference'), postgres uses schema.table, mysql uses the bare table name or db.table. " +
+      "If a value cannot be obtained from those sources, OMIT the parameter instead of inventing one.",
     parameters: Type.Object({
       tableName: Type.String({ description: "Physical table name `full_table_name`" }),
       database: Type.Optional(Type.String({ description: "Database name" })),
@@ -625,17 +634,28 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         }),
         { description: "Column definitions of the table" }
       ),
+      datasource: Type.Optional(Type.String({ description: "数据源名（observe config.yaml 的 datasources 键，即 `observe load --datasource` 的取值，如 'chocolate'）。来源：图谱 Datasource 节点 datasource_name、数据源声明文件或用户指令；拿不到就省略，不得猜测" })),
+      datasourceType: Type.Optional(Type.String({ description: "数据源类型：'duckdb' | 'postgres' | 'mysql' | 'oracle' | 'hive' | 'trino' | 'sqlalchemy-generic' | 'unknown'。来源（不得猜测，拿不到就省略）：图谱 Datasource 节点 source_type、数据源声明文件 source_type、或 observe config.yaml 该数据源 url scheme（duckdb:// → 'duckdb'；其他 SQLAlchemy URL 能判定则填对应类型，判不了填 'sqlalchemy-generic'）" })),
+      schema: Type.Optional(Type.String({ description: "所属 schema，取图谱 PhysicalTable 查询结果的 `schema` 属性（如 'chocolate'）；拿不到就省略，不得猜测" })),
+      qualifiedName: Type.Optional(Type.String({ description: "SQL 中应使用的全限定表名，按 datasourceType 构造：duckdb 三段式 catalog.schema.table（文件库 catalog=库文件名，如 'chocolate.chocolate.dim_product'；裸表名报 does not exist、两段式报 Ambiguous reference）；postgres 两段式 schema.table；mysql 裸表名或 db.table。来源：图谱 PhysicalTable.full_table_name（schema.table）+ 数据源类型按上述规则构造，或查询结果直接给出；构造不出就省略，不得猜测" })),
     }),
     execute: async (_toolCallId, params) => {
+      const datasourceType = normalizeDatasourceType(params.datasourceType);
       pushGovioNode({
         nodeType: "sourceTable",
         title: params.tableName,
         tableName: params.tableName,
         database: params.database || "",
         fields: params.fields,
+        // 数据源标注（T2.0）：仅在 agent 提供了可信取值时透传，缺失不写键
+        ...(params.datasource ? { datasource: params.datasource } : {}),
+        ...(datasourceType ? { datasourceType } : {}),
+        ...(params.schema ? { schema: params.schema } : {}),
+        ...(params.qualifiedName ? { qualifiedName: params.qualifiedName } : {}),
       });
+      const qualified = params.qualifiedName ? `, qualified: ${params.qualifiedName}` : "";
       return {
-        content: [{ type: "text", text: `Created source table node: ${params.tableName} (${params.fields.length} fields)` }],
+        content: [{ type: "text", text: `Created source table node: ${params.tableName} (${params.fields.length} fields${qualified})` }],
         details: {},
       };
     },

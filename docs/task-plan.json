@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-31T10:20:37+08:00",
+  "updatedAt": "2026-10-31T21:40:49+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -206,22 +206,62 @@
       "id": "P2",
       "name": "语义层集成",
       "northStar": "口径命中率 ≥90%",
-      "status": "pending",
-      "branch": null,
+      "status": "in_progress",
+      "branch": "feature/phase2-semantic-layer（基于 feature/phase1-trusted-analysis a62a9cf）",
       "tasks": [
+        {
+          "id": "T2.0",
+          "title": "SourceTable 数据源类型与 schema 标注约定",
+          "kr": "T2.1 前置（用户指令 2026-10-31）",
+          "status": "accepted",
+          "dependsOn": [],
+          "outputDir": "docs/tasks/T2.0-sourcetable-datasource-type/",
+          "scope": "sourceTable 节点保存数据源类型（duckdb/postgres/mysql/oracle/hive/trino/sqlalchemy-generic）与全限定名 qualifiedName；govio_create_source_table 工具参数与描述扩展（取值来源：图谱 Datasource/PhysicalTable 查询或数据源声明文件）；节点 UI 显示类型徽标与可复制全限定名；新建 docs/specs/11-datasource-schema-conventions.md 说明各数据源类型的 schema 标注方式（duckdb 三段式 catalog.schema.table 含 chocolate 实证案例；postgres/mysql 两段式 schema.table）；旧节点无新字段时回退原显示（向后兼容）。动机案例：docs/tasks/BUGFIX-load-parse.md（agent 盲猜表名三次试错）。",
+          "acceptance": [
+            "SourceTableNodeData 增加可选字段 datasource/datasourceType/schema/qualifiedName，字段级注释写明取值来源",
+            "govio_create_source_table 参数扩展且 description 指导 agent 从图谱/声明文件取类型与全限定名，禁止猜测",
+            "节点 UI：类型徽标 + 全限定名可复制；缺字段回退旧显示",
+            "specs/11 文档覆盖 duckdb 与 postgres/mysql 标注规则及 SQL 引用示例",
+            "新增 scripts/verify-source-table.ts（事件流 → 节点 → sidecar 往返 + 旧节点兼容），纳入 npm run verify 聚合与 tsconfig.scripts",
+            "npm run build / lint / verify 全绿；三件套交付物齐全"
+          ],
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-10-31T18:52:00+08:00",
+              "by": "worker",
+              "note": "开始实现：SourceTableNodeData 增 datasource/datasourceType/schema/qualifiedName 可选字段 + govio_create_source_table 参数与描述扩展 + 事件链贯通 + 节点 UI 徽标/复制 + specs/11 约定文档 + verify-source-table 脚本"
+            },
+            {
+              "status": "done",
+              "at": "2026-10-31T19:08:49+08:00",
+              "by": "worker",
+              "note": "实现完成：SourceTableNodeData 增 DATASOURCE_TYPES/DatasourceType + datasource/datasourceType/schema/qualifiedName 可选字段（缺失不写键）；govio_create_source_table 参数全 Optional 扩展 + description 取值来源分层指导（图谱/声明/config.yaml，禁止猜测拿不到就省略）+ 枚举外类型丢弃；事件链 queue→ws→canvas-service→store 贯通；SourceTableNode 类型徽标 + qualifiedName 一键复制（缺字段回退旧显示）；新增 docs/specs/11-datasource-schema-conventions.md（duckdb 三段式含 chocolate 实证报错对照、postgres/mysql/通用 SQLAlchemy 规则）；specs/02 同步。验证：build ✓ lint 0 error verify 聚合 manifest 61/rerun 71/audit 97/export 126 无回归 + verify:source-table 39/39。交付物 docs/tasks/T2.0-sourcetable-datasource-type/{design,CHANGES,verification}.md；遗留问题 7 项见 design.md 第 7 节"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-10-31T19:12:45+08:00",
+              "by": "main-session",
+              "note": "主 session 独立验收通过：commit bb89537；build ✓ / lint 0 / verify 聚合无回归（61/71/97/126）/ verify:source-table 39/39；抽查类型定义（DATASOURCE_TYPES 联合）、工具 description（NEVER guessed/OMIT 分层取值）、UI 旧节点回退、spec 11 术语区分（datasource 名/元数据全限定标识/SQL 引用名三分离）。遗留 7 项见 design.md §7，其中 schema.md 缺失由主 session 按 AGENTS.md 同步"
+            }
+          ]
+        },
         {
           "id": "T2.1",
           "title": "图谱定义自动注入 Prompt",
           "kr": "KR1",
           "status": "pending",
           "dependsOn": [
-            "P1.accepted"
+            "P1.accepted",
+            "T2.0"
           ],
           "outputDir": "docs/tasks/T2.1-graph-prompt-injection/",
-          "scope": "会话启动/引用节点变更时按实体自动注入指标定义、字段标准、枚举码值。",
+          "scope": "会话启动/引用节点变更时自动注入语义上下文，替代 agent 主动查图谱：① 被引用 sourceTable 节点的 datasource/datasourceType/schema/qualifiedName（T2.0 产物，SQL 表引用一律以此为准，禁止另行猜测）；② 图谱中与问题实体/引用表相关的指标定义、字段标准、枚举码值（govio-query）。注入内容随消息留痕（记录注入的节点与图谱实体 ID 列表），保证口径可追溯。动机案例：docs/tasks/BUGFIX-load-parse.md（盲猜表名三次试错）。",
           "acceptance": [
-            "注入内容可追溯（记录注入了哪些图谱实体）",
-            "口径命中率测量脚本"
+            "引用 sourceTable 节点时 prompt 自动包含其 qualifiedName 与 datasourceType（makePrompt/REF 序列化可断言）",
+            "图谱实体注入可追溯：每次注入记录实体 ID 列表并随会话持久化",
+            "口径命中率测量脚本：抽样比对生成 SQL 的表引用与注入的 qualifiedName",
+            "注入失败（图谱不可达/无相关实体）时降级为现状行为且不阻断会话"
           ],
           "history": []
         },
@@ -355,7 +395,7 @@
       "title": "安全基线合入 main",
       "status": "pending",
       "dependsOn": [],
-      "note": "security/hardening 分支（659916c）已推送，待 code review 后合入",
+      "note": "security/hardening 已提 PR #12（合并顺序 1/3）；phase1/phase2 已预合并该分支并验证无冲突。合并 #12 后关闭本项",
       "outputDir": "docs/tasks/X1-security-baseline/",
       "history": []
     },
@@ -382,6 +422,75 @@
       "dependsOn": [],
       "outputDir": "docs/tasks/X4-test-infra/",
       "history": []
+    },
+    {
+      "id": "X5",
+      "title": "SQL 生成纪律与 CLI 输出契约加固",
+      "status": "accepted",
+      "dependsOn": [
+        "T2.0"
+      ],
+      "note": "用户指令：等 T2.0 SourceTable 修正完成后执行。含三项：① agent 提示词/skill 规则——写 SQL 必须用 sourceTable 节点的 qualifiedName，禁止猜表名；② jq 摘要配方改为保留 success/error 字段（{success,error,name,rows,columns}）；③ ObserveLoadOutput 共享 schema 校验器（typebox），handleLoadResult/parseLoadOutput/execute-sql 三处统一。CLI 失败退出码非 0 已由用户提交上游 govio-cli。",
+      "outputDir": "docs/tasks/X5-sql-discipline/",
+      "history": [
+        {
+          "status": "in_progress",
+          "at": "2026-10-31T19:30:00+08:00",
+          "by": "worker",
+          "note": "开始实现：AGENTS.md SQL 生成纪律章节 + server/observe-load-schema.ts 共享 typebox 校验器（三处消费统一）+ verify 回归断言扩展"
+        },
+        {
+          "status": "done",
+          "at": "2026-10-31T19:58:00+08:00",
+          "by": "worker",
+          "note": "实现完成：① AGENTS.md 新增「SQL 生成纪律」章节（6 条硬规则：qualifiedName 强制引用、specs/11 限定名规则引用、Catalog/Binder Error 先查元数据、跨源 join 两段式、jq 摘要配方保留 success/error、禁止截断 load 输出）；② 新增 server/observe-load-schema.ts 共享 typebox 校验器（宽松契约：全 Optional + null 容忍 + 开放对象；parseObserveLoadOutput/isLoadFailure/observeColumnName），三处消费统一（govio-canvas handleLoadResult 与 isTrustworthyLoadOutput 协同、dataframe-rerun parseLoadOutput/extractLoadError、parquet-api execute-sql），isTrustworthyLoadOutput 逻辑未改仅换共享类型；③ verify-manifest-roundtrip 新增 [6] 节 26 项断言（五种输入分类矩阵与现行为一致，BUGFIX 修复未放松）。验证：build ✓ lint 0 ✓ verify 聚合 manifest 87(61+26)/rerun 71/audit 97/export 126/source-table 39 全绿无回归，verify 后工作区无残留。交付物 docs/tasks/X5-sql-discipline/{design,CHANGES,verification}.md；遗留 5 项见 design.md §5（用户级 addendum jq 配方待主 session 提请、addReference 未带 qualifiedName 建议单独小任务）"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-10-31T19:36:20+08:00",
+          "by": "main-session",
+          "note": "主 session 独立验收通过：commit fd3f2f1；build ✓ / lint 0 / verify 全绿无回归（manifest 87(+26)/rerun 71/audit 97/export 126/source-table 39），verify 后工作区干净；抽查三项落地——AGENTS.md SQL 生成纪律章节、observe-load-schema.ts typebox 校验器被且仅被三个消费点引用、isTrustworthyLoadOutput 逻辑零改动（BUGFIX 行为保持）、[6] 节五形态分类矩阵。遗留：用户级 addendum jq 配方待用户更新；addReference 载荷未带 qualifiedName（建议单独小任务）"
+        }
+      ]
+    },
+    {
+      "id": "X6",
+      "title": "用户手册（简版）",
+      "status": "accepted",
+      "dependsOn": [],
+      "note": "用户指令 2026-10-31：面向企业内数据分析用户编写一份简单的用户手册，只覆盖已交付的真实功能，不写愿景性内容",
+      "outputDir": "docs/tasks/X6-user-manual/",
+      "history": [
+        {
+          "status": "in_progress",
+          "at": "2026-10-31T20:45:48+08:00",
+          "by": "worker",
+          "note": "开工：通读 README/specs/组件源码核实已交付功能，编写 docs/USER-MANUAL.md（面向企业内数据分析用户的简版手册），配套 design.md/CHANGES.md/verification.md（条目→出处对照表 + 未交付功能自查）"
+        },
+        {
+          "status": "done",
+          "at": "2026-10-31T21:07:53+08:00",
+          "by": "worker",
+          "note": "完成：docs/USER-MANUAL.md 落盘（368 行 / 12 节 / 18 张表格，面向非开发者，无源码路径与内部模块名）。写作前逐一通读事实核对源（README/package.json/specs 00-03·08·10-11/ROADMAP/T1.1-T1.4·T2.0 design/20+ 组件与 server 文件）；verification.md 给出 §2–§12 全部按钮级操作的「条目→出处」对照表。自查：ROADMAP Phase 2/3 关键词零命中（grep -cE 17 词 = 0）；内部术语 grep 无输出。npm run build ✓ / npm run lint 0 error（纯文档任务，未改任何源码）。交付物：docs/tasks/X6-user-manual/{design,CHANGES,verification}.md；遗留问题 5 项记在 design.md §4（README govio-cli 安装口径待同步、/clear-canvas 描述文案与行为不符等）"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-10-31T21:10:17+08:00",
+          "by": "main-session",
+          "note": "主 session 独立验收通过：commit 81441c9；docs/USER-MANUAL.md 368 行/12 节/132 表格行；Phase2/3 关键词与内部术语双零命中（grep 复核）；抽查对照表 3 组条目（导出按钮禁用态/漂移标签/复跑四态）与权限卡章节均与代码实际行为一致；build/lint 不受影响。遗留 5 项见 design.md §4，其中 README 安装口径不一致与 /clear-canvas 文案不符两项建议后续单独小修"
+        }
+      ]
     }
-  ]
+  ],
+  "pullRequests": {
+    "order": [
+      "#12 security/hardening",
+      "#13 feature/phase1-trusted-analysis",
+      "#14 feature/phase2-semantic-layer"
+    ],
+    "note": "依序合并：#12 → #13 → #14（后两者已预合并前者并验证零冲突）",
+    "security": "https://github.com/chenxinma/govio-map/pull/12",
+    "phase1": "https://github.com/chenxinma/govio-map/pull/13",
+    "phase2": "https://github.com/chenxinma/govio-map/pull/14"
+  }
 }

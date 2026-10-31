@@ -11,11 +11,12 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "ask": "tsx server/cli.ts",
-    "verify": "npm run verify:manifest && npm run verify:rerun && npm run verify:audit && npm run verify:export",
+    "verify": "npm run verify:manifest && npm run verify:rerun && npm run verify:audit && npm run verify:export && npm run verify:source-table",
     "verify:manifest": "tsx scripts/verify-manifest-roundtrip.ts",
     "verify:rerun": "tsx scripts/verify-rerun-drift.ts",
     "verify:audit": "tsx scripts/verify-permission-audit.ts",
     "verify:export": "tsx scripts/verify-export-report.ts",
+    "verify:source-table": "tsx scripts/verify-source-table.ts",
     "compile:electron": "esbuild electron/main.ts --bundle --packages=external --platform=node --format=esm --outfile=dist-electron/main.js",
     "build:electron": "tsc -b && vite build && npm run compile:electron && electron-builder"
   },
