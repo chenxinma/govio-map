@@ -1,6 +1,6 @@
 # T1.1 改动清单
 
-分支 `feature/phase1-trusted-analysis`。共 18 个文件（7 新增 / 11 修改；三件套交付物按 3 个文件计，此前误按 1 行计为 16）。
+分支 `feature/phase1-trusted-analysis`。共 19 个文件（7 新增 / 12 修改；三件套交付物按 3 个文件计）。
 
 ## 新增文件
 
@@ -9,7 +9,7 @@
 | `src/types/manifest.ts` | Analysis Manifest 类型定义（前后端共享，纯类型 + 字段级中文注释）：`AnalysisManifest`、`ManifestChecksum`、`ManifestChecksumAlgorithm`、`ManifestModel`、`ManifestOrigin`；文件头说明下游消费者（T1.2/T1.3/T1.4）与校验和取舍 |
 | `server/analysis-manifest.ts` | Manifest 构建与校验和计算：`MANIFEST_SCHEMA_VERSION`、`CHECKSUM_ALGORITHM`、`shortSha256`、`computeChecksum`、`toManifestModel`、`toManifestModelFromMessage`、`piSessionContext`、`agentSessionContext`、`buildManifest`；文件末尾带 `NODE_ENV !== production` 自检（哈希确定性、行数/dtype 变化可检出、无列信息不产出校验和），沿用 `session-history.ts` 的自检惯例。零项目内依赖，避免与 `agent.ts` 形成循环导入 |
 | `src/components/Nodes/ManifestDetails.tsx` | 只读 Manifest 折叠面板，dataFrame / sqlQuery 节点共用；展示来源、数据源、执行时间、行×列、校验和、生成模型、会话、权限决策、上游 DF、SQL 全文 |
-| `scripts/verify-manifest-roundtrip.ts` | 可复跑验证脚本（52 项断言，失败退出码 1），见 `verification.md` |
+| `scripts/verify-manifest-roundtrip.ts` | 可复跑验证脚本（交付时 52 项断言，R1 审查后增至 55 项，见 docs/tasks/REVIEW-R1-fixes.md；失败退出码 1），见 `verification.md` |
 
 ## 修改文件
 

@@ -171,8 +171,15 @@ try {
     const late = readPermissionAudit(sessionFile).filter(isDecision).filter((d) => d.decisionId === timeoutResult.decisionId);
     check("迟到决策补记一条「未生效」留痕（不改变已生效的超时拒绝）",
       late.length === 2 && late[0].source === "timeout" && late[1].source === "user"
-      && late[1].decision === "allow" && late[1].reason === "决策晚于超时，未生效",
+      && late[1].decision === "allow" && late[1].reason === "决策已失效（请求此前已被超时/中止/会话重置拒绝），未生效",
       `entries=${late.length}`);
+    // 幂等：超时后卡片可能仍挂在界面上，用户连点两次只补记一次，
+    // 否则审计日志里会堆出多条互相矛盾的 source:"user" 行
+    short.resolve(timeoutResult.decisionId, { decision: "deny" });
+    const lateAgain = readPermissionAudit(sessionFile).filter(isDecision).filter((d) => d.decisionId === timeoutResult.decisionId);
+    check("连续两次迟到 resolve 后同 decisionId 仍恰 2 条记录（补记幂等）",
+      lateAgain.length === 2 && lateAgain[1].decision === "allow",
+      `entries=${lateAgain.length}`);
     // 伪造/垃圾 requestId 不灌日志
     const junkBefore = readPermissionAudit(sessionFile).length;
     short.resolve("not-a-decision-id", { decision: "allow" });
@@ -196,7 +203,7 @@ try {
     check(
       "已生效的中止拒绝不被改写；迟到决策只补记「未生效」留痕",
       abortEntries.length === 2 && abortEntries[0].source === "abort" && abortEntries[1].source === "user"
-      && abortEntries[1].reason === "决策晚于超时，未生效",
+      && abortEntries[1].reason === "决策已失效（请求此前已被超时/中止/会话重置拒绝），未生效",
       `entries=${abortEntries.length}`,
     );
   }

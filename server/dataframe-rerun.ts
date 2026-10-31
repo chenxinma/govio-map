@@ -64,8 +64,9 @@ export interface RerunOptions {
  * 返回 null 表示可复跑，否则返回不可复跑的原因（直接给用户看）。
  *
  * Manifest 来自本机 canvas sidecar（客户端 canvas_save 写入，未做 schema 校验），
- * 执行前先做形状校验：字段必须是字符串，dfName 必须是 CLI 安全标识符——
- * 避免畸形留痕把非字符串传进 CLI 参数或借 dfName 注入额外参数。
+ * 执行前先做形状校验：字段必须是字符串且非空，避免畸形留痕把非字符串传进 CLI
+ * 参数。dfName 不限字符集：它不进 CLI 参数（临时名经 tempDfNameFor 归一化，
+ * execFile 数组参数不经 shell），拒绝合法存量名字只会造成无法操作的复跑失败。
  */
 export function rerunBlockReason(manifest: AnalysisManifest | null | undefined): string | null {
   if (!manifest) return "该节点没有分析留痕（Manifest），无法复跑";
@@ -77,9 +78,6 @@ export function rerunBlockReason(manifest: AnalysisManifest | null | undefined):
   }
   if (typeof manifest.dfName !== "string" || !manifest.dfName) {
     return "该节点的留痕缺少 DataFrame 名，无法复跑";
-  }
-  if (!/^[A-Za-z0-9_]+$/.test(manifest.dfName)) {
-    return "该节点留痕的 DataFrame 名含非法字符（仅限字母/数字/下划线），无法复跑";
   }
   return null;
 }

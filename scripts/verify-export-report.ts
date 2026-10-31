@@ -11,14 +11,15 @@
  * `docs/tasks/T1.4-canvas-export/sample-export.html`（脚本钉住 TZ=Asia/Shanghai，
  * 固定导出时间 → 同时区下逐字节可复现，可双击离线打开人工复核）。
  *
- * 覆盖七件事：
+ * 覆盖八件事：
  *  1. 产物自包含（无脚本 / 无外部引用 / 内联样式）与整体结构
  *  2. 血缘层次布局与 SVG（层次、坐标、边路径、悬空边与自环被丢弃）
  *  3. 五类节点卡片都有静态快照
  *  4. 漂移告警态与复跑记录摘要（含「原 Manifest 未被覆盖」的措辞）
- *  5. 附录 A：每个 dataFrame 节点的 Manifest（含 permissionDecisionId 三态）
+ *  5. 附录 A：每个 dataFrame 节点的 Manifest（含 permissionDecisionId 三态、首次交付时间）
  *  6. 附录 B：权限确认记录（只读通道返回值的解析白名单、关联节点、不可用时如实说明）
  *  7. 转义（画布内容不得变成 HTML/脚本）、确定性、不含数据行内容
+ *  8. 确认门徽标区分（人工/自动放行）/ 审计截断告知 / 空 decisionIds 形态
  *
  * 不调 govio-cli、不调模型、不读任何数据内容、不碰 `.govio/`。任一断言失败退出码 1。
  */
@@ -111,6 +112,8 @@ const MANIFEST_MONTHLY = manifest({
   checksum: { algorithm: "schema-v1", rowCount: 12, columnCount: 3, schemaHash: "a1b2c3d4e5f60718", sqlHash: "0f1e2d3c4b5a6978" },
   model: { provider: "anthropic", id: "claude-sonnet-4-5", responseModel: "claude-sonnet-4-5-20250929" },
   permissionDecisionId: DECISION_ID,
+  // 模拟一致复跑刷新过 executedAt 的留痕：首次交付时间早于当前执行时间
+  firstExecutedAt: "2026-10-30T22:00:00.000Z",
 });
 
 const MANIFEST_MEMORY = manifest({
@@ -125,6 +128,8 @@ const MANIFEST_MEMORY = manifest({
   model: { provider: "anthropic", id: "claude-sonnet-4-5" },
   sourceDataFrames: ["df_monthly_sales"],
   permissionDecisionId: null,
+  // 与 executedAt 相同 → 卡片不得渲染「首次交付」行（负例）
+  firstExecutedAt: "2026-10-30T22:31:00.000Z",
 });
 
 const DRIFT_RECORD: RerunRecord = {
@@ -557,6 +562,12 @@ check("含会话 ID 与上游 DF", appendixA.includes("sess-sample-export"));
 check("SQL 全文折在 details 里且原样保留", appendixA.includes("<details id=\"manifest-gov-2\"") && appendixA.includes("GROUP BY 1, 2") && appendixA.includes("-- 月度销售额汇总（口径：已支付订单）"));
 check("标注是否可一键复跑", appendixA.includes("是（SQL 与数据源齐全）"));
 check("说明 executedAt 的受控例外（T1.2 语义）", appendixA.includes("executedAt"));
+check("首次交付时间仅在 firstExecutedAt ≠ executedAt 时渲染（gov-2/gov-1 两卡各 1 行 + 附录 intro 提及 1 次；memory/channel 卡相等或缺失 → 不渲染）",
+  (HTML.match(/<dt>首次交付<\/dt>/g) ?? []).length === 2 && (HTML.match(/首次交付/g) ?? []).length === 3
+  && HTML.includes("<dt>首次交付</dt><dd>2026-10-31 06:00:00</dd>"),
+  `rows=${(HTML.match(/<dt>首次交付<\/dt>/g) ?? []).length} label=${(HTML.match(/首次交付/g) ?? []).length}`);
+check("附录 A 字段表含 firstExecutedAt（月度为独立值，memory 与 executedAt 同值）",
+  appendixA.includes("firstExecutedAt") && appendixA.includes("2026-10-30T22:00:00.000Z") && appendixA.includes("2026-10-30T22:31:00.000Z"));
 check("附录 A 不含无 Manifest 节点的 SQL 详情块", !appendixA.includes('id="manifest-gov-4"'));
 
 // ---------------------------------------------------------------------------
@@ -681,13 +692,13 @@ check("人工确认的节点徽标为「已过确认门」且不带自动放行�
   check("Accept All 自动放行的徽标可区分（不误导为人工逐条批准）", htmlAuto.includes("已过确认门（自动放行）"));
 }
 {
-  const manyIds = Array.from({ length: 600 }, (_, i) => `pd-trunc-${i}`);
+  const manyIds = Array.from({ length: 300 }, (_, i) => `pd-trunc-${i}`);
   const htmlTruncated = buildDeliveryReportHtml({
     nodes: NODES, edges: EDGES, exportedAt: FIXED_EXPORTED_AT,
-    audit: { ...AUDIT, requestedDecisionIds: manyIds, serverRequested: 600, truncated: true },
+    audit: { ...AUDIT, requestedDecisionIds: manyIds, serverRequested: 300, truncated: true },
   });
   check("服务端截断时报告如实告知（不拿前端请求数充数）",
-    htmlTruncated.includes("审计通道截断，仅带出前 500 个 decisionId") && htmlTruncated.includes("按 600 个 decisionId 过滤"));
+    htmlTruncated.includes("审计通道截断，仅带出前 200 个 decisionId") && htmlTruncated.includes("按 300 个 decisionId 过滤"));
 }
 {
   // 无节点过确认门时 fetchAuditAppendix 不发请求，形态与 renderAppendixB 的断言分支一致
@@ -718,8 +729,9 @@ if (process.argv.includes("--write")) {
   const trackedAfter = existsSync(artifactPath) ? readFileSync(artifactPath, "utf8") : null;
   check("默认运行不改写受跟踪样例（git 工作树保持干净）", trackedAfter === trackedBefore);
   console.log(`\n样例产物（临时）：${tmpPath}；更新受跟踪样例请追加 --write`);
-  rmSync(tmpDir, { recursive: true, force: true });
 }
+// 两条分支都清理临时目录（--write 也不能在系统临时目录留残留）
+rmSync(tmpDir, { recursive: true, force: true });
 console.log(`共 ${checks} 项断言，失败 ${failures.length} 项`);
 if (failures.length > 0) {
   console.log("失败项：\n" + failures.map((f) => `  - ${f}`).join("\n"));

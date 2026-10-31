@@ -18,7 +18,7 @@
 
 | 文件 | 摘要 |
 |------|------|
-| `scripts/verify-export-report.ts` | 可复跑验证脚本（`npm run verify:export`，交付时约 620 行 / **116 项断言**，R1 审查后增至 124 项且默认不再改写受跟踪样例（需 `--write`），见 docs/tasks/REVIEW-R1-fixes.md；失败退出码 1）。构造含全部五类节点的样例画布（2 源表 / 1 sqlQuery / 4 dataFrame 覆盖漂移·失败·一致·无留痕 / 2 chart 覆盖成功·降级 / 1 diff 报告；9 条有效血缘边 + 1 悬空边 + 1 自环），直接调纯函数产出 HTML 并分七节断言。不调 govio-cli、不调模型、不读数据内容、不碰 `.govio/` |
+| `scripts/verify-export-report.ts` | 可复跑验证脚本（`npm run verify:export`，交付时约 620 行 / **116 项断言**，R1 审查后增至 124 项且默认不再改写受跟踪样例（需 `--write`），见 docs/tasks/REVIEW-R1-fixes.md；失败退出码 1）。构造含全部五类节点的样例画布（2 源表 / 1 sqlQuery / 4 dataFrame 覆盖漂移·失败·一致·无留痕 / 2 chart 覆盖成功·降级 / 1 diff 报告；9 条有效血缘边 + 1 悬空边 + 1 自环），直接调纯函数产出 HTML 并分八节断言。不调 govio-cli、不调模型、不读数据内容、不碰 `.govio/` |
 | `docs/tasks/T1.4-canvas-export/sample-export.html` | 上述脚本产出的样例交付报告（约 44 KB，10 节点 / 9 连线）。导出时间固定且脚本钉住 TZ=Asia/Shanghai → 同时区下逐字节可复现，可双击在浏览器离线打开人工复核；R1 审查后由 `--write` 重新生成（审计来源改为 basename） |
 
 ### 文档

@@ -100,13 +100,19 @@ PASS: 交付报告自包含、含五类节点与血缘图、附录 A/B 齐全、
 
 ### 确定性复核（同一命令跑两次，产物逐字节一致）
 
+注：R1 审查后默认运行**不再落盘**受跟踪样例（避免非 UTC+8 机器把产物改脏）；
+重新生成需显式追加 `-- --write`，因此确定性复核改为连续两次 `--write` 后比对：
+
 ```
-$ cp docs/tasks/T1.4-canvas-export/sample-export.html /tmp/sample-before.html
-$ npm run verify:export   # 116 项通过
-$ cmp /tmp/sample-before.html docs/tasks/T1.4-canvas-export/sample-export.html && echo identical=yes
+$ npm run verify:export -- --write   # 第一次：重新生成受跟踪样例
+$ cp docs/tasks/T1.4-canvas-export/sample-export.html /tmp/sample-a.html
+$ npm run verify:export -- --write   # 第二次
+$ cmp /tmp/sample-a.html docs/tasks/T1.4-canvas-export/sample-export.html && echo identical=yes
 identical=yes
--rw-r--r-- 1 Administrator 197121 43877 … sample-export.html
 ```
+
+脚本钉住 `TZ=Asia/Shanghai` 且导出时间为固定输入，逐字节一致不再依赖机器时区；
+默认运行（不带 `--write`）只写系统临时目录并断言受跟踪样例未被改写，跑完 `git status --porcelain` 应为空。
 
 ## 4. 回归：T1.1 / T1.2 / T1.3 验证脚本
 

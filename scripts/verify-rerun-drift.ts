@@ -102,9 +102,11 @@ console.log("\n[1] 复跑参数来自 Manifest 固化的 SQL（非当前输入�
   const loadArgs = calls[0] ?? [];
   check("只调用了 load + release 两条命令", calls.length === 2 && loadArgs[1] === "load" && calls[1][1] === "release");
   check("SQL 全文作为单个数组参数原样传入（含换行/引号/中文）", loadArgs[loadArgs.length - 1] === SQL);
-  // 结构性保证：rerunDataFrame 的入参只有 Manifest，不存在「当前输入」通道；
-  // 这里断言 argv 里没有 Manifest 之外的 SQL 痕迹
-  check("argv 未混入 Manifest 之外的 SQL", !loadArgs.some((a) => a.includes("something_else")));
+  // 精确 argv 形状断言：顺序/多余 flag/额外参数任何变化都会失败（与
+  // server/dataframe-rerun.ts buildRerunLoadArgs 的产出全等）；临时名取自实际 argv
+  const tmpName = loadArgs[loadArgs.indexOf("--name") + 1];
+  check("argv 形状与 buildRerunLoadArgs 契约全等（无多余参数）",
+    JSON.stringify(loadArgs) === JSON.stringify(["observe", "load", "--name", tmpName, "--datasource", "sales", "--sql", SQL]));
   check("数据源取自 Manifest", loadArgs.includes("--datasource") && loadArgs[loadArgs.indexOf("--datasource") + 1] === "sales");
   check("写入临时 DataFrame 名而非原名（不覆盖已交付结果）", loadArgs[loadArgs.indexOf("--name") + 1].startsWith(RERUN_TMP_PREFIX) && !loadArgs.includes("df_orders"));
   check("临时名是 CLI 安全标识符", /^[a-z0-9_]+$/.test(loadArgs[loadArgs.indexOf("--name") + 1]));
@@ -117,10 +119,11 @@ console.log("\n[1] 复跑参数来自 Manifest 固化的 SQL（非当前输入�
   check("非字符串 sql/datasource 被拦住（不把非字符串传进 CLI 参数）",
     rerunBlockReason({ ...manifest, sql: 42 as unknown as string }) !== null
     && rerunBlockReason({ ...manifest, datasource: { name: "sales" } as unknown as string }) !== null);
-  check("dfName 含非法字符被拦住（仅限字母/数字/下划线）",
-    rerunBlockReason({ ...manifest, dfName: "df orders" }) !== null
-    && rerunBlockReason({ ...manifest, dfName: "df_x;touch pwned" }) !== null
-    && rerunBlockReason({ ...manifest, dfName: 7 as unknown as string }) !== null
+  check("dfName 形状校验：非字符串/空串被拦，合法存量名（含 - 与 .）可复跑",
+    rerunBlockReason({ ...manifest, dfName: 7 as unknown as string }) !== null
+    && rerunBlockReason({ ...manifest, dfName: "" }) !== null
+    && rerunBlockReason({ ...manifest, dfName: "sales-2024" }) === null
+    && rerunBlockReason({ ...manifest, dfName: "df.v2" }) === null
     && rerunBlockReason({ ...manifest, dfName: "df_ok" }) === null);
   check("无 SQL 的节点不渲染复跑按钮（canRerun）", canRerun({ manifest } as unknown as DataFrameNodeData) === true && canRerun({ manifest: { ...manifest, sql: "  " } } as unknown as DataFrameNodeData) === false);
 }

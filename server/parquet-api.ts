@@ -14,8 +14,12 @@ import type { AnalysisManifest } from "../src/types/manifest.js";
 
 const PARQUET_DIR = ".govio/observe/dataframes";
 
-/** 审计只读通道一次最多接受多少个 decisionId（附录 B 只需要画布节点引用的那些） */
-const MAX_AUDIT_DECISION_IDS = 500;
+/**
+ * 审计只读通道一次最多接受多少个 decisionId（附录 B 只需要画布节点引用的那些）。
+ * 上限需保证整个 query 落在 Node 默认 16KiB 请求行+头限制内（pd-<uuid> 编码后约
+ * 42 字节/id，200 个 ≈ 8.4KB 安全）；否则请求会以 431 被拒，truncated 契约不可达。
+ */
+const MAX_AUDIT_DECISION_IDS = 200;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",

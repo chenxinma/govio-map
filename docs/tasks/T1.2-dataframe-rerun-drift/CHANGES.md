@@ -11,7 +11,7 @@
 | `server/dataframe-rerun.ts` | 复跑与漂移判定：`RERUN_TMP_PREFIX`/`RERUN_LOAD_TIMEOUT_MS`(120s)/`RERUN_RELEASE_TIMEOUT_MS`(15s)、`rerunBlockReason`、`manifestSnapshot`、`tempDfNameFor`、`buildRerunLoadArgs`、`parseLoadOutput`、`compareRerunResult`、`rerunDataFrame`（runCli/now 可注入，永不抛错，`finally` 释放临时 DF）。零 agent 依赖；文件末尾带 `NODE_ENV !== production` 自检（11 项断言） |
 | `src/utils/rerun.ts` | 复跑记录的前端写入规则（纯函数）：`MAX_RERUN_HISTORY = 20`、`latestRerun`、`hasDrift`、`canRerun`、`withRerunRecord`（追加+封顶+一致时刷新 `manifest.executedAt`，不可变更新）、`formatRerunTime` |
 | `src/components/Nodes/RerunStatus.tsx` | 复跑状态条：进行中（Loader2 旋转）/ 复现一致（品牌绿）/ 漂移（warning + 差异摘要）/ 失败（error + 原因）；右侧「N 次」按钮展开记录列表（`max-h-32` 可滚动，每行 title 里给出原留痕、本次结果、差异、耗时、临时 DF 名、会话） |
-| `scripts/verify-rerun-drift.ts` | 可复跑验证脚本（`npm run verify:rerun`，62 项断言；`-- --real` 74 项，走真实 govio-cli），失败退出码 1 |
+| `scripts/verify-rerun-drift.ts` | 可复跑验证脚本（`npm run verify:rerun`，交付时 62 项断言、`-- --real` 74 项；R1 审查后 67 / 79 项，见 docs/tasks/REVIEW-R1-fixes.md；走真实 govio-cli），失败退出码 1 |
 
 ## 修改文件
 

@@ -36,7 +36,7 @@ interface PendingEntry {
 
 const TIMEOUT_MS = 5 * 60 * 1000;
 
-/** 决策索引（命令 / toolCallId）的容量上限：超出按插入序淘汰最旧，防止长会话无限增长 */
+/** 决策索引（命令 / toolCallId）与迟到补记去重集的容量上限：超出按插入序淘汰最旧，防止长会话无限增长 */
 const DECISION_INDEX_LIMIT = 200;
 
 /** 决策 ID 前缀：`pd-` = permission decision，`pm-` = permission mode（便于日志检索） */
@@ -78,6 +78,8 @@ export class PermissionManager {
   private decisionsByCommand = new Map<string, { decisionId: string; decision: PermissionDecision }>();
   /** toolCallId → 决策 ID（同一次工具调用的确认与结果精确对应） */
   private decisionsByToolCall = new Map<string, string>();
+  /** 已补记过「迟到决策」的 decisionId（插入序，用于幂等：重复迟到 resolve 只记一次） */
+  private lateAudited = new Set<string>();
 
   constructor(options: PermissionManagerOptions = {}) {
     this.timeoutMs = options.timeoutMs ?? TIMEOUT_MS;
@@ -111,6 +113,7 @@ export class PermissionManager {
     // 旧会话的 decisionId（交付报告附录 B 里查无此 ID）。
     this.decisionsByCommand.clear();
     this.decisionsByToolCall.clear();
+    this.lateAudited.clear();
   }
 
   denyPending(reason: string, source: PermissionDecisionSource = "abort"): void {
@@ -264,11 +267,21 @@ export class PermissionManager {
    *
    * 原决策（timeout/abort/reset 的 deny）已经生效并记账，这条迟到的用户决策不会
    * 改变执行结果，但必须留痕——否则「用户点了却没反应」在审计里查无此事。
-   * 只接受 `pd-` 形态的 decisionId，避免伪造/垃圾 requestId 灌日志；命令原文此时
-   * 已不在挂起表里，如实记为空串。静默、不抛错（appendPermissionAudit 自身兜底）。
+   * 幂等：同一 decisionId 只补记一次（超时后卡片可能仍挂在界面上，用户连点会重复
+   * resolve），去重集有界、随 clearAll() 失效。只接受 `pd-` 形态的 decisionId，
+   * 避免伪造/垃圾 requestId 灌日志；命令原文此时已不在挂起表里，如实记为空串。
+   * reason 用成因无关的措辞：到达此分支的成因可能是超时、中止或会话重置。
+   * 静默、不抛错（appendPermissionAudit 自身兜底）。
    */
   private auditLateDecision(requestId: string, response: PermissionDecisionInput): void {
     if (!requestId.startsWith("pd-")) return;
+    if (this.lateAudited.has(requestId)) return;
+    this.lateAudited.add(requestId);
+    while (this.lateAudited.size > DECISION_INDEX_LIMIT) {
+      const oldest = this.lateAudited.values().next().value;
+      if (oldest === undefined) break;
+      this.lateAudited.delete(oldest);
+    }
     appendPermissionAudit({
       type: "permission_decision",
       at: new Date().toISOString(),
@@ -276,7 +289,7 @@ export class PermissionManager {
       decision: response.decision,
       command: "",
       ...(response.editedCommand ? { editedCommand: response.editedCommand } : {}),
-      reason: "决策晚于超时，未生效",
+      reason: "决策已失效（请求此前已被超时/中止/会话重置拒绝），未生效",
       source: "user",
       elapsedMs: 0,
     });

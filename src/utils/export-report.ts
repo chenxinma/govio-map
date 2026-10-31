@@ -126,7 +126,7 @@ export interface AuditAppendix {
   requestedDecisionIds: string[];
   /** 服务端实际参与过滤的 decisionId 数（截断前）；缺失时退回 requestedDecisionIds.length */
   serverRequested?: number;
-  /** 服务端因上限（500 个）发生截断时为 true，报告必须如实告知 */
+  /** 服务端因上限（200 个，见 parquet-api.ts MAX_AUDIT_DECISION_IDS）发生截断时为 true，报告必须如实告知 */
   truncated?: boolean;
   /** 会话审计里的记录总数（未过滤时等于 entries.length） */
   totalInSession?: number;
@@ -613,6 +613,10 @@ function manifestBlock(manifest: AnalysisManifest | undefined, ctx: CardContext,
     ['数据源', esc(manifest.datasource || '—')],
     ['执行时间', esc(formatTimestamp(manifest.executedAt))],
   ];
+  // 一致复跑会刷新 executedAt；首次交付时间另列一行（相同时不渲染，避免噪音）。
+  if (manifest.firstExecutedAt && manifest.firstExecutedAt !== manifest.executedAt) {
+    rows.push(['首次交付', esc(formatTimestamp(manifest.firstExecutedAt))]);
+  }
   if (manifest.dfName) rows.push(['DataFrame', esc(manifest.dfName)]);
   if (typeof manifest.rowCount === 'number') {
     rows.push(['行 × 列', esc(`${groupDigits(manifest.rowCount)} × ${manifest.columnCount ?? '?'}`)]);
@@ -896,6 +900,7 @@ export function renderAppendixA(nodes: Node[], ctx: CardContext): string {
           ['datasource', esc(m.datasource || '—')],
           ['dfName', esc(m.dfName ?? '—')],
           ['executedAt', esc(m.executedAt)],
+          ['firstExecutedAt', esc(m.firstExecutedAt ?? '—')],
           ['rowCount', esc(m.rowCount ?? '—')],
           ['columnCount', esc(m.columnCount ?? '—')],
           [
@@ -919,7 +924,7 @@ export function renderAppendixA(nodes: Node[], ctx: CardContext): string {
     `<section id="appendix-a"><h2><span class="n">附录 A</span> DataFrame 分析留痕（Analysis Manifest）</h2>` +
     `<p class="note">共 ${frames.length} 个 dataFrame 节点，其中 ${withManifest.length} 个带 Manifest。` +
     `Manifest 由服务端在结果产生时固化、只读；唯一的受控例外是复跑结论为「一致」时刷新 ` +
-    `<code>executedAt</code>（原始时间保留在复跑记录的 <code>before</code> 里，见 T1.2 设计说明）。` +
+    `<code>executedAt</code>，首次交付时间另存于不可变的 <code>firstExecutedAt</code>（逐次旧值另见复跑记录的 <code>before</code>，见 T1.2 设计说明）。` +
     `<code>permissionDecisionId</code> 为 <em>未过确认门</em> 表示这次取数没有触发取数确认门（例如不带 <code>-o</code> 的加载、SQL 编辑器人工执行）。</p>` +
     (frames.length
       ? `<div class="scroll"><table class="t wide"><thead><tr>` +
@@ -1021,7 +1026,7 @@ export function renderAppendixB(audit: AuditAppendix | null | undefined, nodes: 
     `${audit.sessionId ? ` <code>${esc(audit.sessionId)}</code>` : ''}）。` +
     `会话内共 ${esc(groupDigits(audit.totalInSession ?? entries.length))} 条记录，本附录带出与画布节点 Manifest 的 ` +
     `<code>permissionDecisionId</code> 关联的 ${entries.length} 条（按 ${filterCount} 个 decisionId 过滤）。` +
-    (audit.truncated ? '<strong>⚠ 审计通道截断，仅带出前 500 个 decisionId；未带出的部分请回会话审计 sidecar 查证。</strong>' : '') +
+    (audit.truncated ? '<strong>⚠ 审计通道截断，仅带出前 200 个 decisionId；未带出的部分请回会话审计 sidecar 查证。</strong>' : '') +
     `记录里只有命令原文与决策，<strong>不含任何查询结果</strong>。</p>`;
 
   if (!entries.length) {
