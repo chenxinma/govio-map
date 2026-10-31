@@ -414,6 +414,73 @@ console.log("\n[5] store -> canvas_save -> loadCanvas -> hydrateSession");
   }
 }
 
+// ── 6. X5：共享 ObserveLoadOutput 校验器 — 五种输入的分类判定与现行为一致 ────
+
+console.log("\n[6] 共享校验器（observe-load-schema）五种输入分类回归");
+{
+  const { parseObserveLoadOutput, isLoadFailure } = await import("../server/observe-load-schema.js");
+  const { parseLoadOutput, extractLoadError } = await import("../server/dataframe-rerun.js");
+
+  // 五种输入（docs/tasks/X5-sql-discipline/design.md；与 BUGFIX-load-parse 场景对齐）
+  const jqAllNull = '{"name":null,"rows":null,"columns":null,"schema":null}';
+  const failure = '{"success":false,"error":"Catalog Error: Table dim_product does not exist"}';
+  const truncated = '{"success": true, "rows": 1';
+  const fullSuccess = '{"success":true,"name":"dim_product","rows":12,"columns":2,"column_info":[{"name":"product_id","dtype":"VARCHAR"},{"name":"product_name","dtype":"VARCHAR"}],"source_tables":["upstream_df"]}';
+  const jqSummary = '{"name":"dim_product","rows":12,"columns":2,"schema":null}';
+
+  // ① jq 全 null 投影：schema 合法（显式 null 宽容）但不可信 → handleLoadResult 回退
+  //    ObserveStore 复核；parseLoadOutput 保持现行为（复跑路径经 execFile 不经 jq 管道，
+  //    生产不会出现此输入，断言只为钉死「分类与现行为一致、不放松 BUGFIX 修复」）
+  const allNull = parseObserveLoadOutput(jqAllNull);
+  check("jq 全 null 投影：schema 合法（显式 null 被宽容）", allNull !== null);
+  check("jq 全 null 投影：非显式失败（无 success:false 可拦截）", isLoadFailure(allNull) === false);
+  check("jq 全 null 投影：不可信（无成功信号 → 回退复核）", isTrustworthyLoadOutput(allNull) === false);
+  check("jq 全 null 投影：parseLoadOutput 保持现行为（0 行结果）", JSON.stringify(parseLoadOutput(jqAllNull)) === JSON.stringify({ rowCount: 0, columnCount: 0, columns: [] }));
+  check("jq 全 null 投影：extractLoadError 返回 null", extractLoadError(jqAllNull) === null);
+
+  // ② success:false → 三处消费统一按「显式失败」分类
+  const fail = parseObserveLoadOutput(failure);
+  check("success:false：schema 合法", fail !== null);
+  check("success:false：isLoadFailure 拦截（不建节点 / 400）", isLoadFailure(fail) === true);
+  check("success:false：不可信", isTrustworthyLoadOutput(fail) === false);
+  check("success:false：parseLoadOutput 返回 null", parseLoadOutput(failure) === null);
+  check("success:false：extractLoadError 透传 SQL 错误", (extractLoadError(failure) ?? "").includes("Table dim_product does not exist"));
+
+  // ③ 截断输出（非法 JSON）→ 一律拒绝，无错误透传（回退通用「无法解析」文案）
+  check("截断输出：parseObserveLoadOutput 返回 null", parseObserveLoadOutput(truncated) === null);
+  check("截断输出：不可信（handleLoadResult 回退复核）", isTrustworthyLoadOutput(parseObserveLoadOutput(truncated)) === false);
+  check("截断输出：parseLoadOutput 返回 null", parseLoadOutput(truncated) === null);
+  check("截断输出：extractLoadError 返回 null（调用方回退通用文案）", extractLoadError(truncated) === null);
+
+  // ④ 成功全量载荷 → 可信，列/行数映射正确，血缘 source_tables 保留
+  const ok = parseObserveLoadOutput(fullSuccess);
+  check("成功全量载荷：schema 合法", ok !== null);
+  check("成功全量载荷：非失败", isLoadFailure(ok) === false);
+  check("成功全量载荷：可信", isTrustworthyLoadOutput(ok) === true);
+  check("成功全量载荷：source_tables 保留（--memory 血缘用）", JSON.stringify(ok?.source_tables) === JSON.stringify(["upstream_df"]));
+  check(
+    "成功全量载荷：parseLoadOutput 映射行/列数与列名",
+    JSON.stringify(parseLoadOutput(fullSuccess)) === JSON.stringify({
+      rowCount: 12,
+      columnCount: 2,
+      columns: [{ name: "product_id", dtype: "VARCHAR" }, { name: "product_name", dtype: "VARCHAR" }],
+    }),
+  );
+  check("成功全量载荷：extractLoadError 返回 null", extractLoadError(fullSuccess) === null);
+
+  // ⑤ 成功 jq 摘要（有数值 rows）→ 可信
+  const summary = parseObserveLoadOutput(jqSummary);
+  check("成功 jq 摘要：schema 合法", summary !== null);
+  check("成功 jq 摘要：可信", isTrustworthyLoadOutput(summary) === true);
+  check("成功 jq 摘要：parseLoadOutput 保持现行为（列信息缺失时用 columns 字段）", JSON.stringify(parseLoadOutput(jqSummary)) === JSON.stringify({ rowCount: 12, columnCount: 2, columns: [] }));
+
+  // 新能力：字段类型漂移/非对象 JSON 被校验器抓住（旧手写 interface 只能运行时暴露），
+  // 同时宽松契约不误杀 CLI 新增字段
+  check("形状漂移：rows 变字符串被拒绝", parseObserveLoadOutput('{"success":true,"rows":"twelve"}') === null);
+  check("形状漂移：非对象 JSON（数组）被拒绝", parseObserveLoadOutput('[{"rows":12}]') === null);
+  check("宽松契约：未知额外字段不误杀（CLI 新增输出不破坏）", parseObserveLoadOutput('{"success":true,"rows":1,"future_field":"x"}') !== null);
+}
+
 console.log(`\n共 ${checks} 项断言，失败 ${failures.length} 项`);
 if (failures.length > 0) {
   console.log("失败项：\n" + failures.map((f) => `  - ${f}`).join("\n"));

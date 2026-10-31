@@ -1,4 +1,11 @@
 import { pushGovioNode, type GovioNodeCreateEvent } from "../govio-node-queue.js";
+import {
+  isLoadFailure,
+  observeColumnName,
+  parseObserveLoadOutput,
+  type ObserveColumn,
+  type ObserveLoadOutput,
+} from "../observe-load-schema.js";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
@@ -114,17 +121,6 @@ function parseExploreArgs(cmd: string): { dataframes: string[] } | null {
 }
 
 
-interface ObserveInfo {
-  success?: boolean;
-  name?: string;
-  rows?: number;
-  columns?: number;
-  error?: string;
-  schema?: Array<{ name?: string; column?: string; col?: string; dtype: string }>;
-  column_info?: Array<{ name?: string; column?: string; col?: string; dtype: string }>;
-  source_tables?: string[];
-}
-
 /**
  * 判断一段已解析的 `observe load` 输出是否是「可信的成功载荷」。
  *
@@ -137,8 +133,12 @@ interface ObserveInfo {
  *
  * 规则：只有出现真实的成功信号——数值型 `rows`、或 `column_info`/`schema` 数组、
  * 或显式 `success === true`——才可信；否则视为失败/摘要噪声，交由 ObserveStore 复核。
+ *
+ * 与 `observe-load-schema.ts` 的分工（X5）：schema 校验（parseObserveLoadOutput）
+ * 拦「形状不合法」（非法 JSON、字段类型漂移），本谓词拦「形状合法但语义不可信」
+ * （jq 全 null 投影没有 success:false 可拦截，也没有任何成功信号）。两层缺一不可。
  */
-export function isTrustworthyLoadOutput(load: ObserveInfo | null): boolean {
+export function isTrustworthyLoadOutput(load: ObserveLoadOutput | null): boolean {
   if (!load || load.success === false) return false;
   if (load.success === true) return true;
   return typeof load.rows === "number" || Array.isArray(load.column_info) || Array.isArray(load.schema);
@@ -150,13 +150,13 @@ export function isTrustworthyLoadOutput(load: ObserveInfo | null): boolean {
  * stdout of `observe load` cannot be trusted for node creation.
  * Returns null for an invalid name, a missing DataFrame, or a CLI failure.
  */
-async function readObserveInfo(dfName: string): Promise<ObserveInfo | null> {
+async function readObserveInfo(dfName: string): Promise<ObserveLoadOutput | null> {
   // dfName is interpolated into a shell command - restrict to safe identifiers.
   if (!/^[A-Za-z0-9_]+$/.test(dfName)) return null;
   try {
     const { runGovioCli } = await import("../agent.js");
     // --rows 0 avoids pulling sample data (schema only).
-    const info: ObserveInfo = JSON.parse(await runGovioCli(`observe info --name ${dfName} --rows 0`));
+    const info = parseObserveLoadOutput(await runGovioCli(`observe info --name ${dfName} --rows 0`));
     return info && info.success !== false ? info : null;
   } catch {
     return null;
@@ -164,12 +164,12 @@ async function readObserveInfo(dfName: string): Promise<ObserveInfo | null> {
 }
 
 function mapColumnInfo(
-  columns: Array<{ name?: string; column?: string; col?: string; dtype: string }>,
+  columns: ObserveColumn[],
   totalRows: number,
 ): Array<{ name: string; dtype: string; nonNull: number }> {
   return columns.map((c) => ({
-    name: c.name ?? c.column ?? c.col ?? "unknown",
-    dtype: c.dtype,
+    name: observeColumnName(c),
+    dtype: c.dtype ?? "",
     nonNull: totalRows,
   }));
 }
@@ -461,15 +461,13 @@ async function handleLoadResult(
   if (!args) return;
   // Validate dfName to prevent injection into downstream commands or display issues.
   if (!/^[A-Za-z0-9_]+$/.test(args.name)) return;
-  let load: ObserveInfo | null = null;
-  try {
-    load = JSON.parse(stdout);
-  } catch (err) {
-    // stdout is not valid JSON — typically caused by `| head` truncating the
-    // output. Fall back to the ObserveStore below.
-    console.warn(`[govio-canvas] handleLoadResult JSON parse failed for '${args.name}': ${err instanceof Error ? err.message : String(err)} (stdout length: ${stdout.length}, first 120 chars: ${JSON.stringify(stdout.slice(0, 120))})`);
+  // stdout is not valid JSON (typically `| head` truncation) or drifts from the
+  // shared ObserveLoadOutput contract — fall back to the ObserveStore below.
+  const load = parseObserveLoadOutput(stdout);
+  if (!load) {
+    console.warn(`[govio-canvas] handleLoadResult output rejected for '${args.name}': invalid JSON or schema drift (stdout length: ${stdout.length}, first 120 chars: ${JSON.stringify(stdout.slice(0, 120))})`);
   }
-  if (load && load.success === false) return;
+  if (isLoadFailure(load)) return;
   // stdout 可能被摘要管道（jq/head）改写成合法但不可信的 JSON（失败加载投影成
   // 全 null 字段）。只有可信的成功载荷才直接采用；否则回退到 ObserveStore 复核，
   // 复核不到（说明确实没加载成功）就不建节点，避免为失败加载固化错误 Manifest。

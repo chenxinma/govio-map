@@ -8,6 +8,11 @@ import { pushGovioNode, emitFlushed, flushGovioNodes } from "./govio-node-queue.
 import { agentSessionContext, buildManifest } from "./analysis-manifest.js";
 import { rerunDataFrame } from "./dataframe-rerun.js";
 import { runGovioCliWithArgs } from "./govio-cli-exec.js";
+import {
+  isLoadFailure,
+  observeColumnName,
+  parseObserveLoadOutput,
+} from "./observe-load-schema.js";
 import { readPermissionAudit } from "./permission-audit.js";
 import { loadCanvas } from "./session-history.js";
 import type { AnalysisManifest } from "../src/types/manifest.js";
@@ -104,12 +109,17 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
           ? ['observe', 'load', '--memory', '--name', name, '--sql', sql]
           : ['observe', 'load', '--datasource', datasource, '--name', name, '--sql', sql];
         const loadOutput = await runGovioCliWithArgs(loadArgs);
-        const loadResult = JSON.parse(loadOutput);
+        // 形状契约见 observe-load-schema.ts（X5 共享校验器）：非法 JSON / 形状漂移
+        // 走 catch → 500（与旧 JSON.parse 抛错同构）。
+        const loadResult = parseObserveLoadOutput(loadOutput);
+        if (!loadResult) {
+          throw new Error("observe load 输出无法解析（非法 JSON 或形状不符合契约）");
+        }
 
         // CLI 在 SQL 执行失败时可能以退出码 0 返回 {success:false, error}（表不存在、
         // catalog 歧义等）。不能当作成功继续建节点，否则前端 SQL 编辑器会误报成功、
         // 并可能为不存在的 DataFrame 固化错误留痕。透传 CLI 错误给前端。
-        if (loadResult && loadResult.success === false) {
+        if (isLoadFailure(loadResult)) {
           const reason = loadResult.error || loadResult.message || "未知错误";
           res.writeHead(400, { "Content-Type": "application/json", ...CORS_HEADERS });
           res.end(JSON.stringify({ error: `SQL 执行失败：${reason}` }));
@@ -118,14 +128,17 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
 
         // 获取 DataFrame 信息
         const infoOutput = await runGovioCli(`observe info --name ${name} --rows 0`, true);
-        const info = JSON.parse(infoOutput);
+        const info = parseObserveLoadOutput(infoOutput);
+        if (!info) {
+          throw new Error("observe info 输出无法解析（非法 JSON 或形状不符合契约）");
+        }
 
         // 创建 canvas 节点
-        if (info && info.schema) {
-          const columns = info.schema.map((col: { column: string; dtype: string }) => ({
-            name: col.column,
+        if (info.schema) {
+          const columns = info.schema.map((col) => ({
+            name: observeColumnName(col),
             nonNull: 0,
-            dtype: col.dtype,
+            dtype: col.dtype ?? "",
           }));
           const rowCount = info.rows || 0;
           const columnCount = info.columns || info.schema.length;

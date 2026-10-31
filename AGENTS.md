@@ -23,6 +23,21 @@ cp -r "D:/work/python/govio/skills/". .agents/skills/
 diff -rq "D:/work/python/govio/skills" .agents/skills
 ```
 
+## SQL 生成纪律
+
+agent（pi 会话）生成/执行 SQL 时必须遵守的硬规则。动机案例：`docs/tasks/BUGFIX-load-parse.md`（盲猜限定名三次试错，jq 摘要管道又把失败投影成全 null，固化了错误 SQL）。
+
+1. **表引用必须取 sourceTable 节点的 `qualifiedName`**（或图谱查询/数据源声明给出的全限定名），禁止凭表名猜测段数与拼写。节点缺 `qualifiedName` 时先补查图谱（`govio-cli query`）与数据源声明，而不是向 CLI 盲试表名。
+2. **各数据源类型的限定名规则见 `docs/specs/11-datasource-schema-conventions.md`**（duckdb 文件库三段式 `catalog.schema.table`、postgres 两段式 `schema.table` 等），此处不重复展开；`datasourceType` 为 `unknown` 或缺失时不得凭类型构造 SQL 引用名。
+3. **遇到 Catalog Error / Binder Error 先查元数据再改 SQL**：确认表的 schema/catalog 归属后修正引用，禁止盲目穷举限定名变体试错；DuckDB 报错常附 `Did you mean <catalog>.<schema>.<table>` 提示，直接采纳。
+4. **跨数据源 join 必须走两段式**：一次 `observe load` 只连一个 `--datasource`（CLI 单连接执行、无跨源联邦能力），禁止假设单条 SQL 能引用多个数据源的表。正确做法：分别 `observe load` 各源 DataFrame，再 `observe load --memory --sql "... JOIN ..."` 合并（见 `docs/tasks/CLI-cross-schema-analysis.md` 场景 B）。
+5. **observe load 的 jq 摘要配方必须保留失败信号**：CLI 在 SQL 失败时可能退出码 0 只返回 `{success:false, error}`，摘要只用
+   ```bash
+   govio-cli observe load ... 2>&1 | jq '{success, error, name, rows, columns}'
+   ```
+   旧配方 `{name, rows, columns}` 会把失败投影成全 null、抹掉 `success:false`（BUGFIX-load-parse 诱因之一），禁止再用。
+6. **禁止 `head` / `tail` / `sed` 截断 observe load 输出**（既有纪律）：stdout 是完整 JSON，后端依赖它建画布节点并固化 Manifest；控制输出量只用 CLI 自身参数（`observe info --rows 0`、load 不带 `-o`）或上述 jq 字段投影。
+
 ## Commands
 
 ```bash
