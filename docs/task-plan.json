@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-31T19:36:20+08:00",
+  "updatedAt": "2026-10-31T20:43:57+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -452,6 +452,15 @@
           "note": "主 session 独立验收通过：commit fd3f2f1；build ✓ / lint 0 / verify 全绿无回归（manifest 87(+26)/rerun 71/audit 97/export 126/source-table 39），verify 后工作区干净；抽查三项落地——AGENTS.md SQL 生成纪律章节、observe-load-schema.ts typebox 校验器被且仅被三个消费点引用、isTrustworthyLoadOutput 逻辑零改动（BUGFIX 行为保持）、[6] 节五形态分类矩阵。遗留：用户级 addendum jq 配方待用户更新；addReference 载荷未带 qualifiedName（建议单独小任务）"
         }
       ]
+    },
+    {
+      "id": "X6",
+      "title": "用户手册（简版）",
+      "status": "pending",
+      "dependsOn": [],
+      "note": "用户指令 2026-10-31：面向企业内数据分析用户编写一份简单的用户手册，只覆盖已交付的真实功能，不写愿景性内容",
+      "outputDir": "docs/tasks/X6-user-manual/",
+      "history": []
     }
   ]
 }
