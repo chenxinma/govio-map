@@ -3,6 +3,7 @@ import { setupWebSocket } from "./ws-handler.js";
 import { handleParquetApi } from "./parquet-api.js";
 import { agentSetup } from "./agent.js";
 import { ensureModelsConfig } from "./models-config.js";
+import { LOOPBACK_HOST } from "./security.js";
 
 let agentConfigNeeded = false;
 
@@ -35,9 +36,11 @@ export async function startBackend(port = 5174) {
   setupWebSocket(httpServer);
 
   await new Promise<void>((resolve) => {
-    httpServer.listen(port, resolve);
+    // Bind to loopback only: the backend drives an AI agent with shell access
+    // and must never be reachable from the LAN.
+    httpServer.listen(port, LOOPBACK_HOST, resolve);
   });
-  console.log(`[ws] WebSocket + API server on port ${port}`);
+  console.log(`[ws] WebSocket + API server on ${LOOPBACK_HOST}:${port}`);
 
   try {
     const hasConfig = await ensureModelsConfig();

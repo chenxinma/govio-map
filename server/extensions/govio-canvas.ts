@@ -7,7 +7,31 @@ import { permissionManager } from "../permission-manager.js";
 const OBSERVE_LOAD_RE = /\bgovio-cli\s+observe\s+load\b/;
 const OUTPUT_FLAG_RE = /(?:^|\s|=)(?:-o|--output)(?=\s|=|$)/;
 
+/**
+ * Obviously destructive / exfiltration-prone shell commands. The agent runs
+ * with the user's full shell privileges, so anything matching this list always
+ * requires an explicit user approval, even in a fast-moving session.
+ * Deliberately conservative: only high-risk, rarely-legitimate patterns.
+ */
+const DANGEROUS_COMMAND_PATTERNS: RegExp[] = [
+  /\brm\s+(-[a-z]*[rf][a-z]*\s+)+/i,            // rm -rf / rm -f ...
+  /\b(?:sudo|doas|runas)\b/,                     // privilege escalation
+  /\b(?:mkfs|format\s+[a-z]:|diskpart|fdisk)\b/i, // disk destruction
+  /\b(?:shutdown|reboot|halt|poweroff)\b/i,
+  /\breg\s+delete\b/i,
+  /\brmdir\s+\/s\b/i,
+  /\bdel\s+\/[sfq]/i,
+  /\bgit\s+push\b/,                              // publishes local state to a remote
+  /\b(?:curl|wget|Invoke-WebRequest)\b[^|;&]*\|\s*(?:ba)?sh\b/i, // download-and-execute
+  /\b(?:nc|ncat|netcat)\b.*\s-e\b/i,             // reverse shells
+];
+
+function isDangerousCommand(cmd: string): boolean {
+  return DANGEROUS_COMMAND_PATTERNS.some((re) => re.test(cmd));
+}
+
 export function shouldAskPermission(cmd: string): boolean {
+  if (isDangerousCommand(cmd)) return true;
   if (!OBSERVE_LOAD_RE.test(cmd)) return false;
   return OUTPUT_FLAG_RE.test(cmd);
 }
