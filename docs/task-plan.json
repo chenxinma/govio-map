@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-31T23:33:50+08:00",
+  "updatedAt": "2026-10-31T23:45:17+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -510,10 +510,11 @@
       "#13 feature/phase1-trusted-analysis",
       "#14 feature/phase2-semantic-layer"
     ],
-    "note": "#12/#13/#14 已合并入 main（14e39cf/3759971/1848b08）；#15 为合并后增量（截图+X7），待合并",
+    "note": "#12/#13/#14/#15 全部合并入 main（14e39cf/3759971/1848b08/18ba6ab）。三个功能分支已清理。",
     "security": "https://github.com/chenxinma/govio-map/pull/12",
     "phase1": "https://github.com/chenxinma/govio-map/pull/13",
     "phase2": "https://github.com/chenxinma/govio-map/pull/14",
-    "phase2-supplement": "https://github.com/chenxinma/govio-map/pull/15"
+    "phase2-supplement": "https://github.com/chenxinma/govio-map/pull/15",
+    "status": "all-merged"
   }
 }
