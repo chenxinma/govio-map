@@ -16,7 +16,13 @@
 | `src/components/Nodes/ChartNode.tsx` | Plotly 图表节点 |
 | `src/components/Nodes/ChartModal.tsx` | 图表放大弹窗 |
 | `src/components/Nodes/ChartErrorBoundary.tsx` | 图表错误边界 |
+| `src/components/Nodes/ManifestDetails.tsx` | 分析留痕（Manifest）只读详情面板（Phase 1 KR1） |
+| `src/components/Nodes/RerunStatus.tsx` | DataFrame 复跑状态条与复跑记录（Phase 1 KR2） |
 | `src/types/index.ts` | 所有节点数据类型定义 |
+| `src/types/manifest.ts` | Analysis Manifest 类型（前后端共享） |
+| `src/types/rerun.ts` | 复跑记录类型（前后端共享） |
+| `src/utils/rerun.ts` | 复跑记录的前端写入规则（追加/封顶/漂移判定，纯函数）+ 结论措辞 `RERUN_OUTCOME_LABELS` |
+| `src/utils/manifest-labels.ts` | Manifest 展示措辞（origin / 生成模型），节点详情面板与交付报告共用 |
 
 ## 节点类型注册
 
@@ -56,6 +62,7 @@ const nodeTypes: NodeTypes = {
 | createdAt | string | 创建时间 |
 | sql | string | SQL 语句 |
 | outputColumns | string[] | 输出列名 |
+| manifest? | AnalysisManifest | 分析留痕：SQL 全文 + 来源（origin/模型/会话/时间），见 `src/types/manifest.ts` |
 
 ### DataFrameNodeData
 
@@ -71,6 +78,8 @@ const nodeTypes: NodeTypes = {
 | memoryUsage | string | 内存占用（如 "1.2 MB"） |
 | columns | DataFrameColumn[] | 列信息（name, nonNull, dtype） |
 | previewData | Record<string, unknown>[] | 预览数据行 |
+| manifest? | AnalysisManifest | 分析留痕：SQL 全文、数据源、执行时间、行列数与校验和、模型/会话 ID，见 `src/types/manifest.ts` |
+| rerunHistory? | RerunRecord[] | 复跑记录：每次一键复跑追加一条（最新在前，上限 20），漂移时保留原 Manifest，见 `src/types/rerun.ts` |
 
 ### ReportNodeData
 
@@ -162,14 +171,34 @@ type CanvasNodeData = SourceTableNodeData | SQLQueryNodeData | DataFrameNodeData
 
 ### 布局
 
-1. **头部**：橙色左边框，Table2 图标 + dfName，sourceName
+1. **头部**：橙色左边框，Table2 图标 + dfName（漂移时右侧带「漂移」警告标签，卡片边框转 warning 色），sourceName
 2. **df.info() 区域**：行数、列数、内存占用（等宽字体，淡色文字）
 3. **列信息表格**：序号、列名、Non-Null 计数、Dtype（dtype 列橙色高亮）
-4. **操作栏**：引用按钮 + 预览按钮 + 删除按钮
+4. **复跑状态条**（`RerunStatus.tsx`）：仅在复跑中/请求失败/已有复跑记录时渲染
+5. **详情面板**（`ManifestDetails.tsx`）：点击「详情」展开的只读 Manifest
+6. **操作栏**：引用按钮 + 预览按钮 + 详情按钮（有 Manifest 时）+ 复跑按钮（Manifest 固化了 SQL 时）+ 删除按钮
 
 ### 预览功能
 
 点击预览按钮调用 `canvas-store.openPreviewPanel(id)`，在画布上弹出 FloatingPreviewPanel 浮窗显示数据。
+
+### 一键复跑与漂移提示（Phase 1 KR2）
+
+点击「复跑」调用 `canvas-store.rerunDataFrame(id)`：后端按节点固化的 Manifest 重跑 SQL 并对比，前端把返回的记录追加到 `node.data.rerunHistory`。
+
+三态展示（`RerunStatus.tsx`，状态条 + 可展开的复跑记录列表）：
+
+| 状态 | 触发条件 | 视觉 |
+|------|----------|------|
+| 进行中 | `rerunningNodeIds` 含该节点（临时态，不落盘） | Loader2 旋转 + 按钮禁用并显示「复跑中」 |
+| 成功（复现一致） | 最近一条记录 `outcome === 'identical'` | 品牌绿 CheckCircle2 + 「复现一致 · 时间 · N 行 × M 列」 |
+| 漂移 | 最近一条记录 `outcome === 'drift'` | warning 色 AlertTriangle + 差异摘要，头部「漂移」标签，卡片边框 warning 色 |
+| 失败 | 记录 `outcome === 'error'`，或请求本身失败（`rerunErrors[nodeId]`，临时态） | error 色 XCircle + 失败原因 |
+
+规则：
+- 一致 → 刷新 `manifest.executedAt`（原始执行时间保留在 `record.before.executedAt`）
+- 漂移 → 原 Manifest 与节点展示的行列数**都不改**，只追加记录 + 告警；再次复跑一致后告警自动消除
+- 记录随 `node.data` 走 `canvas_save` → canvas sidecar，会话重开后完整恢复
 
 ## ReportNode 详情
 

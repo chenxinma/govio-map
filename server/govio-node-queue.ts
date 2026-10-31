@@ -1,4 +1,5 @@
 import { EventEmitter } from "events";
+import type { AnalysisManifest } from "../src/types/manifest.js";
 
 export type GovioNodeType = "sqlQuery" | "dataFrame" | "report" | "sourceTable" | "chart";
 
@@ -31,6 +32,9 @@ export interface GovioNodeCreateEvent {
     layout?: Record<string, unknown>;
   };
   sourceDf?: string;
+  // 分析留痕（Phase 1 KR1）：dataFrame / sqlQuery 节点由服务端事件流填充，
+  // 前端原样写入 node.data.manifest 并随 canvas sidecar 持久化。
+  manifest?: AnalysisManifest;
   // edge sources — referencedNodes from the user's prompt
   referencedNodes?: Array<{ nodeId: string; label: string }>;
 }

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import govioCanvasExtension from "./extensions/govio-canvas.js";
 import { ensureGovioCli, downloadGovioSkills } from "./govio-installer.js";
 import { getSessionDir } from "./session-history.js";
+import { setAuditSessionResolver } from "./permission-audit.js";
 
 
 let session: AgentSession | null = null;
@@ -12,6 +13,18 @@ let resLoader: DefaultResourceLoader | null = null;
 // First session creation after server start resumes the most recent persisted
 // session; every later creation (after /clear, switch, config save) starts a new file.
 let resumedOnce = false;
+
+// 权限审计记录要归档到「当前会话」的 sidecar。会话单例在本模块，故由这里注册解析器，
+// 避免 permission-audit / permission-manager 反向依赖 agent.ts 形成循环导入。
+// 会话尚未落盘时 getSessionFile() 返回 undefined，此时审计条目只告警不写盘。
+setAuditSessionResolver(() => {
+  if (!session) return null;
+  try {
+    return { sessionId: session.sessionId, sessionFile: session.sessionManager.getSessionFile() ?? null };
+  } catch {
+    return { sessionId: session.sessionId, sessionFile: null };
+  }
+});
 
 /**
  * pi-subagents 以 npm 依赖安装在项目 node_modules 中（版本随 package.json 管理）。

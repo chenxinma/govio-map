@@ -1,3 +1,23 @@
+import type { AnalysisManifest } from './manifest';
+import type { RerunRecord } from './rerun';
+
+// 分析留痕类型（前后端共享定义见 ./manifest.ts）
+export type {
+  AnalysisManifest,
+  ManifestChecksum,
+  ManifestChecksumAlgorithm,
+  ManifestModel,
+  ManifestOrigin,
+} from './manifest';
+
+// 复跑记录类型（前后端共享定义见 ./rerun.ts）
+export type {
+  RerunDiff,
+  RerunOutcome,
+  RerunRecord,
+  RerunSnapshot,
+} from './rerun';
+
 export interface TableField {
   name: string;
   type: string;
@@ -28,6 +48,8 @@ export interface SQLQueryNodeData {
   createdAt: string;
   sql: string;
   outputColumns: string[];
+  /** 分析留痕：SQL 全文 + 来源模型/会话（服务端事件流填充，可为空表示旧节点） */
+  manifest?: AnalysisManifest;
   [key: string]: unknown;
 }
 
@@ -48,6 +70,13 @@ export interface DataFrameNodeData {
   memoryUsage: string;
   columns: DataFrameColumn[];
   previewData: Record<string, unknown>[];
+  /** 分析留痕：SQL 全文、数据源、执行时间、行列数与校验和（服务端事件流填充） */
+  manifest?: AnalysisManifest;
+  /**
+   * 复跑记录（Phase 1 KR2）：每次一键复跑追加一条，最新在前。
+   * 漂移时原 `manifest` 保留不覆盖，旧值/新值/时间都在记录里；随 canvas sidecar 持久化。
+   */
+  rerunHistory?: RerunRecord[];
   [key: string]: unknown;
 }
 

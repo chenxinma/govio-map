@@ -1,0 +1,387 @@
+{
+  "version": 1,
+  "roadmap": "docs/ROADMAP.md",
+  "updatedAt": "2026-10-31T10:20:37+08:00",
+  "statusFlow": [
+    "pending",
+    "in_progress",
+    "done",
+    "accepted",
+    "rejected"
+  ],
+  "conventions": {
+    "planFile": "docs/task-plan.json",
+    "taskOutputRoot": "docs/tasks/",
+    "deliverables": [
+      "design.md",
+      "CHANGES.md",
+      "verification.md"
+    ],
+    "statusProtocol": "子任务开始时将自己的 status 置为 in_progress 并追加 history；完成实现与验证后置为 done；主 session 验收后置为 accepted 或 rejected。任何状态变更必须同步追加 history 条目并刷新顶层 updatedAt。",
+    "commitProtocol": "每个任务完成后在任务分支上独立 commit，message 前缀为任务 ID（如 T1.1:）。"
+  },
+  "phases": [
+    {
+      "id": "P1",
+      "name": "可信分析",
+      "northStar": "可复现率 ≥95%（交付画布中任意 DataFrame 节点可一键复跑且结果一致）",
+      "status": "done",
+      "branch": "feature/phase1-trusted-analysis",
+      "tasks": [
+        {
+          "id": "T1.1",
+          "title": "Analysis Manifest 数据模型与持久化",
+          "kr": "KR1 分析留痕",
+          "status": "accepted",
+          "dependsOn": [],
+          "outputDir": "docs/tasks/T1.1-analysis-manifest/",
+          "scope": "为 dataFrame/sqlQuery 节点固化分析上下文：SQL 全文、数据源标识、执行时间、行数/列数校验和、生成模型与会话 ID。Manifest 随 canvas sidecar（.canvas.json）持久化，会话重开后完整恢复。",
+          "acceptance": [
+            "Manifest TypeScript 类型定义落入 src/types/ 并有字段级注释",
+            "govio-cli observe load 生成的 dataFrame 节点自动携带 Manifest（服务端事件流填充）",
+            "sqlQuery 节点携带 SQL 全文与来源模型信息",
+            "canvas_save/loadCanvas 往返后 Manifest 无丢失",
+            "npm run build 通过",
+            "docs/tasks/T1.1-analysis-manifest/ 下有 design.md、CHANGES.md、verification.md"
+          ],
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-10-30T22:24:22+08:00",
+              "by": "worker",
+              "note": "开始实现：src/types/manifest.ts 类型定义 + server/analysis-manifest.ts 构建器 + 节点事件填充 + 前端详情展示 + 往返验证脚本"
+            },
+            {
+              "status": "done",
+              "at": "2026-10-30T22:48:06+08:00",
+              "by": "worker",
+              "note": "实现完成：src/types/manifest.ts（AnalysisManifest/Checksum/Model/Origin，字段级注释）+ server/analysis-manifest.ts（构建器与 schema-v1 校验和）；observe load / show-dataframe / assistant-sql / sql-editor 四条路径自动填充 Manifest；随 node.data 走 canvas_save→sidecar→canvas_restore 往返；DataFrameNode/SQLQueryNode 新增「详情」只读面板。验证：npm run build 通过、npm run lint 0 error、npm run verify:manifest 52 项断言全通过（含 saveCanvas→loadCanvas→hydrateSession 往返与扩展事件流实产出）。交付物：docs/tasks/T1.1-analysis-manifest/{design,CHANGES,verification}.md；遗留问题 8 项记在 design.md 第 8 节"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-10-31T00:33:43+08:00",
+              "by": "main-session",
+              "note": "主 session 独立验收通过：commit ad96566；复跑 npm run build ✓ / lint 0 error / verify:manifest 52/52 / verify:rerun 62/62 / verify:audit 86/86；抽查关键实现（复跑仅收 nodeId、SQL 取自 Manifest 数组参数原样传递、permissionDecisionId 贯通）；三件套交付物齐全。遗留问题记录于各 design.md，人工浏览器冒烟待 dev 环境执行"
+            }
+          ]
+        },
+        {
+          "id": "T1.2",
+          "title": "DataFrame 一键复跑与漂移提示",
+          "kr": "KR2 复跑验证",
+          "status": "accepted",
+          "dependsOn": [
+            "T1.1"
+          ],
+          "outputDir": "docs/tasks/T1.2-dataframe-rerun-drift/",
+          "scope": "DataFrame 节点提供复跑入口：后端按 Manifest 固化的 SQL 重新执行 observe load，对比行数与校验和；不一致时节点显示漂移警告标记，不静默覆盖原结果。",
+          "acceptance": [
+            "节点 UI 有复跑按钮与进行中/成功/漂移三态展示",
+            "复跑通过 Manifest 中固化的 SQL 执行（非当前输入）",
+            "漂移时保留原 Manifest 并新增对比记录",
+            "npm run build 通过",
+            "docs/tasks/T1.2-dataframe-rerun-drift/ 下有三件套交付物"
+          ],
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-10-30T23:05:00+08:00",
+              "by": "worker",
+              "note": "开始实现：DataFrameNode 复跑入口 + server/dataframe-rerun.ts（按 Manifest 固化 SQL 重跑 observe load 并对比行数/校验和）+ POST /api/rerun-dataframe + 复跑记录随 node.data 落 canvas sidecar"
+            },
+            {
+              "status": "done",
+              "at": "2026-10-30T23:31:00+08:00",
+              "by": "worker",
+              "note": "实现完成：DataFrameNode 新增「复跑」按钮与 RerunStatus 三态状态条（进行中/复现一致/漂移，外加失败态）+ 头部漂移警告标签；后端 POST /api/rerun-dataframe 只收 nodeId，SQL/数据源由服务端从 canvas sidecar 里固化的 Manifest 读取（前端无上传 SQL 的通道）；server/dataframe-rerun.ts 用临时 DataFrame 名重跑 observe load（不覆盖已交付结果）、复用 T1.1 computeChecksum 对比行数/校验和、finally 释放临时 DF；一致刷新 manifest.executedAt，漂移保留原 Manifest 并追加 RerunRecord 到 node.data.rerunHistory（封顶 20），随 canvas_save → sidecar 持久化。验证：npm run build 通过、npm run lint 0 error、npm run verify:rerun 62 项断言全通过、npm run verify:rerun -- --real 74 项全通过（真实 govio-cli + sales 数据源：复跑 identical、原 DF 未被覆盖、无临时残留、伪造基线可检出漂移）、npm run verify:manifest 52 项无回归。交付物：docs/tasks/T1.2-dataframe-rerun-drift/{design,CHANGES,verification}.md；遗留问题 8 项记在 design.md 第 11 节（值级漂移检不出、无「采纳新结果」动作、复跑不过权限门→T1.3、浏览器点击路径未人工冒烟）"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-10-31T00:33:43+08:00",
+              "by": "main-session",
+              "note": "主 session 独立验收通过：commit c694e6d；复跑 npm run build ✓ / lint 0 error / verify:manifest 52/52 / verify:rerun 62/62 / verify:audit 86/86；抽查关键实现（复跑仅收 nodeId、SQL 取自 Manifest 数组参数原样传递、permissionDecisionId 贯通）；三件套交付物齐全。遗留问题记录于各 design.md，人工浏览器冒烟待 dev 环境执行"
+            }
+          ]
+        },
+        {
+          "id": "T1.3",
+          "title": "权限确认记录进审计留痕",
+          "kr": "KR3 取数确认门",
+          "status": "accepted",
+          "dependsOn": [
+            "T1.1"
+          ],
+          "outputDir": "docs/tasks/T1.3-permission-audit-trail/",
+          "scope": "permission-manager 的每次请求/决策（allow/deny/edit、命令、时间戳、原因）写入会话级审计日志，并在 Manifest 中关联对应节点的确认记录。",
+          "acceptance": [
+            "审计日志随会话持久化（.govio/sessions/ 下 sidecar 或 jsonl 追加）",
+            "edit 决策记录修改前后命令",
+            "Manifest 可关联到触发它的权限决策 ID",
+            "npm run build 通过",
+            "docs/tasks/T1.3-permission-audit-trail/ 下有三件套交付物"
+          ],
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-10-30T23:44:00+08:00",
+              "by": "worker",
+              "note": "开始实现：permission-manager 每次请求/决策生成 decisionId 并写会话级审计日志（.govio/sessions/<session>.jsonl.audit.jsonl），edit 记录改前改后命令，accept_all 记录模式变更事件，observe load 产生的 dataFrame 节点 Manifest 回填 permissionDecisionId"
+            },
+            {
+              "status": "done",
+              "at": "2026-10-31T00:29:00+08:00",
+              "by": "worker",
+              "note": "实现完成：新增 server/permission-audit.ts（JSONL 追加/读回/坏行容错/删除 + 会话归属解析器注入，写失败只告警不阻断确认流），permission-manager 为每次确认生成 decisionId（= 前端 requestId，pd-/pm- 前缀）并写「请求 + 决策」两条记录（allow/deny/edit、命令原文、edit 的 editedCommand、reason、source=user/accept-all/timeout/abort/reset、elapsedMs），setAcceptAll/clearAll 写 permission_mode 模式变更事件（放行期自动允许仍留痕，故删掉 govio-canvas 的 isAcceptAll 早退）；决策进 toolCallId/命令双索引，observe load 的 tool_result 用 decisionIdForExecution() 回填 Manifest.permissionDecisionId（edit 重发链用 followsDecisionId 串起）；审计 sidecar 随 deleteSession 一并删除。WS 协议与前端零改动。验证：npm run build 通过、npm run lint 0 error、npm run verify:audit 86 项断言全通过（含 stub pi 真实扩展事件流、deleteSession 清理、无会话归属不阻断）、verify:manifest 52 项与 verify:rerun 62 项无回归；并用一次性脚本产出真实 JSONL 样例 + jq 反查记入 verification.md。交付物：docs/tasks/T1.3-permission-audit-trail/{design,CHANGES,verification}.md，同步更新 docs/specs/10-observe-load-permission.md（新增审计留痕节 + 修正过期设计稿）与 06-backend.md；遗留问题 8 项记在 design.md 第 8 节（无读取 UI、无会话文件时丢留痕、SQL 编辑器/复跑不过确认门、闸门仅覆盖 load -o、decisionId 不上前端、无轮转、无防篡改、deny 后重试无链）"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-10-31T00:33:43+08:00",
+              "by": "main-session",
+              "note": "主 session 独立验收通过：commit f267d53；复跑 npm run build ✓ / lint 0 error / verify:manifest 52/52 / verify:rerun 62/62 / verify:audit 86/86；抽查关键实现（复跑仅收 nodeId、SQL 取自 Manifest 数组参数原样传递、permissionDecisionId 贯通）；三件套交付物齐全。遗留问题记录于各 design.md，人工浏览器冒烟待 dev 环境执行"
+            }
+          ]
+        },
+        {
+          "id": "T1.4",
+          "title": "画布交付导出（自包含 HTML）",
+          "kr": "KR4 交付导出",
+          "status": "accepted",
+          "dependsOn": [
+            "T1.1"
+          ],
+          "outputDir": "docs/tasks/T1.4-canvas-export/",
+          "scope": "画布一键导出为单文件 HTML：节点卡片内容、血缘连线图、Manifest 附录，离线可打开。仅消费已有节点数据，不新增数据采集。",
+          "acceptance": [
+            "导出文件双击可在浏览器离线打开且布局可读",
+            "包含全部节点类型（sourceTable/sqlQuery/dataFrame/report/chart 以静态快照呈现）",
+            "附录含每个 dataFrame 节点的 Manifest",
+            "npm run build 通过",
+            "docs/tasks/T1.4-canvas-export/ 下有三件套交付物"
+          ],
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-10-31T00:45:16+08:00",
+              "by": "worker",
+              "note": "开始实现：画布工具栏「导出交付报告」→ src/utils/export-report.ts（动态 import）生成单文件自包含 HTML；节点卡片静态快照（五类，chart 用 Plotly.toImage 静态 SVG，失败降级为配置摘要）、简化 SVG 层次血缘图、附录 A（dataFrame Manifest 含 permissionDecisionId）、附录 B（新增只读 GET /api/permission-audit 仅读当前会话 sidecar 里与节点关联的确认记录）"
+            },
+            {
+              "status": "done",
+              "at": "2026-10-31T01:32:03+08:00",
+              "by": "worker",
+              "note": "实现完成：画布工具栏新增「导出交付报告」→ 动态 import src/utils/export-report.ts（+ export-report-style.ts 内联样式表），产出单文件自包含 HTML（内联 CSS/SVG + data URL 图片，无脚本、无外部字体/CDN，双击离线可打开）；报头+摘要告警→血缘图（自研最长路径分层 SVG，不复用 ReactFlow/dagre，环断开、悬空边与自环如实计数）→五类节点卡片静态快照（sourceTable 字段表含 PK/FK、sqlQuery SQL 全文、dataFrame 列结构+漂移/一致/失败状态框+全量复跑记录、report 自带极简 markdown、chart 用节点已有 Plotly config 离屏 newPlot+toImage 渲染为内联 SVG/PNG，失败降级为配置摘要并写明原因）→附录 A（每个 dataFrame 的 Manifest 总表+details SQL 全文，permissionDecisionId 三态：锚点/未过确认门/旧节点无字段）→附录 B（新增只读 GET /api/permission-audit?decisionIds=…，仅读当前会话 sidecar、请求不含路径参数、只过滤不加工，前端白名单解析 + 四种降级形态都如实说明，失败不阻断导出）。不导出 previewData 与 chart 原始数据值（数据内容纪律），全部内容 esc() 转义，buildDeliveryReportHtml 为纯函数（同输入逐字节同输出）。措辞去重：新增 src/utils/manifest-labels.ts、rerun.ts 增 RERUN_OUTCOME_LABELS（ManifestDetails/RerunStatus 改引用，展示文本不变）。验证：npm run build 通过（导出模块独立 chunk 40.38 kB/gzip 15.01 kB，主 bundle +3.83 kB）、npm run lint 0 error、新增 npm run verify:export 116 项断言全通过并落盘样例产物 docs/tasks/T1.4-canvas-export/sample-export.html（43,877 B，10 节点/9 连线，两次运行逐字节一致）、回归 verify:manifest 52 / verify:rerun 62 / verify:audit 86 全通过；产物独立复核：grep 无任何外部引用与 <script>、标签配平 0 错配。WS 协议/store/审计写入侧/T1.1-T1.2 数据模型零改动，无新增依赖。交付物：docs/tasks/T1.4-canvas-export/{design,CHANGES,verification}.md + 样例 HTML，同步更新 docs/specs/{06-backend,01-canvas,02-nodes}.md；遗留问题 11 项记在 design.md 第 11 节（导出模块偏大、report/chart 无 Manifest、WebGL trace 只能栅格化、审计通道沿用既有 CORS 姿态、模式事件不进附录 B、无子图导出、表格 200 行上限等）；浏览器/Electron 人工冒烟待 dev 环境执行，步骤记在 verification.md 第 6 节"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-10-31T01:35:55+08:00",
+              "by": "main-session",
+              "note": "主 session 独立验收通过：commit f6b319f；复跑 npm run build ✓ / lint 0 error / verify:export 116/116（两次运行逐字节一致）/ 回归 verify:manifest 52、verify:rerun 62、verify:audit 86 全通过；抽查 /api/permission-audit 实现：只读、sessionFile 取自服务端单例不接受请求传路径、decisionIds 上限 500、只过滤不加工。浏览器/Electron 人工冒烟未执行（子环境无图形界面），步骤已列 verification.md §6，合并前需在 dev 环境补做。CORS 通配为既有问题，归 X1 安全基线合并解决"
+            }
+          ]
+        }
+      ],
+      "exitNote": "工程交付完成（T1.1-T1.4 全部 accepted）。北极星指标「可复现率 ≥95%」需在试点团队真实使用中测量后关闭阶段；人工冒烟清单见各任务 verification.md",
+      "reviewLoop": {
+        "rounds": 3,
+        "completedAt": "2026-10-31T10:20:37+08:00",
+        "verdict": "Merge verdict: OK with notes (R3 blockers-only 终审 Fix verdict: RESOLVED)",
+        "commits": {
+          "r1Fixes": "ec64978",
+          "r2Fixes": "ec7b117"
+        },
+        "round1": "3 并行 reviewer（正确性/安全/测试与可维护性）：0 P0、1 P1（verify:export 污染受跟踪产物+时区依赖）、14 P2 采纳修复、7 项延后",
+        "round2": "2 定向 reviewer（波及半径/测试文档）：Fix verdict RESOLVED+PARTIAL，9 P2（均为 R1 修复波及半径内）全部修复",
+        "round3": "blockers-only 终审：无 P0/P1 阻断项，4 条注释/文档漂移由主 session 直接修正",
+        "deferred": [
+          "人工浏览器/Electron 冒烟（合并前 dev 环境执行，步骤见各 verification.md）",
+          "-oxxx 确认门缺口、CORS 通配、WS Origin 校验、session_open 路径校验 → X1（security/hardening 分支已修，待合入）",
+          "路由级 HTTP/WS e2e 测试 → X4 测试基建",
+          "export-report.ts（约1540行）拆分、NODE_COLORS 多真源 → Phase 2 前",
+          "值级漂移检测 → govio-cli 侧能力",
+          "pendingPermission 前端单槽（既有设计，agent 串行执行工具时不可达）"
+        ]
+      }
+    },
+    {
+      "id": "P2",
+      "name": "语义层集成",
+      "northStar": "口径命中率 ≥90%",
+      "status": "pending",
+      "branch": null,
+      "tasks": [
+        {
+          "id": "T2.1",
+          "title": "图谱定义自动注入 Prompt",
+          "kr": "KR1",
+          "status": "pending",
+          "dependsOn": [
+            "P1.accepted"
+          ],
+          "outputDir": "docs/tasks/T2.1-graph-prompt-injection/",
+          "scope": "会话启动/引用节点变更时按实体自动注入指标定义、字段标准、枚举码值。",
+          "acceptance": [
+            "注入内容可追溯（记录注入了哪些图谱实体）",
+            "口径命中率测量脚本"
+          ],
+          "history": []
+        },
+        {
+          "id": "T2.2",
+          "title": "口径溯源与语义血缘",
+          "kr": "KR2",
+          "status": "pending",
+          "dependsOn": [
+            "T2.1"
+          ],
+          "outputDir": "docs/tasks/T2.2-semantic-lineage/",
+          "scope": "SQL 节点记录引用的指标/标准 ID；画布边区分数据血缘与语义血缘。",
+          "acceptance": [
+            "边类型可视化区分",
+            "节点属性含语义引用列表"
+          ],
+          "history": []
+        },
+        {
+          "id": "T2.3",
+          "title": "口径冲突检测",
+          "kr": "KR3",
+          "status": "pending",
+          "dependsOn": [
+            "T2.1"
+          ],
+          "outputDir": "docs/tasks/T2.3-caliber-conflict/",
+          "scope": "生成 SQL 与图谱指标定义不一致时警示并给出差异说明；比对逻辑下沉 govio-cli。",
+          "acceptance": [
+            "冲突检测有 CLI 命令支撑",
+            "SQL 节点黄色警示态"
+          ],
+          "history": []
+        },
+        {
+          "id": "T2.4",
+          "title": "元数据增量导入与校验报告",
+          "kr": "KR4",
+          "status": "pending",
+          "dependsOn": [],
+          "outputDir": "docs/tasks/T2.4-meta-incremental-import/",
+          "scope": "govio-meta 导入支持增量更新与校验报告。",
+          "acceptance": [
+            "重复导入幂等",
+            "校验报告输出到任务目录"
+          ],
+          "history": []
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "name": "成果可交接",
+      "northStar": "画布复用率 ≥30%（团队试点）",
+      "status": "pending",
+      "branch": null,
+      "tasks": [
+        {
+          "id": "T3.1",
+          "title": "画布团队存储抽象",
+          "kr": "KR1",
+          "status": "pending",
+          "dependsOn": [
+            "P2.accepted",
+            "X2"
+          ],
+          "outputDir": "docs/tasks/T3.1-canvas-team-storage/",
+          "scope": "session-history 存储层抽象：本地文件 → 可插拔后端（文件服务器/对象存储）。",
+          "acceptance": [
+            "存储接口化",
+            "本地后端行为不回归"
+          ],
+          "history": []
+        },
+        {
+          "id": "T3.2",
+          "title": "只读分享与 fork 续写",
+          "kr": "KR2",
+          "status": "pending",
+          "dependsOn": [
+            "T3.1"
+          ],
+          "outputDir": "docs/tasks/T3.2-sharing-fork/",
+          "scope": "只读分享链接（含复跑）；fork 续写并保留派生血缘。",
+          "acceptance": [
+            "只读链接可打开含 Manifest",
+            "fork 血缘可追溯"
+          ],
+          "history": []
+        },
+        {
+          "id": "T3.3",
+          "title": "多用户会话隔离与 SSO",
+          "kr": "KR3",
+          "status": "pending",
+          "dependsOn": [
+            "T3.1",
+            "X1"
+          ],
+          "outputDir": "docs/tasks/T3.3-multiuser-sso/",
+          "scope": "单例 session → 按用户隔离会话池；OIDC 接入。",
+          "acceptance": [
+            "两会话互不可见",
+            "SSO 登录流程文档"
+          ],
+          "history": []
+        },
+        {
+          "id": "T3.4",
+          "title": "Docker 服务化部署形态",
+          "kr": "KR4",
+          "status": "pending",
+          "dependsOn": [
+            "T3.3"
+          ],
+          "outputDir": "docs/tasks/T3.4-docker-deployment/",
+          "scope": "Web 版容器化部署与安全边界。",
+          "acceptance": [
+            "docker compose 一键起",
+            "部署文档"
+          ],
+          "history": []
+        }
+      ]
+    }
+  ],
+  "crossCutting": [
+    {
+      "id": "X1",
+      "title": "安全基线合入 main",
+      "status": "pending",
+      "dependsOn": [],
+      "note": "security/hardening 分支（659916c）已推送，待 code review 后合入",
+      "outputDir": "docs/tasks/X1-security-baseline/",
+      "history": []
+    },
+    {
+      "id": "X2",
+      "title": "WS 协议契约化（版本化 schema + 双端类型生成）",
+      "status": "pending",
+      "dependsOn": [],
+      "outputDir": "docs/tasks/X2-ws-protocol-schema/",
+      "history": []
+    },
+    {
+      "id": "X3",
+      "title": "前端 bundle 拆分（plotly 懒加载）",
+      "status": "pending",
+      "dependsOn": [],
+      "outputDir": "docs/tasks/X3-bundle-splitting/",
+      "history": []
+    },
+    {
+      "id": "X4",
+      "title": "核心链路集成测试基建",
+      "status": "pending",
+      "dependsOn": [],
+      "outputDir": "docs/tasks/X4-test-infra/",
+      "history": []
+    }
+  ]
+}

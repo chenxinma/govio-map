@@ -12,6 +12,8 @@
 | `src/components/Canvas/CanvasToolbar.tsx` | 画布右上角工具栏 |
 | `src/components/Canvas/FloatingPreviewPanel.tsx` | DataFrame 数据预览浮窗 |
 | `src/utils/layout.ts` | Dagre 自动布局 + 智能节点定位 |
+| `src/utils/export-report.ts` | 画布交付导出：单文件自包含 HTML（动态 import，独立 chunk） |
+| `src/utils/export-report-style.ts` | 交付报告的内联样式表（无外部字体/资源） |
 
 ## Canvas 组件
 
@@ -63,14 +65,22 @@ onDrop:
 
 ## CanvasToolbar 组件
 
-画布右上角浮动工具栏，提供两个操作：
+画布右上角浮动工具栏（外层是纵向 flex 容器：按钮胶囊在上，导出结果提示在下）：
 
 | 按钮 | 功能 | 实现 |
 |------|------|------|
 | **SQL** | 创建空白 SQL 查询节点 | `canvas-store.createManualSQLNode()` |
-| **恢复** | 从后端恢复 DataFrame 节点 | `useChatContext().observeList()` → `canvas-store.restoreCanvas()` |
+| **导出交付报告** | 导出单文件自包含 HTML（节点快照 + 血缘图 + 附录 A/B），画布为空时禁用 | 动态 `import('../../utils/export-report')` → `exportCanvasDeliveryReport({ nodes, edges, appVersion })`；导出中按钮禁用并转圈，结果/失败原因以提示条显示 8s |
 
-恢复流程：
+导出流程（Phase 1 KR4，详见 `docs/tasks/T1.4-canvas-export/design.md`）：
+1. `renderChartImages()`：借浏览器里已有的 Plotly 把 chart 节点渲染成内联 data URL（失败降级为配置摘要）
+2. `fetchAuditAppendix()`：只读 `GET /api/permission-audit?decisionIds=...` 取当前会话与节点关联的权限确认记录（失败不阻断）
+3. `buildDeliveryReportHtml()`：纯函数组装 HTML（同样的输入产出同样的字符串）
+4. `downloadHtml()`：Blob + `a[download]`
+
+> 早期设计里的「恢复」按钮（`observeList()` → `restoreCanvas()`）当前不在工具栏上；`canvas-store.restoreCanvas()` 也暂无调用方（既有状态，非 KR4 改动）。
+
+恢复流程（历史设计，保留备查）：
 1. 调用 `observeList()` 向 `/ws` 发送 `{type: "observe_list"}`
 2. 后端执行 `govio-cli observe list`，返回 DataFrame 列表
 3. `restoreCanvas()` 对比已有节点，创建缺失的 DataFrame 节点

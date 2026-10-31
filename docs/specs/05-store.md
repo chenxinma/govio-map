@@ -19,6 +19,8 @@
 | edges | Edge[] | ReactFlow 边列表 |
 | previewPanels | PreviewPanel[] | 打开的预览浮窗 |
 | referencedNodes | ReferencedNode[] | 当前引用的节点列表 |
+| rerunningNodeIds | string[] | 正在复跑的节点 ID（临时态，不持久化） |
+| rerunErrors | Record<string, string> | 复跑请求本身失败的原因（临时态，不持久化） |
 
 ## ReactFlow 集成
 
@@ -72,7 +74,7 @@
 
 ### clearCanvas()
 
-重置 nodes, edges, previewPanels, referencedNodes 为空。
+重置 nodes, edges, previewPanels, referencedNodes, rerunningNodeIds, rerunErrors 为空。
 
 ## 预览面板操作
 
@@ -89,6 +91,21 @@
 2. 创建 PreviewPanel 对象，位置按已有浮窗数量偏移
 3. 发起 `GET /api/preview?df={dfName}&rows=50`
 4. 请求成功后调用 `updatePreviewPanelData()`
+
+## 复跑操作（Phase 1 KR2）
+
+### rerunDataFrame(nodeId): Promise<void>
+
+一键复跑：后端按该节点固化的 Manifest 重跑 SQL，对比行数/校验和后返回复跑记录。
+
+流程：
+1. 同一节点已在 `rerunningNodeIds` 中则直接返回（按钮禁用 + 这里再兜一层，不并发）
+2. `POST http://localhost:{port+1}/api/rerun-dataframe`，请求体**只有 `{ nodeId }`**——复跑用的 SQL/数据源由服务端从 canvas sidecar 里固化的 Manifest 读取，前端不上传任何当前输入
+3. 成功：用 `withRerunRecord()`（`src/utils/rerun.ts`）把记录写回 `node.data.rerunHistory`；一致时同时刷新 `manifest.executedAt`，漂移时原 Manifest 原样保留
+4. 失败（后端未启动 / sidecar 里找不到节点）：只写临时态 `rerunErrors[nodeId]`，不污染留痕
+5. finally 从 `rerunningNodeIds` 移除该节点
+
+写入 `node.data` 后会触发 `useChat` 的 canvas 快照防抖（1s），复跑记录随之落入 canvas sidecar。
 
 ## 引用管理
 
@@ -117,7 +134,8 @@ addReference 提取的 data：
 
 - 存储键: `govio-canvas-state`
 - 持久化字段: nodes, edges, referencedNodes
-- 不持久化: previewPanels（每次重新打开）
+- 不持久化: previewPanels（每次重新打开）、rerunningNodeIds / rerunErrors（复跑临时态，刷新后不会残留「复跑中」）
+- 节点级留痕（`node.data.manifest`、`node.data.rerunHistory`）随 nodes 一起持久化，并由 `canvas_save` 写入服务端 canvas sidecar
 - 恢复时调用 `syncCountersFromNodes(nodes)` 同步 ID 计数器
 
 ## 会话画布恢复

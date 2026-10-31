@@ -2,10 +2,11 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Node, Edge, Connection, OnNodesChange, OnEdgesChange } from '@xyflow/react';
 import { addEdge, applyNodeChanges, applyEdgeChanges, Position } from '@xyflow/react';
-import type { CanvasNodeData, DataFrameNodeData, ReferencedNode } from '../types';
+import type { CanvasNodeData, DataFrameNodeData, ReferencedNode, RerunRecord } from '../types';
 import { MOCK_TABLES } from '../data/mock-tables';
 import { nextId, syncCountersFromNodes } from '../services/mock-ai';
 import { getLayoutedElements, positionNewNode } from '../utils/layout';
+import { withRerunRecord } from '../utils/rerun';
 import { getCanvasService, type CanvasEvent } from '../services/canvas-service';
 
 export interface PreviewPanel {
@@ -16,10 +17,21 @@ export interface PreviewPanel {
   y: number;
 }
 
+/** 返回去掉指定 key 的新对象（复跑进行中/错误态都是临时态，用完即清） */
+function withoutKey<T>(map: Record<string, T>, key: string): Record<string, T> {
+  const next = { ...map };
+  delete next[key];
+  return next;
+}
+
 interface CanvasStore {
   nodes: Node[];
   edges: Edge[];
   previewPanels: PreviewPanel[];
+  /** 正在复跑的节点 ID（临时态，不进 persist 的 partialize，刷新后不会残留「复跑中」） */
+  rerunningNodeIds: string[];
+  /** 复跑请求本身失败的原因（临时态）；执行成功但结论为漂移/失败的记录走 node.data.rerunHistory */
+  rerunErrors: Record<string, string>;
 
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
@@ -29,6 +41,8 @@ interface CanvasStore {
   autoLayout: () => void;
   createGovioNode: (event: CanvasEvent) => void;
   subscribeToCanvas: () => () => void;
+  /** 一键复跑：后端按节点固化的 Manifest 重跑 SQL 并对比，返回记录追加到 node.data.rerunHistory */
+  rerunDataFrame: (nodeId: string) => Promise<void>;
 
   openPreviewPanel: (nodeId: string) => void;
   closePreviewPanel: (panelId: string) => void;
@@ -56,6 +70,8 @@ export const useCanvasStore = create<CanvasStore>()(
   edges: [],
   previewPanels: [],
   referencedNodes: [],
+  rerunningNodeIds: [],
+  rerunErrors: {},
 
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) });
@@ -122,6 +138,7 @@ export const useCanvasStore = create<CanvasStore>()(
             createdAt: now,
             sql: event.sql || "",
             outputColumns: event.outputColumns || [],
+            ...(event.manifest ? { manifest: event.manifest } : {}),
           },
         };
         break;
@@ -135,6 +152,18 @@ export const useCanvasStore = create<CanvasStore>()(
             (n.data as unknown as DataFrameNodeData).dfName === (event.dfName || ""),
         );
         if (dupDf) {
+          // 已有节点还没有 Manifest（先由 restoreCanvas / show-dataframe 建节点，
+          // 或本功能上线前的历史 sidecar）时回填，保证去重不丢留痕。
+          // 已有 Manifest 则不覆盖：同一 dfName 重跑的差异属于 T1.2 漂移对比职责。
+          const dupData = dupDf.data as unknown as DataFrameNodeData;
+          if (event.manifest && !dupData.manifest) {
+            const manifest = event.manifest;
+            set((state) => ({
+              nodes: state.nodes.map((n) =>
+                n.id === dupDf.id ? { ...n, data: { ...n.data, manifest } } : n
+              ),
+            }));
+          }
           // Duplicate dfName — still create edges from sourceRefs so lineage is
           // preserved (e.g. after restoreCanvas or govio_show_dataframe created
           // the node without sourceRefs).
@@ -181,6 +210,7 @@ export const useCanvasStore = create<CanvasStore>()(
             memoryUsage: event.memoryUsage || "0 B",
             columns: event.columns || [],
             previewData: [],
+            ...(event.manifest ? { manifest: event.manifest } : {}),
           },
         };
         break;
@@ -291,6 +321,44 @@ export const useCanvasStore = create<CanvasStore>()(
       }
     });
     return unsubscribe;
+  },
+
+  rerunDataFrame: async (nodeId) => {
+    // 同一节点的复跑不并发：按钮在执行期间禁用，这里再兜一层
+    if (get().rerunningNodeIds.includes(nodeId)) return;
+    set({
+      rerunningNodeIds: [...get().rerunningNodeIds, nodeId],
+      rerunErrors: withoutKey(get().rerunErrors, nodeId),
+    });
+    try {
+      // 只传 nodeId：复跑用的 SQL/数据源由后端从 canvas sidecar 里固化的 Manifest 读取，
+      // 不接受前端传入的 SQL，避免「复跑」变成「重跑当前输入」。
+      const apiPort = Number(window.location.port) + 1;
+      const res = await fetch(`http://localhost:${apiPort}/api/rerun-dataframe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodeId }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as { record?: RerunRecord; error?: string };
+      if (!res.ok || !payload.record) throw new Error(payload.error || `HTTP ${res.status}`);
+      const record = payload.record;
+      // 写入 node.data 后会触发 useChat 的 canvas_save 防抖快照，记录随之落 canvas sidecar
+      set((state) => ({
+        nodes: state.nodes.map((n) =>
+          n.id === nodeId
+            ? { ...n, data: withRerunRecord(n.data as unknown as DataFrameNodeData, record) }
+            : n
+        ),
+      }));
+    } catch (err) {
+      // 请求本身失败（后端未启动 / sidecar 里找不到该节点）：只在节点上临时提示，
+      // 不写进留痕——留痕里的记录必须对应一次真实执行过的复跑。
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[rerun] 复跑请求失败 (${nodeId}):`, message);
+      set({ rerunErrors: { ...get().rerunErrors, [nodeId]: message } });
+    } finally {
+      set({ rerunningNodeIds: get().rerunningNodeIds.filter((id) => id !== nodeId) });
+    }
   },
 
   openPreviewPanel: (nodeId) => {
@@ -414,12 +482,15 @@ export const useCanvasStore = create<CanvasStore>()(
       edges: [],
       previewPanels: [],
       referencedNodes: [],
+      rerunningNodeIds: [],
+      rerunErrors: {},
     });
   },
 
   hydrateSession: (nodes, edges) => {
     syncCountersFromNodes(nodes);
-    set({ nodes, edges, previewPanels: [], referencedNodes: [] });
+    // 切会话/重开会话时清掉上一个会话的复跑临时态（留痕态随 node.data.rerunHistory 恢复）
+    set({ nodes, edges, previewPanels: [], referencedNodes: [], rerunningNodeIds: [], rerunErrors: {} });
   },
 
   createManualSQLNode: () => {
