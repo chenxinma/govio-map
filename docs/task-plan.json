@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-31T23:45:17+08:00",
+  "updatedAt": "2026-11-01T00:45:23+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -508,13 +508,17 @@
     "order": [
       "#12 security/hardening",
       "#13 feature/phase1-trusted-analysis",
-      "#14 feature/phase2-semantic-layer"
+      "#14 feature/phase2-semantic-layer",
+      "#16 fix/df-columns-fallback",
+      "#17 chore/move-sql-discipline"
     ],
-    "note": "#12/#13/#14/#15 全部合并入 main（14e39cf/3759971/1848b08/18ba6ab）。三个功能分支已清理。",
+    "note": "#12-#17 全部合并入 main（14e39cf/3759971/1848b08/18ba6ab/fb237a2/3428f69）。相关功能分支（security/hardening、feature/phase1-trusted-analysis、feature/phase2-semantic-layer、fix/df-columns-fallback、chore/move-sql-discipline）已清理；docs/tech-roadmap 为已合并零提交分支，遗留未清理；docs/sync-readme-claudemd、feature/llm-config 为 2026-08 陈旧分支（含未合并提交），待用户裁决去留。",
     "security": "https://github.com/chenxinma/govio-map/pull/12",
     "phase1": "https://github.com/chenxinma/govio-map/pull/13",
     "phase2": "https://github.com/chenxinma/govio-map/pull/14",
     "phase2-supplement": "https://github.com/chenxinma/govio-map/pull/15",
-    "status": "all-merged"
+    "status": "all-merged",
+    "fix-df-columns": "https://github.com/chenxinma/govio-map/pull/16",
+    "sql-discipline-move": "https://github.com/chenxinma/govio-map/pull/17"
   }
 }
