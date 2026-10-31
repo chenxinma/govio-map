@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-31T10:20:37+08:00",
+  "updatedAt": "2026-10-31T18:43:02+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -206,16 +206,35 @@
       "id": "P2",
       "name": "语义层集成",
       "northStar": "口径命中率 ≥90%",
-      "status": "pending",
-      "branch": null,
+      "status": "in_progress",
+      "branch": "feature/phase2-semantic-layer（基于 feature/phase1-trusted-analysis a62a9cf）",
       "tasks": [
+        {
+          "id": "T2.0",
+          "title": "SourceTable 数据源类型与 schema 标注约定",
+          "kr": "T2.1 前置（用户指令 2026-10-31）",
+          "status": "pending",
+          "dependsOn": [],
+          "outputDir": "docs/tasks/T2.0-sourcetable-datasource-type/",
+          "scope": "sourceTable 节点保存数据源类型（duckdb/postgres/mysql/oracle/hive/trino/sqlalchemy-generic）与全限定名 qualifiedName；govio_create_source_table 工具参数与描述扩展（取值来源：图谱 Datasource/PhysicalTable 查询或数据源声明文件）；节点 UI 显示类型徽标与可复制全限定名；新建 docs/specs/11-datasource-schema-conventions.md 说明各数据源类型的 schema 标注方式（duckdb 三段式 catalog.schema.table 含 chocolate 实证案例；postgres/mysql 两段式 schema.table）；旧节点无新字段时回退原显示（向后兼容）。动机案例：docs/tasks/BUGFIX-load-parse.md（agent 盲猜表名三次试错）。",
+          "acceptance": [
+            "SourceTableNodeData 增加可选字段 datasource/datasourceType/schema/qualifiedName，字段级注释写明取值来源",
+            "govio_create_source_table 参数扩展且 description 指导 agent 从图谱/声明文件取类型与全限定名，禁止猜测",
+            "节点 UI：类型徽标 + 全限定名可复制；缺字段回退旧显示",
+            "specs/11 文档覆盖 duckdb 与 postgres/mysql 标注规则及 SQL 引用示例",
+            "新增 scripts/verify-source-table.ts（事件流 → 节点 → sidecar 往返 + 旧节点兼容），纳入 npm run verify 聚合与 tsconfig.scripts",
+            "npm run build / lint / verify 全绿；三件套交付物齐全"
+          ],
+          "history": []
+        },
         {
           "id": "T2.1",
           "title": "图谱定义自动注入 Prompt",
           "kr": "KR1",
           "status": "pending",
           "dependsOn": [
-            "P1.accepted"
+            "P1.accepted",
+            "T2.0"
           ],
           "outputDir": "docs/tasks/T2.1-graph-prompt-injection/",
           "scope": "会话启动/引用节点变更时按实体自动注入指标定义、字段标准、枚举码值。",
@@ -381,6 +400,17 @@
       "status": "pending",
       "dependsOn": [],
       "outputDir": "docs/tasks/X4-test-infra/",
+      "history": []
+    },
+    {
+      "id": "X5",
+      "title": "SQL 生成纪律与 CLI 输出契约加固",
+      "status": "pending",
+      "dependsOn": [
+        "T2.0"
+      ],
+      "note": "用户指令：等 T2.0 SourceTable 修正完成后执行。含三项：① agent 提示词/skill 规则——写 SQL 必须用 sourceTable 节点的 qualifiedName，禁止猜表名；② jq 摘要配方改为保留 success/error 字段（{success,error,name,rows,columns}）；③ ObserveLoadOutput 共享 schema 校验器（typebox），handleLoadResult/parseLoadOutput/execute-sql 三处统一。CLI 失败退出码非 0 已由用户提交上游 govio-cli。",
+      "outputDir": "docs/tasks/X5-sql-discipline/",
       "history": []
     }
   ]
