@@ -24,7 +24,8 @@
 `govio-cli observe load` 的 stdout 是完整 JSON，后端扩展依赖它自动创建画布 DataFrame 节点。**禁止**对 load 命令加 `| head`、`| tail` 等管道截断——截断会导致 JSON 解析失败，画布节点静默丢失。
 - 正确：`govio-cli observe load --name xxx --datasource yyy --sql "..." 2>&1`
 - 错误：`govio-cli observe load ... 2>&1 | head -20` ❌
-- 如果只需要摘要字段，用 `jq` 提取：`govio-cli observe load ... 2>&1 | jq '{name, rows, columns}'`
+- 如果只需要摘要字段，用 `jq` 提取：`govio-cli observe load ... 2>&1 | jq '{success, error, name, rows, columns, column_info}'
+  - 不得省略 `success`/`error`（失败信号，BUGFIX-load-parse）与 `column_info`（列结构，缺了节点无列、Manifest 无校验和，BUGFIX-df-columns）`
 
 # 元数据导入
 
@@ -52,3 +53,16 @@ bash 中 `python` 指向 Windows Store 存根（不可用，退出码 49）。�
 # Cypher 查询纪律
 
 执行 `govio-cli query -c` 查询图数据库前，**必须先读取** `../govio/assets/schema.md`（位于 govio skill 目录下）了解图库的节点与边结构，**仅需读一次**。禁止凭记忆构造 Cypher 属性名——未在 schema.md 中出现的属性（如 `description`）会导致 Ladybug 抛出 `Binder exception`。
+
+# SQL 生成纪律
+
+> 从 AGENTS.md 移入（2026-10-31）：agent 运行时硬约束统一收敛于本文件。
+
+agent（pi 会话）生成/执行 SQL 时必须遵守的硬规则。动机案例：`docs/tasks/BUGFIX-load-parse.md`（盲猜限定名三次试错，jq 摘要管道又把失败投影成全 null，固化了错误 SQL）。
+
+1. **表引用必须取 sourceTable 节点的 `qualifiedName`**（或图谱查询/数据源声明给出的全限定名），禁止凭表名猜测段数与拼写。节点缺 `qualifiedName` 时先补查图谱（`govio-cli query`）与数据源声明，而不是向 CLI 盲试表名。
+2. **各数据源类型的限定名规则见 `docs/specs/11-datasource-schema-conventions.md`**（duckdb 文件库三段式 `catalog.schema.table`、postgres 两段式 `schema.table` 等），此处不重复展开；`datasourceType` 为 `unknown` 或缺失时不得凭类型构造 SQL 引用名。
+3. **遇到 Catalog Error / Binder Error 先查元数据再改 SQL**：确认表的 schema/catalog 归属后修正引用，禁止盲目穷举限定名变体试错；DuckDB 报错常附 `Did you mean <catalog>.<schema>.<table>` 提示，直接采纳。
+4. **跨数据源 join 必须走两段式**：一次 `observe load` 只连一个 `--datasource`（CLI 单连接执行、无跨源联邦能力），禁止假设单条 SQL 能引用多个数据源的表。正确做法：分别 `observe load` 各源 DataFrame，再 `observe load --memory --sql "... JOIN ..."` 合并（见 `docs/tasks/CLI-cross-schema-analysis.md` 场景 B）。
+5. **observe load 的 jq 摘要配方必须保留失败信号与列结构**：CLI 在 SQL 失败时可能退出码 0 只返回 `{success:false, error}`，摘要只用上文「observe load 命令禁止管道截断」一节给出的全字段配方；旧配方 `{name, rows, columns}` 禁止再用。
+6. **禁止 `head` / `tail` / `sed` 截断 observe load 输出**：与上文「govio-cli 输出不要截断」同一纪律——stdout 是完整 JSON，后端依赖它建画布节点并固化 Manifest。
