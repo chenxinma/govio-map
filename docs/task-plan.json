@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-31T19:08:49+08:00",
+  "updatedAt": "2026-10-31T19:12:45+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -213,7 +213,7 @@
           "id": "T2.0",
           "title": "SourceTable 数据源类型与 schema 标注约定",
           "kr": "T2.1 前置（用户指令 2026-10-31）",
-          "status": "done",
+          "status": "accepted",
           "dependsOn": [],
           "outputDir": "docs/tasks/T2.0-sourcetable-datasource-type/",
           "scope": "sourceTable 节点保存数据源类型（duckdb/postgres/mysql/oracle/hive/trino/sqlalchemy-generic）与全限定名 qualifiedName；govio_create_source_table 工具参数与描述扩展（取值来源：图谱 Datasource/PhysicalTable 查询或数据源声明文件）；节点 UI 显示类型徽标与可复制全限定名；新建 docs/specs/11-datasource-schema-conventions.md 说明各数据源类型的 schema 标注方式（duckdb 三段式 catalog.schema.table 含 chocolate 实证案例；postgres/mysql 两段式 schema.table）；旧节点无新字段时回退原显示（向后兼容）。动机案例：docs/tasks/BUGFIX-load-parse.md（agent 盲猜表名三次试错）。",
@@ -237,6 +237,12 @@
               "at": "2026-10-31T19:08:49+08:00",
               "by": "worker",
               "note": "实现完成：SourceTableNodeData 增 DATASOURCE_TYPES/DatasourceType + datasource/datasourceType/schema/qualifiedName 可选字段（缺失不写键）；govio_create_source_table 参数全 Optional 扩展 + description 取值来源分层指导（图谱/声明/config.yaml，禁止猜测拿不到就省略）+ 枚举外类型丢弃；事件链 queue→ws→canvas-service→store 贯通；SourceTableNode 类型徽标 + qualifiedName 一键复制（缺字段回退旧显示）；新增 docs/specs/11-datasource-schema-conventions.md（duckdb 三段式含 chocolate 实证报错对照、postgres/mysql/通用 SQLAlchemy 规则）；specs/02 同步。验证：build ✓ lint 0 error verify 聚合 manifest 61/rerun 71/audit 97/export 126 无回归 + verify:source-table 39/39。交付物 docs/tasks/T2.0-sourcetable-datasource-type/{design,CHANGES,verification}.md；遗留问题 7 项见 design.md 第 7 节"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-10-31T19:12:45+08:00",
+              "by": "main-session",
+              "note": "主 session 独立验收通过：commit bb89537；build ✓ / lint 0 / verify 聚合无回归（61/71/97/126）/ verify:source-table 39/39；抽查类型定义（DATASOURCE_TYPES 联合）、工具 description（NEVER guessed/OMIT 分层取值）、UI 旧节点回退、spec 11 术语区分（datasource 名/元数据全限定标识/SQL 引用名三分离）。遗留 7 项见 design.md §7，其中 schema.md 缺失由主 session 按 AGENTS.md 同步"
             }
           ]
         },
@@ -250,10 +256,12 @@
             "T2.0"
           ],
           "outputDir": "docs/tasks/T2.1-graph-prompt-injection/",
-          "scope": "会话启动/引用节点变更时按实体自动注入指标定义、字段标准、枚举码值。",
+          "scope": "会话启动/引用节点变更时自动注入语义上下文，替代 agent 主动查图谱：① 被引用 sourceTable 节点的 datasource/datasourceType/schema/qualifiedName（T2.0 产物，SQL 表引用一律以此为准，禁止另行猜测）；② 图谱中与问题实体/引用表相关的指标定义、字段标准、枚举码值（govio-query）。注入内容随消息留痕（记录注入的节点与图谱实体 ID 列表），保证口径可追溯。动机案例：docs/tasks/BUGFIX-load-parse.md（盲猜表名三次试错）。",
           "acceptance": [
-            "注入内容可追溯（记录注入了哪些图谱实体）",
-            "口径命中率测量脚本"
+            "引用 sourceTable 节点时 prompt 自动包含其 qualifiedName 与 datasourceType（makePrompt/REF 序列化可断言）",
+            "图谱实体注入可追溯：每次注入记录实体 ID 列表并随会话持久化",
+            "口径命中率测量脚本：抽样比对生成 SQL 的表引用与注入的 qualifiedName",
+            "注入失败（图谱不可达/无相关实体）时降级为现状行为且不阻断会话"
           ],
           "history": []
         },
