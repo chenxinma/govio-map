@@ -1,5 +1,5 @@
-import type { AnalysisManifest } from './manifest';
-import type { RerunRecord } from './rerun';
+import type { AnalysisManifest } from './manifest.js';
+import type { RerunRecord } from './rerun.js';
 
 // 分析留痕类型（前后端共享定义见 ./manifest.ts）
 export type {
@@ -8,7 +8,7 @@ export type {
   ManifestChecksumAlgorithm,
   ManifestModel,
   ManifestOrigin,
-} from './manifest';
+} from './manifest.js';
 
 // 复跑记录类型（前后端共享定义见 ./rerun.ts）
 export type {
@@ -16,7 +16,7 @@ export type {
   RerunOutcome,
   RerunRecord,
   RerunSnapshot,
-} from './rerun';
+} from './rerun.js';
 
 export interface TableField {
   name: string;
