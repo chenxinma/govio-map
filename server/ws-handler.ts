@@ -1,11 +1,12 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
 import { getOrCreateSession, resetSession, openSessionFile, runGovioCli } from "./agent.js";
-import { listSessions, deleteSession, saveCanvas, loadCanvas, buildTranscript } from "./session-history.js";
+import { listSessions, deleteSession, saveCanvas, loadCanvas, buildTranscript, assertValidSessionPath } from "./session-history.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
 import { permissionManager, type PermissionDecision } from "./permission-manager.js";
 import { isAgentConfigNeeded, completeAgentSetup } from "./backend.js";
-import { readModelsConfig, writeModelsConfig, createDefaultModelsConfig } from "./models-config.js";
+import { readModelsConfig, writeModelsConfig, createDefaultModelsConfig, maskModelsConfig } from "./models-config.js";
+import { isAllowedUpgrade } from "./security.js";
 import type { ModelsConfig } from "../src/types/models-config.js";
 
 interface WSMessage {
@@ -30,10 +31,19 @@ interface WSMessage {
 type SessionInstance = Awaited<ReturnType<typeof getOrCreateSession>>;
 
 export function setupWebSocket(server: import("http").Server) {
-  const wss = new WebSocketServer({ noServer: true });
+  // Cap incoming frame size: canvas_save payloads are the largest legit message.
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 * 1024 });
 
   server.on("upgrade", (req: IncomingMessage, socket, head) => {
     const { pathname } = new URL(req.url || "/", `http://${req.headers.host}`);
+
+    // Reject cross-site WebSocket hijacking: browsers attach the page's Origin,
+    // and only the local frontend is allowed to drive the agent.
+    if (!isAllowedUpgrade(req)) {
+      socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+      socket.destroy();
+      return;
+    }
 
     if (pathname === "/ws") {
       wss.handleUpgrade(req, socket, head, (ws) => {
@@ -125,7 +135,9 @@ export function setupWebSocket(server: import("http").Server) {
   async function sendModelsConfig(ws: WebSocket): Promise<void> {
     try {
       const config = await readModelsConfig();
-      ws.send(JSON.stringify({ type: "models_config", config }));
+      // Never ship real API keys to the frontend; masked placeholders are
+      // merged back from disk on save (see models-config.ts).
+      ws.send(JSON.stringify({ type: "models_config", config: maskModelsConfig(config) }));
     } catch (err) {
       ws.send(JSON.stringify({
         type: "error",
@@ -334,7 +346,15 @@ export function setupWebSocket(server: import("http").Server) {
           ws.send(JSON.stringify({ type: "error", message: "session_open requires path" }));
           break;
         }
-        const targetPath = msg.path;
+        let targetPath: string;
+        try {
+          // Same containment check as session_delete: clients may only open
+          // session files inside the session directory.
+          targetPath = assertValidSessionPath(msg.path);
+        } catch (err) {
+          ws.send(JSON.stringify({ type: "error", message: `session_open failed: ${err}` }));
+          break;
+        }
         if (ctx.session.sessionManager.getSessionFile() === targetPath) {
           pushSessionState(ws, ctx.session);
           break;
@@ -499,13 +519,13 @@ export function setupWebSocket(server: import("http").Server) {
 
 function makePrompt(msg: WSMessage): string {
   let prompt = "";
-  if (msg.referencedNodes) {
-    prompt += "REF:[";
-    for (const ref of msg.referencedNodes) {
-      const s = `{"${ref.label}": "${ref.data}"},`;
-      prompt += s;
-    }
-    prompt += "]\n";
+  if (msg.referencedNodes && msg.referencedNodes.length > 0) {
+    // Serialize each ref as proper JSON so quotes/newlines in labels or node
+    // data cannot break the REF:[...] envelope or inject extra structure.
+    const entries = msg.referencedNodes.map((ref) =>
+      JSON.stringify({ [ref.label ?? ""]: ref.data ?? "" }),
+    );
+    prompt += `REF:[${entries.join(", ")}]\n`;
   }
   prompt += msg.content;
   console.debug("[ws] prompt: " + prompt);
