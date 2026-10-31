@@ -49,7 +49,7 @@ import {
 } from "../server/permission-manager.js";
 import { buildManifest } from "../server/analysis-manifest.js";
 import { deleteSession, getSessionDir, saveCanvas } from "../server/session-history.js";
-import govioCanvasExtension from "../server/extensions/govio-canvas.js";
+import govioCanvasExtension, { shouldAskPermission } from "../server/extensions/govio-canvas.js";
 import { flushGovioNodes } from "../server/govio-node-queue.js";
 import type { AnalysisManifest } from "../src/types/manifest.js";
 
@@ -165,6 +165,18 @@ try {
     const dec = readPermissionAudit(sessionFile).filter(isDecision).find((d) => d.decisionId === timeoutResult.decisionId);
     check("超时决策来源记为 timeout", dec?.source === "timeout" && dec?.decision === "deny");
     check("超时决策记录了等待时长", (dec?.elapsedMs ?? 0) >= 25, `elapsedMs=${dec?.elapsedMs}`);
+    // 超时之后用户再点允许：决策不再生效，但必须留下一条「未生效」记录，
+    // 否则「用户点了却没反应」在审计里查无此事
+    short.resolve(timeoutResult.decisionId, { decision: "allow" });
+    const late = readPermissionAudit(sessionFile).filter(isDecision).filter((d) => d.decisionId === timeoutResult.decisionId);
+    check("迟到决策补记一条「未生效」留痕（不改变已生效的超时拒绝）",
+      late.length === 2 && late[0].source === "timeout" && late[1].source === "user"
+      && late[1].decision === "allow" && late[1].reason === "决策晚于超时，未生效",
+      `entries=${late.length}`);
+    // 伪造/垃圾 requestId 不灌日志
+    const junkBefore = readPermissionAudit(sessionFile).length;
+    short.resolve("not-a-decision-id", { decision: "allow" });
+    check("非 pd- 形态的 requestId 不产生审计记录", readPermissionAudit(sessionFile).length === junkBefore);
   }
 
   const abortMgr = new PermissionManager();
@@ -179,10 +191,15 @@ try {
     readPermissionAudit(sessionFile).filter(isDecision).find((d) => d.decisionId === abortResult.decisionId)?.source === "abort",
   );
   abortMgr.resolve(abortPushed[0].requestId, { decision: "allow" });
-  check(
-    "已清理的挂起请求不会被二次记账",
-    readPermissionAudit(sessionFile).filter(isDecision).filter((d) => d.decisionId === abortResult.decisionId).length === 1,
-  );
+  {
+    const abortEntries = readPermissionAudit(sessionFile).filter(isDecision).filter((d) => d.decisionId === abortResult.decisionId);
+    check(
+      "已生效的中止拒绝不被改写；迟到决策只补记「未生效」留痕",
+      abortEntries.length === 2 && abortEntries[0].source === "abort" && abortEntries[1].source === "user"
+      && abortEntries[1].reason === "决策晚于超时，未生效",
+      `entries=${abortEntries.length}`,
+    );
+  }
 
   const modesBefore = readPermissionAudit(sessionFile).filter(isMode).length;
   const allMgr = new PermissionManager();
@@ -209,7 +226,7 @@ try {
     const entries = readPermissionAudit(sessionFile).filter((e) => e.decisionId === autoResult.decisionId);
     const req = entries.find(isRequest);
     const dec = entries.find(isDecision);
-    check("自动放行记为 gate=accept-all", isRequest(req) && req.gate === "accept-all");
+    check("自动放行记为 gate=accept-all", req !== undefined && req.gate === "accept-all");
     check("自动放行决策来源记为 accept-all、耗时 0", dec?.source === "accept-all" && dec?.elapsedMs === 0);
   }
 
@@ -229,6 +246,19 @@ try {
     check(
       "重置导致的拒绝来源记为 reset",
       readPermissionAudit(sessionFile).filter(isDecision).find((d) => d.decisionId === clearedResult.decisionId)?.source === "reset",
+    );
+  }
+
+  // 决策索引随会话失效：否则切会话后命令文本兜底会把新会话的执行错绑到旧会话的 decisionId
+  {
+    const idxMgr = new PermissionManager();
+    idxMgr.onRequest((req) => idxMgr.resolve(req.requestId, { decision: "allow" }));
+    const idxResult = await idxMgr.requestPermission(LOAD_CMD, "call-idx");
+    check("clearAll 前决策索引可用", idxMgr.decisionIdForExecution(LOAD_CMD, "call-idx") === idxResult.decisionId);
+    idxMgr.clearAll();
+    check(
+      "clearAll 清空命令与 toolCallId 两张决策索引（跨会话不再兜底错绑）",
+      idxMgr.decisionIdForExecution(LOAD_CMD, "call-idx") === null && idxMgr.decisionIdForExecution(LOAD_CMD) === null,
     );
   }
 
@@ -469,6 +499,17 @@ try {
         pendingAffected: 0,
       }) === null,
     );
+  }
+
+  // ── 8. 确认门触发条件（shouldAskPermission 直接断言，对齐 specs/10）────
+  console.log("\n[8] shouldAskPermission 触发条件");
+  {
+    check("-o=xxx 触发确认门", shouldAskPermission("govio-cli observe load --name df_x --datasource sales -o=out.json --sql 'SELECT 1'") === true);
+    check("--output xxx 触发确认门", shouldAskPermission("govio-cli observe load --name df_x --datasource sales --output out.json --sql 'SELECT 1'") === true);
+    check("observe compare -o 不触发（只拦 observe load）", shouldAskPermission("govio-cli observe compare --source a --target b -o out.json") === false);
+    check("SQL/路径文本里的 -o 不误判", shouldAskPermission(`govio-cli observe load --name df_x --datasource sales --sql "SELECT * FROM t WHERE p = '-o'"`) === false);
+    check("不带 -o 的普通加载不触发", shouldAskPermission("govio-cli observe load --name df_x --datasource sales --sql 'SELECT 1' 2>&1") === false);
+    check("-oxxx（短选项紧跟值）当前不触发（已知缺口，specs/10 已标注）", shouldAskPermission("govio-cli observe load --name df_x -oout.json --sql 'SELECT 1'") === false);
   }
 } finally {
   setAuditSessionResolver(null);

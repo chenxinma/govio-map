@@ -172,6 +172,9 @@ export function setupWebSocket(server: import("http").Server) {
   }
 
   async function restartAgentSession(): Promise<SessionInstance> {
+    // 保存模型配置触发的会话重启与 clear/session_open 同等待遇：
+    // 放行模式、挂起请求与决策索引都随旧会话失效。
+    permissionManager.clearAll();
     if (isAgentConfigNeeded()) {
       await completeAgentSetup();
     } else {

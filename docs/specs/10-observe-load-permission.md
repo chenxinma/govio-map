@@ -9,13 +9,13 @@
 匹配规则（在 `tool_call` 事件中，`toolName === "bash"`）：
 
 - 命令中含 `govio-cli observe load` 子串
-- 且命令中含 `-o` 标志的任意形式：
-  - `-o` / `--output`（独立 token）
+- 且命令中含 `-o` 标志的以下形式：
+  - `-o` / `--output`（独立 token，后跟空格/行尾）
   - `-o=xxx` / `--output=xxx`
-  - `-oxxx`（短选项紧跟值，仅当 `-o` 后非空格）
   - `-o xxx` / `--output xxx`
+  - ⚠ `-oxxx`（短选项紧跟值，中间无空格/等号）**当前不触发**：`OUTPUT_FLAG_RE` 的前瞻要求 `-o` 后是空白/`=`/行尾。已知缺口，govio-cli 自身与技能文档均使用带空格形式；若需覆盖需另评估误判面
 
-实现用单一正则：`/govio-cli\s+observe\s+load\b[\s\S]*?(?:^|\s|=)-(?:o|--output)(?:=|\s|$)/`，再配合 `/\bgovio-cli\s+observe\s+load\b/` 与 `/(?:^|\s|=)(?:-o|--output)(?=\s|=|$)/` 两条分别匹配后取交集，避免误判。
+实现是两条独立正则的 AND（`server/extensions/govio-canvas.ts` 的 `shouldAskPermission`）：`OBSERVE_LOAD_RE = /\bgovio-cli\s+observe\s+load\b/` 与 `OUTPUT_FLAG_RE = /(?:^|\s|=)(?:-o|--output)(?=\s|=|$)/`，两条分别匹配、同时命中才触发确认门。
 
 ## 架构
 
@@ -288,9 +288,10 @@ const acceptAllPermission = useCallback(() => {
 
 ## 测试
 
-- 后端 `shouldAskPermission` 单元测试：覆盖 `-o` / `--output` / `-o=x` / `--output x` / 无 `-o` / `observe compare -o` / 路径含 `-o` 等场景。
-- permission-manager 单元测试：allow/deny/edit/timeout/acceptAll/clearAll。
-- `npm run verify:audit`（`scripts/verify-permission-audit.ts`，86 项断言）：审计条目格式与成对关系、edit 改前改后命令、超时/中止/重置来源、Accept All 模式事件、放行期自动确认仍留痕、toolCallId/命令→decisionId 索引与 Manifest 回填、真实扩展事件流（stub pi）、JSONL 追加/坏行容错/`deleteSession` 清理。
+仓库无独立单测框架，自动化覆盖由验证脚本承担：
+
+- `npm run verify:audit`（`scripts/verify-permission-audit.ts`）：审计条目格式与成对关系、edit 改前改后命令、超时/中止/重置来源、**迟到决策的「未生效」补记**、Accept All 模式事件、放行期自动确认仍留痕、toolCallId/命令→decisionId 索引与 Manifest 回填、**clearAll 清空决策索引**、真实扩展事件流（stub pi）、JSONL 追加/坏行容错/`deleteSession` 清理，以及 `shouldAskPermission` 直接断言（`-o=x` / `--output x` / `observe compare -o` 不触发 / SQL 文本含 `-o` 不误判 / `-oxxx` 不触发的已知缺口）。
+- permission-manager 的 allow/deny/edit/timeout/acceptAll/clearAll 行为同样由 `verify:audit` 覆盖（无另行单测）。
 - 前端手动验证：触发 `observe load -o` 命令，分别点 4 个按钮，确认 agent 行为符合预期，并检查 `.govio/sessions/*.audit.jsonl` 是否如预期追加。
 
 ## 已确认（实现时验证的结果）

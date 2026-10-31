@@ -168,6 +168,9 @@ export function buildManifest(input: BuildManifestInput): AnalysisManifest {
     executedAt: input.executedAt ?? new Date().toISOString(),
     sessionId: input.context.sessionId,
   };
+  // 首次固化时间：初始与 executedAt 同值；后续复跑一致只刷新 executedAt，
+  // 本字段保持不变（见 src/utils/rerun.ts 的 withRerunRecord）。
+  manifest.firstExecutedAt = manifest.executedAt;
   if (input.dfName) manifest.dfName = input.dfName;
   if (typeof rowCount === "number") manifest.rowCount = rowCount;
   if (typeof columnCount === "number") manifest.columnCount = columnCount;
@@ -195,4 +198,6 @@ if (process.env.NODE_ENV !== "production") {
   assert(computeChecksum("SELECT 1", [{ name: "id", dtype: "INTEGER" }, cols[1]], 10, 2).schemaHash !== a.schemaHash, "dtype changes the hash");
   assert(buildManifest({ origin: "assistant-sql", sql: "SELECT 1", datasource: "", context: { sessionId: "" } }).checksum === undefined, "sqlQuery manifest has no checksum");
   assert(buildManifest({ origin: "observe-load", sql: "SELECT 1", datasource: "ds", columns: [], rowCount: 3, columnCount: 0, context: { sessionId: "" } }).checksum === undefined, "no columns -> no checksum");
+  const withFirst = buildManifest({ origin: "observe-load", sql: "SELECT 1", datasource: "ds", executedAt: "2026-10-30T22:30:00.000Z", context: { sessionId: "" } });
+  assert(withFirst.firstExecutedAt === "2026-10-30T22:30:00.000Z", "firstExecutedAt equals executedAt at build time");
 }

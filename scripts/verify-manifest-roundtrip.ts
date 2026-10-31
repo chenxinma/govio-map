@@ -87,6 +87,7 @@ check("schemaVersion 为当前版本", dfManifest.schemaVersion === MANIFEST_SCH
 check("SQL 全文原样保留", dfManifest.sql === SQL);
 check("datasource / dfName / origin", dfManifest.datasource === "govio_demo" && dfManifest.dfName === "df_orders" && dfManifest.origin === "observe-load");
 check("执行时间 ISO", dfManifest.executedAt === "2026-10-30T22:30:00.000Z");
+check("首次固化时间 firstExecutedAt 与 executedAt 同值写入", dfManifest.firstExecutedAt === "2026-10-30T22:30:00.000Z");
 check("行数/列数", dfManifest.rowCount === 1200 && dfManifest.columnCount === 3);
 check("校验和存在且为 schema-v1", dfManifest.checksum?.algorithm === "schema-v1");
 check("校验和哈希为 16 位十六进制", /^[0-9a-f]{16}$/.test(dfManifest.checksum?.schemaHash ?? "") && /^[0-9a-f]{16}$/.test(dfManifest.checksum?.sqlHash ?? ""));
@@ -327,11 +328,48 @@ console.log("\n[5] store -> canvas_save -> loadCanvas -> hydrateSession");
       manifest: { ...dfManifest, executedAt: "2026-10-31T08:00:00.000Z" },
     });
     const afterDup = useCanvasStore.getState();
-    check("同 dfName 不重复建节点", afterDup.nodes.filter((n) => (n.data as { type?: string }).type === "dataFrame").length === 1);
+    check("同 dfName 不重复建节点", afterDup.nodes.filter((n) => (n.data as { dfName?: string }).dfName === "df_orders").length === 1);
     check(
       "已有 Manifest 不被静默覆盖（漂移判定留给 T1.2）",
       JSON.stringify((afterDup.nodes.find((n) => n.id === dfNodeId)?.data as { manifest?: AnalysisManifest }).manifest) === JSON.stringify(dfManifest),
     );
+
+    // 回填分支（canvas-store.ts 的去重回填）：先由 restoreCanvas / show-dataframe
+    // 建出无 Manifest 的节点，后到的带 Manifest 事件必须回填而不是丢失留痕
+    const backfillManifest: AnalysisManifest = { ...dfManifest, dfName: "df_backfill", executedAt: "2026-10-31T09:00:00.000Z" };
+    useCanvasStore.getState().createGovioNode({
+      type: "govio_node_create",
+      nodeType: "dataFrame",
+      title: "DF: df_backfill",
+      dfName: "df_backfill",
+      sourceName: "govio_demo",
+      totalRows: 10,
+      totalColumns: 3,
+      memoryUsage: "240 B",
+      columns,
+    });
+    const beforeBackfill = useCanvasStore.getState();
+    const backfillNodeId = beforeBackfill.nodes.find(
+      (n) => (n.data as { dfName?: string }).dfName === "df_backfill",
+    )?.id ?? "";
+    check("无 Manifest 事件先建出节点（回填前置条件）",
+      backfillNodeId !== "" && (beforeBackfill.nodes.find((n) => n.id === backfillNodeId)?.data as { manifest?: AnalysisManifest }).manifest === undefined);
+    useCanvasStore.getState().createGovioNode({
+      type: "govio_node_create",
+      nodeType: "dataFrame",
+      title: "DF: df_backfill",
+      dfName: "df_backfill",
+      sourceName: "govio_demo",
+      totalRows: 10,
+      totalColumns: 3,
+      memoryUsage: "240 B",
+      columns,
+      manifest: backfillManifest,
+    });
+    const afterBackfill = useCanvasStore.getState();
+    check("同 dfName 带 Manifest 的后续事件回填到已有节点（不丢留痕、不重建节点）",
+      afterBackfill.nodes.filter((n) => (n.data as { dfName?: string }).dfName === "df_backfill").length === 1
+      && JSON.stringify((afterBackfill.nodes.find((n) => n.id === backfillNodeId)?.data as { manifest?: AnalysisManifest }).manifest) === JSON.stringify(backfillManifest));
   } finally {
     useCanvasStore.getState().clearCanvas();
     rmSync(dir, { recursive: true, force: true });

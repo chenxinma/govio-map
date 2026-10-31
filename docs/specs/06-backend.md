@@ -228,17 +228,18 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 
 ### GET /api/permission-audit
 
-查询参数：`decisionIds=<id,id,...>`（可选，逗号分隔，上限 500 个）。缺省时返回当前会话的全部审计记录。
+查询参数：`decisionIds=<id,id,...>`（**必填**，逗号分隔；缺失或过滤后为空 → 400，不提供「缺省全量返回当前会话命令历史」的能力）。服务端最多取前 500 个 ID 参与过滤，发生截断时响应带 `truncated: true`。
 
 | 响应 | 含义 |
 |------|------|
-| 200 `{ sessionId, sessionFile, total, requested, entries }` | `total` = 会话内记录总数，`entries` = 过滤后带出的记录（`PermissionAuditEntry[]` 原样） |
+| 200 `{ sessionId, sessionFile, total, requested, truncated?, entries }` | `total` = 会话内记录总数；`requested` = 实际请求的 ID 数（截断前）；`truncated` 仅在请求 ID 数超过 500 时出现且为 true；`entries` = 过滤后带出的记录（`PermissionAuditEntry[]` 原样） |
+| 400 | `decisionIds` 缺失或解析后为空 |
 | 409 | 当前没有已落盘的会话（`getSessionFile()` 为空），读不到审计 sidecar |
 | 500 | 未预期异常 |
 
 安全边界（三条，见路由处注释）：**只读**（只调 `readPermissionAudit()`，不写不删不执行命令、不读数据内容）；**只限当前会话**（`sessionFile` 取自服务端会话单例，请求里没有任何路径参数，因此不存在目录穿越或越权读其他会话）；**只过滤不加工**（`decisionIds` 只决定返回哪些条目）。
 
-唯一消费者是交付导出（`src/utils/export-report.ts` 的 `fetchAuditAppendix()`）：按画布节点 Manifest 的 `permissionDecisionId` 过滤，渲染成附录 B。前端把返回值当不可信输入，用白名单解析器 `parseAuditEntries()` 收敛成 `AuditEntryView`（坏行跳过、未知字段丢弃）。CORS 姿态与其余 `/api/*` 一致（`*`），收紧属 X1 安全基线。
+唯一消费者是交付导出（`src/utils/export-report.ts` 的 `fetchAuditAppendix()`）：按画布节点 Manifest 的 `permissionDecisionId` 过滤，渲染成附录 B；发生截断时报告附录 B 必须如实告知「仅带出前 500 个 decisionId」，且只渲染 `sessionFile` 的 basename（不外泄操作者本机绝对路径）。前端把返回值当不可信输入，用白名单解析器 `parseAuditEntries()` 收敛成 `AuditEntryView`（坏行跳过、未知字段丢弃）。CORS 姿态与其余 `/api/*` 一致（`*`），收紧属 X1 安全基线。
 
 ### POST /api/rerun-dataframe
 

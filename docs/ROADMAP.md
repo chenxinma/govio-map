@@ -40,7 +40,7 @@ Govio Map 今天已经能"跑通"：自然语言 → SQL → DataFrame → 图�
 
 | 关键结果 | 说明 | 主要落点 |
 |---|---|---|
-| KR1 分析留痕（Analysis Manifest） | 每个 DataFrame/Report 节点固化：SQL 全文、数据源版本、执行时间、行数校验和、模型与提示摘要。写入 canvas sidecar，随会话持久化 | `server/session-history.ts`、`govio-canvas.ts` 节点事件、`src/store/canvas-store.ts` |
+| KR1 分析留痕（Analysis Manifest） | 每个 DataFrame/Report 节点固化：SQL 全文、数据源版本、执行时间、行数校验和、模型与提示摘要。写入 canvas sidecar，随会话持久化。<br>↳ **实际交付（Phase 1）**：dataFrame + sqlQuery 节点的 SQL 全文、数据源名、执行时间（含不可变 firstExecutedAt）、规模+结构校验和、模型与会话 ID；report 节点 Manifest、数据源版本、提示摘要归 Backlog/Phase 2（见 docs/tasks/T1.1-analysis-manifest/design.md §8） | `server/session-history.ts`、`govio-canvas.ts` 节点事件、`src/store/canvas-store.ts` |
 | KR2 一键复跑与漂移提示 | DataFrame 节点支持"复跑"：重执行固化 SQL，对比行数/校验和，不一致时在节点上标记漂移警告而非静默覆盖 | govio-cli `observe load` 复用、节点 UI（`DataFrameNode.tsx`） |
 | KR3 取数确认门 | 高风险动作（写文件 `-o`、跨库查询、全表扫描）沿用并强化 permission-manager 确认流，确认记录进 Manifest | `server/permission-manager.ts`（安全分支已扩展危险命令闸门） |
 | KR4 交付导出 | 画布一键导出为自包含 HTML/PDF 报告（节点+血缘+Manifest 附录），离线可看 | 新导出模块，仅消费已有节点数据 |

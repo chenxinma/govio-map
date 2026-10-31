@@ -5,7 +5,8 @@ import type { DataFrameNodeData, RerunOutcome, RerunRecord } from '../types';
  *
  * 复跑记录由服务端产出（`server/dataframe-rerun.ts`），前端只负责：
  *  - 把记录**追加**到 `node.data.rerunHistory`（最新在前，条数封顶）
- *  - 结果一致时刷新 `manifest.executedAt`（原始时间保留在 `record.before.executedAt`）
+ *  - 结果一致时刷新 `manifest.executedAt`（原始时间保留在 `record.before.executedAt`，
+ *    并固化到不可变的 `manifest.firstExecutedAt`，避免连续复跑把首次交付时间顶出历史）
  *  - 结果漂移时**原样保留** Manifest，只靠记录 + 节点警告标记表达差异
  *
  * 这些都是纯函数，便于 `scripts/verify-rerun-drift.ts` 直接断言。
@@ -45,13 +46,19 @@ export function canRerun(data: DataFrameNodeData): boolean {
 
 /**
  * 追加一条复跑记录，返回新的节点 data（不修改入参）。
- * 一致 → 刷新 `manifest.executedAt`；漂移/失败 → Manifest 原样保留。
+ * 一致 → 刷新 `manifest.executedAt` 并保留不可变的 `firstExecutedAt`（旧留痕缺失时
+ * 从本次记录的 `before.executedAt` 补齐）；漂移/失败 → Manifest 原样保留。
  */
 export function withRerunRecord(data: DataFrameNodeData, record: RerunRecord): DataFrameNodeData {
   const rerunHistory = [record, ...(data.rerunHistory ?? [])].slice(0, MAX_RERUN_HISTORY);
   const next: DataFrameNodeData = { ...data, rerunHistory };
   if (record.outcome === 'identical' && next.manifest) {
-    next.manifest = { ...next.manifest, executedAt: record.rerunAt };
+    const prev = next.manifest;
+    next.manifest = {
+      ...prev,
+      executedAt: record.rerunAt,
+      firstExecutedAt: prev.firstExecutedAt ?? record.before.executedAt,
+    };
   }
   return next;
 }

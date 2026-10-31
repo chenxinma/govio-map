@@ -5,9 +5,11 @@
  *
  * 做法：构造一个**含全部五类节点**的样例画布状态（sourceTable ×2 / sqlQuery / dataFrame ×3
  * 含漂移与无留痕节点 / chart ×2 含渲染失败降级 / report，外加血缘边、悬空边与自环），
- * 直接调用纯函数 `buildDeliveryReportHtml()` 产出 HTML 并逐节断言；产物写到
- * `docs/tasks/T1.4-canvas-export/sample-export.html`（固定导出时间 → 逐字节可复现，
- * 可双击离线打开人工复核）。
+ * 直接调用纯函数 `buildDeliveryReportHtml()` 产出 HTML 并逐节断言。
+ *
+ * 产物默认写到临时目录（不污染 git 工作树）；只有显式传 `--write` 才更新受跟踪的
+ * `docs/tasks/T1.4-canvas-export/sample-export.html`（脚本钉住 TZ=Asia/Shanghai，
+ * 固定导出时间 → 同时区下逐字节可复现，可双击离线打开人工复核）。
  *
  * 覆盖七件事：
  *  1. 产物自包含（无脚本 / 无外部引用 / 内联样式）与整体结构
@@ -20,13 +22,20 @@
  *
  * 不调 govio-cli、不调模型、不读任何数据内容、不碰 `.govio/`。任一断言失败退出码 1。
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+// 钉住时区：产物里的本地时间渲染（formatTimestamp / formatRerunTime）与受跟踪样例
+// 的字节一致性都依赖时区；期望值全部用 Asia/Shanghai 下的字面量断言。
+// 必须在任何 Date 格式化之前生效（仅影响本脚本进程）。
+process.env.TZ = "Asia/Shanghai";
+
 import type { Edge, Node } from "@xyflow/react";
 import {
   buildDeliveryReportHtml,
   collectPermissionDecisionIds,
-  formatTimestamp,
+  fetchAuditAppendix,
   layoutLineage,
   parseAuditEntries,
   reportFileName,
@@ -34,7 +43,6 @@ import {
   type AuditAppendix,
   type ChartRenderMap,
 } from "../src/utils/export-report.js";
-import { formatRerunTime } from "../src/utils/rerun.js";
 import type { AnalysisManifest } from "../src/types/manifest.js";
 import type { ChartNodeData, DataFrameNodeData, ReportNodeData, RerunRecord, SourceTableNodeData, SQLQueryNodeData } from "../src/types/index.js";
 
@@ -60,6 +68,15 @@ const CHART_VALUE_SENTINEL = 424242;
 const XSS_SENTINEL = "<script>alert('xss')</script>";
 
 const FIXED_EXPORTED_AT = "2026-10-31T00:45:00.000Z";
+// TZ=Asia/Shanghai 下的字面量期望（不用生产格式化函数自证）：
+// FIXED_EXPORTED_AT → 2026-10-31 08:45:00；2026-10-30T22:10:30Z → 2026-10-31 06:10:30；
+// 2026-10-30T22:10:00Z → 2026-10-31 06:10:00；DRIFT.rerunAt 23:05Z → 2026-10-31 07:05；
+// IDENTICAL.rerunAt 22:40Z → 2026-10-31 06:40
+const EXPECT_EXPORTED_AT = "2026-10-31 08:45:00";
+const EXPECT_DF_CREATED_AT = "2026-10-31 06:10:30";
+const EXPECT_MANIFEST_EXECUTED_AT = "2026-10-31 06:10:00";
+const EXPECT_DRIFT_RERUN_AT = "2026-10-31 07:05";
+const EXPECT_IDENTICAL_RERUN_AT = "2026-10-31 06:40";
 
 const DECISION_ID = "pd-1111aaaa-2222";
 
@@ -360,10 +377,11 @@ const CHART_RESULTS: ChartRenderMap = {
   "gov-6": { ok: false, reason: "渲染失败：trace 类型 scattergl 不支持静态导出" },
 };
 
-/** 模拟 `GET /api/permission-audit` 的原始返回（含坏行与未知字段，测解析白名单） */
+/** 模拟 `GET /api/permission-audit` 的原始返回（含坏行与未知字段，测解析白名单）。
+ * sessionFile 故意用绝对路径：报告只能渲染 basename，不得外泄操作者目录结构。 */
 const RAW_AUDIT_RESPONSE = {
   sessionId: "sess-sample-export",
-  sessionFile: ".govio/sessions/2026-10-30T22-00-00-000Z_sample.jsonl",
+  sessionFile: "D:\\Work\\govio-map\\.govio\\sessions\\2026-10-30T22-00-00-000Z_sample.jsonl",
   total: 6,
   requested: 1,
   entries: [
@@ -382,7 +400,8 @@ const RAW_AUDIT_RESPONSE = {
     {
       v: 1, at: "2026-10-30T22:30:00.000Z", decisionId: "pd-unrelated-9999", sessionId: "sess-sample-export",
       type: "permission_decision", decision: "deny", source: "timeout", elapsedMs: 300000,
-      command: "govio-cli observe load --datasource sales --name df_x -o all.json --sql 'SELECT * FROM orders'",
+      // 命令原文里的注入哨兵：附录 B 的命令单元格必须转义后呈现
+      command: `govio-cli observe load --datasource sales --name df_x -o all.json --sql '${XSS_SENTINEL}'`,
     },
     { type: "permission_decision", at: "2026-10-30T22:31:00.000Z" }, // 坏行：缺 decisionId → 丢弃
     "not-an-object", // 坏行 → 丢弃
@@ -430,9 +449,9 @@ check("不含协议相对外部引用 //", !/(?:src|href)="\/\//.test(HTML));
 check("不含 <iframe>/<object>/<embed>", !/<(iframe|object|embed)\b/i.test(HTML));
 check("图片只有内联 data URL", [...HTML.matchAll(/<img[^>]+src="([^"]{0,40})/g)].every((m) => m[1].startsWith("data:")));
 check("血缘 SVG 内联在文档里", HTML.includes('<svg class="lineage"') && HTML.includes("</svg>"));
-check("报头含导出时间（本地时区可读格式 + ISO 原文）与应用版本",
-  HTML.includes(formatTimestamp(FIXED_EXPORTED_AT)) && HTML.includes(FIXED_EXPORTED_AT) && HTML.includes("Govio Map v0.6.1"),
-  formatTimestamp(FIXED_EXPORTED_AT));
+check("报头含导出时间（钉住时区的字面量 + ISO 原文）与应用版本",
+  HTML.includes(EXPECT_EXPORTED_AT) && HTML.includes(FIXED_EXPORTED_AT) && HTML.includes("Govio Map v0.6.1"),
+  EXPECT_EXPORTED_AT);
 check("导出时间格式为 YYYY-MM-DD HH:mm:ss", /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(HTML));
 check("含目录锚点（摘要/血缘图/节点卡片/附录 A/附录 B）",
   ['href="#summary"', 'href="#lineage"', 'href="#nodes"', 'href="#appendix-a"', 'href="#appendix-b"'].every((a) => HTML.includes(a)));
@@ -490,7 +509,7 @@ check("chart 渲染失败时降级为配置摘要并写明原因",
 check("配置摘要给出 trace 元信息与数据点个数", HTML.includes("trace 摘要（不含数据值）") && HTML.includes("<td>pie</td>"));
 check("图表原始数据值不进产物（只渲染图像/摘要）", !HTML.includes(String(CHART_VALUE_SENTINEL)));
 check("卡片带上下游血缘链接", HTML.includes("上游：") && HTML.includes("下游："));
-check("卡片显示创建时间与节点 ID", HTML.includes(`创建于 ${formatTimestamp("2026-10-30T22:10:30.000Z")}`) && HTML.includes("gov-2"));
+check("卡片显示创建时间与节点 ID", HTML.includes(`创建于 ${EXPECT_DF_CREATED_AT}`) && HTML.includes("gov-2"));
 check("10 张卡片都在节点章节里", (HTML.match(/<article class="card/g) ?? []).length === 10,
   `actual=${(HTML.match(/<article class="card/g) ?? []).length}`);
 check("摘要区统计节点/连线/DataFrame 数", HTML.includes("<dt>节点</dt><dd>10</dd>") && HTML.includes("<dt>血缘连线</dt><dd>9</dd>") && HTML.includes("<dt>DataFrame</dt><dd>4</dd>"));
@@ -500,7 +519,7 @@ console.log("\n[4] 漂移告警与复跑记录");
 
 check("漂移节点卡片带 drift 样式", HTML.includes(`class="card drift" id="card-gov-2"`));
 check("漂移节点头部有「漂移」徽标", HTML.includes('<span class="badge drift">漂移</span>'));
-check("漂移警示框给出差异摘要", HTML.includes("⚠ 漂移警告") && HTML.includes(`最近一次复跑 ${formatRerunTime(DRIFT_RECORD.rerunAt)}`) && HTML.includes("行数 12 → 13（+1）；结构哈希变化"));
+check("漂移警示框给出差异摘要", HTML.includes("⚠ 漂移警告") && HTML.includes(`最近一次复跑 ${EXPECT_DRIFT_RERUN_AT}`) && HTML.includes("行数 12 → 13（+1）；结构哈希变化"));
 check("漂移说明写明原 Manifest 未被覆盖", HTML.includes("原 Manifest 未被覆盖"));
 check("复现一致的节点有绿色结论徽标与结论框",
   HTML.includes('<span class="badge ok">复现一致</span>') && HTML.includes("✓ 最近一次复跑复现一致")
@@ -510,8 +529,8 @@ check("摘要区列出漂移节点清单", HTML.includes("1 个 DataFrame 处于
 check("摘要区统计复跑次数（2 + 1 + 1 = 4）", HTML.includes("<dt>复跑次数</dt><dd>4</dd>"));
 check("复跑记录按最新在前编号列出",
   HTML.includes("复跑记录（2 次，最新在前）")
-  && HTML.includes(`#1 ${formatRerunTime(DRIFT_RECORD.rerunAt)} · 漂移`)
-  && HTML.includes(`#2 ${formatRerunTime(IDENTICAL_RECORD.rerunAt)} · 复现一致`));
+  && HTML.includes(`#1 ${EXPECT_DRIFT_RERUN_AT} · 漂移`)
+  && HTML.includes(`#2 ${EXPECT_IDENTICAL_RERUN_AT} · 复现一致`));
 check("复跑记录含原值 → 新值对比", HTML.includes("原 12 行 × 3 列") && HTML.includes("本次 13 行 × 3 列"));
 check("复跑记录含耗时与临时 DF 名（便于清理残留）", HTML.includes("耗时 3.2s") && HTML.includes("rerun_tmp_df_monthly_sales_lz4k2a91"));
 check("失败记录写明原因", HTML.includes("上游 DataFrame df_monthly_sales 已被释放"));
@@ -531,7 +550,7 @@ check("permissionDecisionId 可点回附录 B 的确认记录", appendixA.includ
 check("未过确认门的节点如实标注（permissionDecisionId = null）", appendixA.includes("未过确认门"));
 check("无 Manifest 的节点标注「无 Manifest」", appendixA.includes("无 Manifest") && appendixA.includes("df_legacy_restored"));
 check("含来源 / 数据源 / 执行时间 / 行 × 列", appendixA.includes("observe load") && appendixA.includes("memory")
-  && appendixA.includes(formatTimestamp("2026-10-30T22:10:00.000Z")) && appendixA.includes("12 × 3"));
+  && appendixA.includes(EXPECT_MANIFEST_EXECUTED_AT) && appendixA.includes("12 × 3"));
 check("含校验和两段哈希与算法", appendixA.includes("a1b2c3d4e5f60718") && appendixA.includes("0f1e2d3c4b5a6978") && appendixA.includes("schema-v1"));
 check("含生成模型（provider / id → responseModel）", appendixA.includes("anthropic / claude-sonnet-4-5 → claude-sonnet-4-5-20250929"));
 check("含会话 ID 与上游 DF", appendixA.includes("sess-sample-export"));
@@ -544,7 +563,9 @@ check("附录 A 不含无 Manifest 节点的 SQL 详情块", !appendixA.includes
 console.log("\n[6] 附录 B：权限确认记录（只读通道）");
 
 const appendixB = HTML.slice(HTML.indexOf('id="appendix-b"'));
-check("写明审计来源 sidecar 与会话", appendixB.includes(".govio/sessions/2026-10-30T22-00-00-000Z_sample.jsonl.audit.jsonl") && appendixB.includes("sess-sample-export"));
+check("写明审计来源 sidecar（只渲染 basename，不外泄本机绝对路径）与会话",
+  appendixB.includes("2026-10-30T22-00-00-000Z_sample.jsonl.audit.jsonl") && appendixB.includes("sess-sample-export")
+  && !HTML.includes("D:") && !HTML.includes("\\Work\\"));
 check("写明「会话内共 6 条，带出 4 条」", appendixB.includes("会话内共 6 条记录") && appendixB.includes("关联的 4 条"));
 check("请求与决策两条记录都在（同一 decisionId 配对）", appendixB.includes("确认请求") && appendixB.includes("确认决策"));
 check("决策翻译成中文（edit → 修改后放行）", appendixB.includes("修改后放行"));
@@ -593,7 +614,26 @@ console.log("\n[7] 转义、确定性与样例产物");
 
 check("画布内容里的 <script> 被转义（不变成脚本）", !HTML.includes("<script>alert") && HTML.includes("&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"));
 check("表说明里的注入内容被转义", HTML.includes(`订单事实表 ${XSS_SENTINEL.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;")}`));
+check("附录 B 审计命令原文里的注入内容被转义", appendixB.includes("&lt;script&gt;alert(&#39;xss&#39;)") && !appendixB.includes("<script>alert"));
 check("SQL 里的 < 与单引号被转义", HTML.includes("o.amount &lt; 100000") && HTML.includes("o.status = &#39;paid&#39;"));
+// 属性引号闭合：节点标题进入 <img alt="..."> 属性位，双引号必须变成 &quot;
+{
+  const quoteChart: ChartNodeData = {
+    type: "chart",
+    title: `图表 "A" ${XSS_SENTINEL}`,
+    createdAt: FIXED_EXPORTED_AT,
+    sourceDf: "df_x",
+    config: { type: "bar", data: [{ type: "bar", x: ["a"], y: [1] }], layout: {} },
+  };
+  const htmlQuote = buildDeliveryReportHtml({
+    nodes: [node("q-1", "chart", quoteChart)],
+    edges: [],
+    exportedAt: FIXED_EXPORTED_AT,
+    chartResults: { "q-1": { ok: true, dataUrl: TINY_SVG, width: 10, height: 10 } },
+  });
+  check("节点标题里的双引号在属性中被转义（引号闭合不被打破）",
+    htmlQuote.includes('alt="图表静态快照：图表 &quot;A&quot; &lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"'));
+}
 check("dataFrame 的 previewData 数据行不进产物", !HTML.includes(ROW_SENTINEL));
 check("空画布也能产出合法 HTML", (() => {
   const empty = buildDeliveryReportHtml({ nodes: [], edges: [], exportedAt: FIXED_EXPORTED_AT });
@@ -604,16 +644,82 @@ check("同一输入产出逐字节相同的 HTML（确定性）",
 check("文件名由导出时间推导", reportFileName(FIXED_EXPORTED_AT).startsWith("govio-delivery-report-") && reportFileName(FIXED_EXPORTED_AT).endsWith(".html") && /\d{8}-\d{4}\.html$/.test(reportFileName(FIXED_EXPORTED_AT)), reportFileName(FIXED_EXPORTED_AT));
 check("tracePointCount 只数长度不取值", tracePointCount(CHART_PIE.config.data[0]!) === 4 && tracePointCount({ type: "bar" }) === null);
 
+// ---------------------------------------------------------------------------
+console.log("\n[8] 确认门徽标区分 / 审计截断告知 / 空 decisionIds 形态");
+
+check("人工确认的节点徽标为「已过确认门」且不带自动放行字样",
+  HTML.includes("已过确认门") && !HTML.includes("已过确认门（自动放行）") && !HTML.includes("已确认取数"));
+{
+  const AUTO_ID = "pd-auto-7777";
+  const autoDf: DataFrameNodeData = {
+    type: "dataFrame",
+    title: "DF: df_auto",
+    createdAt: FIXED_EXPORTED_AT,
+    dfName: "df_auto",
+    sourceName: "sales",
+    totalRows: 1,
+    totalColumns: 1,
+    memoryUsage: "8 B",
+    columns: [{ name: "a", nonNull: 1, dtype: "BIGINT" }],
+    previewData: [],
+    manifest: manifest({ origin: "observe-load", sql: "SELECT 1", datasource: "sales", dfName: "df_auto", permissionDecisionId: AUTO_ID }),
+  };
+  const htmlAuto = buildDeliveryReportHtml({
+    nodes: [node("df-auto", "dataFrame", autoDf)],
+    edges: [],
+    exportedAt: FIXED_EXPORTED_AT,
+    audit: {
+      available: true,
+      requestedDecisionIds: [AUTO_ID],
+      totalInSession: 2,
+      entries: parseAuditEntries([
+        { v: 1, at: "2026-10-30T22:09:50.000Z", decisionId: AUTO_ID, type: "permission_request", gate: "accept-all", command: "govio-cli observe load --name df_auto --datasource sales -o out.json --sql 'SELECT 1'" },
+        { v: 1, at: "2026-10-30T22:09:50.000Z", decisionId: AUTO_ID, type: "permission_decision", decision: "allow", source: "accept-all", elapsedMs: 0, command: "govio-cli observe load --name df_auto --datasource sales -o out.json --sql 'SELECT 1'" },
+      ]),
+    },
+  });
+  check("Accept All 自动放行的徽标可区分（不误导为人工逐条批准）", htmlAuto.includes("已过确认门（自动放行）"));
+}
+{
+  const manyIds = Array.from({ length: 600 }, (_, i) => `pd-trunc-${i}`);
+  const htmlTruncated = buildDeliveryReportHtml({
+    nodes: NODES, edges: EDGES, exportedAt: FIXED_EXPORTED_AT,
+    audit: { ...AUDIT, requestedDecisionIds: manyIds, serverRequested: 600, truncated: true },
+  });
+  check("服务端截断时报告如实告知（不拿前端请求数充数）",
+    htmlTruncated.includes("审计通道截断，仅带出前 500 个 decisionId") && htmlTruncated.includes("按 600 个 decisionId 过滤"));
+}
+{
+  // 无节点过确认门时 fetchAuditAppendix 不发请求，形态与 renderAppendixB 的断言分支一致
+  const emptyAudit = await fetchAuditAppendix([]);
+  check("空 decisionIds → available:true + 空 entries（不是通道不可用）",
+    emptyAudit.available === true && emptyAudit.entries.length === 0 && emptyAudit.totalInSession === 0);
+  const htmlEmptyFetch = buildDeliveryReportHtml({ nodes: NODES, edges: EDGES, exportedAt: FIXED_EXPORTED_AT, audit: emptyAudit });
+  check("该形态渲染「没有任何节点带 permissionDecisionId」而非「未获取到」", htmlEmptyFetch.includes("没有任何节点带 permissionDecisionId") && !htmlEmptyFetch.includes("未获取到审计记录"));
+}
+
 const artifactDir = join(process.cwd(), "docs", "tasks", "T1.4-canvas-export");
 const artifactPath = join(artifactDir, "sample-export.html");
-mkdirSync(artifactDir, { recursive: true });
-writeFileSync(artifactPath, HTML, "utf8");
-const written = readFileSync(artifactPath, "utf8");
-check("样例产物已落盘且与内存产物一致", written === HTML, artifactPath);
+const trackedBefore = existsSync(artifactPath) ? readFileSync(artifactPath, "utf8") : null;
+const tmpDir = mkdtempSync(join(tmpdir(), "govio-export-verify-"));
+const tmpPath = join(tmpDir, "sample-export.html");
+writeFileSync(tmpPath, HTML, "utf8");
+const written = readFileSync(tmpPath, "utf8");
+check("产物落盘（临时目录）且与内存产物一致", written === HTML, tmpPath);
 check("样例产物体积在可读范围（< 200 KB）", Buffer.byteLength(HTML, "utf8") < 200 * 1024, `${Buffer.byteLength(HTML, "utf8")} bytes`);
 check("样例产物不含外部资源引用（离线可打开）", !/https?:\/\//.test(written.replace(/xmlns(:xlink)?="[^"]*"/g, "")));
 
-console.log(`\n样例交付报告：${artifactPath}（双击可在浏览器离线打开）`);
+if (process.argv.includes("--write")) {
+  mkdirSync(artifactDir, { recursive: true });
+  writeFileSync(artifactPath, HTML, "utf8");
+  check("--write：受跟踪样例已更新且与内存产物一致", readFileSync(artifactPath, "utf8") === HTML, artifactPath);
+  console.log(`\n样例交付报告已更新：${artifactPath}（双击可在浏览器离线打开）`);
+} else {
+  const trackedAfter = existsSync(artifactPath) ? readFileSync(artifactPath, "utf8") : null;
+  check("默认运行不改写受跟踪样例（git 工作树保持干净）", trackedAfter === trackedBefore);
+  console.log(`\n样例产物（临时）：${tmpPath}；更新受跟踪样例请追加 --write`);
+  rmSync(tmpDir, { recursive: true, force: true });
+}
 console.log(`共 ${checks} 项断言，失败 ${failures.length} 项`);
 if (failures.length > 0) {
   console.log("失败项：\n" + failures.map((f) => `  - ${f}`).join("\n"));

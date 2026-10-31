@@ -33,7 +33,7 @@ export interface ManifestChecksum {
   rowCount: number;
   /** 参与哈希的列数 */
   columnCount: number;
-  /** sha256(`rowCount|columnCount|name:dtype,...`) 的前 16 位十六进制 */
+  /** sha256(JSON.stringify([rowCount, columnCount, [[name, dtype], …]])) 的前 16 位十六进制（列顺序参与哈希） */
   schemaHash: string;
   /** sha256(SQL 全文) 的前 16 位十六进制；SQL 缺失时为空串的哈希（仍可识别 SQL 被补写） */
   sqlHash: string;
@@ -94,6 +94,12 @@ export interface AnalysisManifest {
   dfName?: string;
   /** 执行/产生时间（ISO 8601，服务端时钟）。sqlQuery 节点记录消息落地时间 */
   executedAt: string;
+  /**
+   * 首次固化时间（ISO 8601，不可变）。复跑一致时 `executedAt` 会刷新为复跑时间，
+   * 而本字段永远指向结果第一次被交付的时刻；可选字段，旧留痕缺失时可从
+   * 最早一条复跑记录的 `before.executedAt` 回溯。新增字段不递增 schemaVersion。
+   */
+  firstExecutedAt?: string;
   /** 结果行数；未执行或未知时缺省 */
   rowCount?: number;
   /** 结果列数；未执行或未知时缺省 */

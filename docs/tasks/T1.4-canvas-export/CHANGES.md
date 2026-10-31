@@ -1,6 +1,6 @@
 # T1.4 改动清单
 
-分支 `feature/phase1-trusted-analysis`。共 17 个文件（4 新增代码/脚本 · 1 新增样例产物 · 3 新增文档 · 6 修改代码 · 1 修改配置 · 4 修改文档）。
+分支 `feature/phase1-trusted-analysis`。共 19 个文件（4 新增代码/脚本 · 1 新增样例产物 · 3 新增文档 · 6 修改代码 · 1 修改配置 · 4 修改文档；各项相加为 19，此前总数误写为 17）。
 
 **没有新增任何 npm 依赖**；WS 协议、store 结构、节点数据类型、审计写入侧全部零改动。
 
@@ -10,16 +10,16 @@
 
 | 文件 | 摘要 |
 |------|------|
-| `src/utils/export-report.ts` | 交付导出主模块（1507 行，8 个分节）。**上半部分是纯函数**（可在 Node 里直接跑）：`buildDeliveryReportHtml(input)` 组装整份 HTML（不读时钟、不碰 DOM、不发请求，同输入 → 同输出）；`layoutLineage()` 最长路径分层 + `lineageSvg()` 内联 SVG（盒子可点击跳卡片、贝塞尔连线带箭头 marker、环用 visiting 集合断开、悬空边/自环丢弃并计数 `droppedEdges`）；`renderNodeCard()` 与五类节点的 body 渲染器（sourceTable 字段表含 PK/FK→引用、sqlQuery SQL 全文 + 输出列、dataFrame 漂移/一致/失败状态框 + 列结构表 + **全量复跑记录** + Manifest 摘要、report 自带极简 markdown 渲染 `renderReportMarkdown()`、chart 静态图片或配置摘要）；`renderAppendixA()`（Manifest 总表 + 每节点 `<details>` SQL 全文，`permissionDecisionId` 三态：链接 / 未过确认门 / 旧节点无此字段）；`renderAppendixB()`（确认记录表：时间·类型·决策·来源·decisionId·耗时·改前命令·改后命令·备注/闸门·关联节点，同 decisionId 的锚点只给第一条）；转义与格式化工具 `esc()` / `truncate()` / `groupDigits()`（手写千分位，保证跨环境逐字节可复现）/ `formatTimestamp()`；`tracePointCount()` 只数数组长度不取值。**下半部分是浏览器侧副作用**：`renderChartImages()`（离屏容器 + `Plotly.newPlot(staticPlot)` + `toImage` SVG→PNG 降级 + `finally` purge/remove）、`apiBase()`、`fetchAuditAppendix()`（任何失败收敛成 `available:false` + 原因，不阻断导出）、`parseAuditEntries()`（白名单解析器：坏行跳过、未知字段丢弃）、`collectPermissionDecisionIds()`、`reportFileName()`、`downloadHtml()`（Blob + `a[download]`，4s 后 revoke）、`exportCanvasDeliveryReport()`（入口：并行渲染图表与拉审计 → 组装 → 下载 → 返回 `ExportOutcome`）。类型：`ChartRenderResult`/`ChartRenderMap`、`AuditEntryView`、`AuditAppendix`、`DeliveryReportInput`、`ExportOutcome`、`LineageBox`/`LineageEdgeView`/`LineageLayout`；常量 `NODE_COLORS`/`NODE_LABELS`（与画布 MiniMap 同值）、`CHART_RENDER`(680×400)、`MAX_TABLE_ROWS`(200) |
-| `src/utils/export-report-style.ts` | 交付报告的内联样式表常量 `REPORT_CSS`（156 行）。文件头写明两条硬约束：不引用任何外部资源（无 `@import`、无 Google Fonts、无 CDN，字体退到本机栈）、配色沿用 `src/index.css` 的 light「Green Deck」令牌。含报头/摘要统计/告警框（warn·err·info·ok）/血缘图与图例/卡片网格与徽标/kv 与表格/`pre.sql`/`details`/report 正文/页脚，以及 `@media print`（打印或另存 PDF 时单列、去掉滚动裁剪） |
-| `src/utils/manifest-labels.ts` | Manifest 展示措辞的单一来源（35 行）：`MANIFEST_ORIGIN_LABELS`、`manifestOriginLabel()`、`manifestModelLabel()`（`provider / id → responseModel`，人工执行为 `—（人工执行）`）。节点「详情」面板与交付报告附录 A 共用，避免同一份留痕两种叫法；纯常量与纯函数，不依赖 React |
+| `src/utils/export-report.ts` | 交付导出主模块（约 1500 行，8 个分节）。**上半部分是纯函数**（可在 Node 里直接跑）：`buildDeliveryReportHtml(input)` 组装整份 HTML（不读时钟、不碰 DOM、不发请求，同输入 → 同输出）；`layoutLineage()` 最长路径分层 + `lineageSvg()` 内联 SVG（盒子可点击跳卡片、贝塞尔连线带箭头 marker、环用 visiting 集合断开、悬空边/自环丢弃并计数 `droppedEdges`）；`renderNodeCard()` 与五类节点的 body 渲染器（sourceTable 字段表含 PK/FK→引用、sqlQuery SQL 全文 + 输出列、dataFrame 漂移/一致/失败状态框 + 列结构表 + **全量复跑记录** + Manifest 摘要、report 自带极简 markdown 渲染 `renderReportMarkdown()`、chart 静态图片或配置摘要）；`renderAppendixA()`（Manifest 总表 + 每节点 `<details>` SQL 全文，`permissionDecisionId` 三态：链接 / 未过确认门 / 旧节点无此字段）；`renderAppendixB()`（确认记录表：时间·类型·决策·来源·decisionId·耗时·改前命令·改后命令·备注/闸门·关联节点，同 decisionId 的锚点只给第一条）；转义与格式化工具 `esc()` / `truncate()` / `groupDigits()`（手写千分位，保证跨环境逐字节可复现）/ `formatTimestamp()`；`tracePointCount()` 只数数组长度不取值。**下半部分是浏览器侧副作用**：`renderChartImages()`（离屏容器 + `Plotly.newPlot(staticPlot)` + `toImage` SVG→PNG 降级 + `finally` purge/remove）、`apiBase()`、`fetchAuditAppendix()`（任何失败收敛成 `available:false` + 原因，不阻断导出）、`parseAuditEntries()`（白名单解析器：坏行跳过、未知字段丢弃）、`collectPermissionDecisionIds()`、`reportFileName()`、`downloadHtml()`（Blob + `a[download]`，4s 后 revoke）、`exportCanvasDeliveryReport()`（入口：并行渲染图表与拉审计 → 组装 → 下载 → 返回 `ExportOutcome`）。类型：`ChartRenderResult`/`ChartRenderMap`、`AuditEntryView`、`AuditAppendix`、`DeliveryReportInput`、`ExportOutcome`、`LineageBox`/`LineageEdgeView`/`LineageLayout`；常量 `NODE_COLORS`/`NODE_LABELS`（与画布 MiniMap 同值）、`CHART_RENDER`(680×400)、`MAX_TABLE_ROWS`(200) |
+| `src/utils/export-report-style.ts` | 交付报告的内联样式表常量 `REPORT_CSS`（约 156 行）。文件头写明两条硬约束：不引用任何外部资源（无 `@import`、无 Google Fonts、无 CDN，字体退到本机栈）、配色沿用 `src/index.css` 的 light「Green Deck」令牌。含报头/摘要统计/告警框（warn·err·info·ok）/血缘图与图例/卡片网格与徽标/kv 与表格/`pre.sql`/`details`/report 正文/页脚，以及 `@media print`（打印或另存 PDF 时单列、去掉滚动裁剪） |
+| `src/utils/manifest-labels.ts` | Manifest 展示措辞的单一来源（约 35 行）：`MANIFEST_ORIGIN_LABELS`、`manifestOriginLabel()`、`manifestModelLabel()`（`provider / id → responseModel`，人工执行为 `—（人工执行）`）。节点「详情」面板与交付报告附录 A 共用，避免同一份留痕两种叫法；纯常量与纯函数，不依赖 React |
 
 ### 脚本与样例产物
 
 | 文件 | 摘要 |
 |------|------|
-| `scripts/verify-export-report.ts` | 可复跑验证脚本（`npm run verify:export`，622 行 / **116 项断言**，失败退出码 1）。构造含全部五类节点的样例画布（2 源表 / 1 sqlQuery / 4 dataFrame 覆盖漂移·失败·一致·无留痕 / 2 chart 覆盖成功·降级 / 1 diff 报告；9 条有效血缘边 + 1 悬空边 + 1 自环），直接调纯函数产出 HTML 并分七节断言。不调 govio-cli、不调模型、不读数据内容、不碰 `.govio/` |
-| `docs/tasks/T1.4-canvas-export/sample-export.html` | 上述脚本产出的样例交付报告（43,877 字节，10 节点 / 9 连线）。导出时间固定 → 逐字节可复现，可双击在浏览器离线打开人工复核 |
+| `scripts/verify-export-report.ts` | 可复跑验证脚本（`npm run verify:export`，交付时约 620 行 / **116 项断言**，R1 审查后增至 124 项且默认不再改写受跟踪样例（需 `--write`），见 docs/tasks/REVIEW-R1-fixes.md；失败退出码 1）。构造含全部五类节点的样例画布（2 源表 / 1 sqlQuery / 4 dataFrame 覆盖漂移·失败·一致·无留痕 / 2 chart 覆盖成功·降级 / 1 diff 报告；9 条有效血缘边 + 1 悬空边 + 1 自环），直接调纯函数产出 HTML 并分七节断言。不调 govio-cli、不调模型、不读数据内容、不碰 `.govio/` |
+| `docs/tasks/T1.4-canvas-export/sample-export.html` | 上述脚本产出的样例交付报告（约 44 KB，10 节点 / 9 连线）。导出时间固定且脚本钉住 TZ=Asia/Shanghai → 同时区下逐字节可复现，可双击在浏览器离线打开人工复核；R1 审查后由 `--write` 重新生成（审计来源改为 basename） |
 
 ### 文档
 

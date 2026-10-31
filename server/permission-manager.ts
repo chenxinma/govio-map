@@ -107,6 +107,10 @@ export class PermissionManager {
       this.auditMode(false, "会话重置：全局放行随会话一起失效", pendingAffected);
     }
     this.denyPending("会话已重置", "reset");
+    // 决策索引也随会话失效：否则切会话后命令文本兜底会把新会话的执行错绑到
+    // 旧会话的 decisionId（交付报告附录 B 里查无此 ID）。
+    this.decisionsByCommand.clear();
+    this.decisionsByToolCall.clear();
   }
 
   denyPending(reason: string, source: PermissionDecisionSource = "abort"): void {
@@ -148,7 +152,11 @@ export class PermissionManager {
 
   resolve(requestId: string, response: PermissionDecisionInput): void {
     const entry = this.pending.get(requestId);
-    if (!entry) return;
+    if (!entry) {
+      // 决策晚于超时/中止/重置到达：不再影响执行，但要留痕（见 auditLateDecision）。
+      this.auditLateDecision(requestId, response);
+      return;
+    }
     clearTimeout(entry.timer);
     this.pending.delete(requestId);
     this.auditDecision(entry, response, "user");
@@ -248,6 +256,29 @@ export class PermissionManager {
       acceptAll,
       reason,
       pendingAffected,
+    });
+  }
+
+  /**
+   * 决策晚于超时/中止/重置到达时补记一条「未生效」的决策记录。
+   *
+   * 原决策（timeout/abort/reset 的 deny）已经生效并记账，这条迟到的用户决策不会
+   * 改变执行结果，但必须留痕——否则「用户点了却没反应」在审计里查无此事。
+   * 只接受 `pd-` 形态的 decisionId，避免伪造/垃圾 requestId 灌日志；命令原文此时
+   * 已不在挂起表里，如实记为空串。静默、不抛错（appendPermissionAudit 自身兜底）。
+   */
+  private auditLateDecision(requestId: string, response: PermissionDecisionInput): void {
+    if (!requestId.startsWith("pd-")) return;
+    appendPermissionAudit({
+      type: "permission_decision",
+      at: new Date().toISOString(),
+      decisionId: requestId,
+      decision: response.decision,
+      command: "",
+      ...(response.editedCommand ? { editedCommand: response.editedCommand } : {}),
+      reason: "决策晚于超时，未生效",
+      source: "user",
+      elapsedMs: 0,
     });
   }
 }

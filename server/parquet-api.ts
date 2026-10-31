@@ -26,9 +26,10 @@ const CORS_HEADERS = {
 /**
  * 从当前会话的 canvas sidecar（`<session-file>.canvas.json`）里取节点固化的 Manifest。
  *
- * 复跑的 SQL 只认服务端持久化的留痕，不接受前端传入：否则「一键复跑」会退化成
- * 「重跑前端当前输入」，失去可复现验证的意义。sidecar 由前端 `canvas_save`
- * 在节点变更后 1s 内写入，所以刚建好的节点也能读到。
+ * 复跑的 SQL 不接受 HTTP 请求体传入：否则「一键复跑」会退化成「重跑前端当前
+ * 输入」，失去可复现验证的意义。注意这是可复现性约束而非安全边界：sidecar 本身
+ * 是本机会话文件（由前端 `canvas_save` 写入），防篡改属 X1 安全基线范围。
+ * sidecar 在节点变更后 1s 内写入，所以刚建好的节点也能读到。
  */
 function readManifestFromCanvas(nodeId: string): AnalysisManifest | null {
   try {
@@ -189,7 +190,8 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
   //     （审计记录里本来就只有命令原文与决策，见 T1.3 的记录模型）
   //  2. **只限当前会话**：sessionFile 取自服务端会话单例，不接受请求传路径，
   //     因此没有目录穿越或越权读其他会话的可能
-  //  3. **只过滤不加工**：decisionIds 只用来挑选返回哪些条目，缺省时返回本会话全部记录
+  //  3. **只过滤不加工**：decisionIds 必填（缺失/空 → 400），只用来挑选返回哪些条目；
+  //     不提供「缺省全量返回当前会话命令历史」的能力，超限时显式标记 truncated
   if (req.url?.startsWith("/api/permission-audit") && req.method === "GET") {
     const send = (status: number, payload: unknown) => {
       res.writeHead(status, { "Content-Type": "application/json", ...CORS_HEADERS });
@@ -202,20 +204,27 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
         send(409, { error: "当前没有已落盘的会话，读不到权限审计 sidecar", entries: [] });
         return true;
       }
-      const all = readPermissionAudit(sessionFile);
       const url = new URL(req.url, "http://localhost");
-      const ids = (url.searchParams.get("decisionIds") ?? "")
+      const rawIds = (url.searchParams.get("decisionIds") ?? "")
         .split(",")
         .map((s) => s.trim())
-        .filter(Boolean)
-        .slice(0, MAX_AUDIT_DECISION_IDS);
+        .filter(Boolean);
+      if (rawIds.length === 0) {
+        send(400, { error: "Missing required parameter: decisionIds", entries: [] });
+        return true;
+      }
+      const ids = rawIds.slice(0, MAX_AUDIT_DECISION_IDS);
+      const truncated = rawIds.length > ids.length;
+      const all = readPermissionAudit(sessionFile);
       const wanted = new Set(ids);
-      const entries = wanted.size > 0 ? all.filter((e) => wanted.has(e.decisionId)) : all;
+      const entries = all.filter((e) => wanted.has(e.decisionId));
       send(200, {
         sessionId: session?.sessionId ?? "",
         sessionFile,
         total: all.length,
-        requested: ids.length,
+        // 实际请求的 ID 数（截断前）；发生截断时 truncated=true，消费方必须如实告知
+        requested: rawIds.length,
+        ...(truncated ? { truncated: true } : {}),
         entries,
       });
     } catch (err) {

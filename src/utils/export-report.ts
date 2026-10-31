@@ -120,10 +120,14 @@ export interface AuditAppendix {
   /** 不可用 / 无记录的原因，直接渲染进报告，不静默省略 */
   reason?: string;
   sessionId?: string;
-  /** 审计 sidecar 路径（`<session-file>.audit.jsonl` 的主体），写进报告以便质证 */
+  /** 审计 sidecar 路径（`<session-file>.audit.jsonl` 的主体），写进报告以便质证；渲染时只取 basename（不外泄操作者本机目录结构） */
   sessionFile?: string;
   /** 本次请求过滤用的 decisionId（来自画布节点的 Manifest） */
   requestedDecisionIds: string[];
+  /** 服务端实际参与过滤的 decisionId 数（截断前）；缺失时退回 requestedDecisionIds.length */
+  serverRequested?: number;
+  /** 服务端因上限（500 个）发生截断时为 true，报告必须如实告知 */
+  truncated?: boolean;
   /** 会话审计里的记录总数（未过滤时等于 entries.length） */
   totalInSession?: number;
   entries: AuditEntryView[];
@@ -200,6 +204,16 @@ export function formatTimestamp(iso?: string): string {
 function formatDuration(ms?: number): string {
   if (typeof ms !== 'number' || !Number.isFinite(ms)) return '—';
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
+}
+
+/**
+ * 审计 sidecar 的展示名：只取 basename。
+ * 交付报告会发给其他人，服务端返回的 sessionFile 是本机绝对路径，
+ * 原样渲染会外泄操作者的目录结构（含用户名）；质证只需文件名可对应。
+ */
+export function auditSidecarLabel(sessionFile: string): string {
+  const base = String(sessionFile ?? '').split(/[\\/]/).pop() || String(sessionFile ?? '');
+  return `${base}.audit.jsonl`;
 }
 
 function dataOf<T>(node: Node): T {
@@ -533,6 +547,8 @@ interface CardContext {
   chartResults: ChartRenderMap;
   /** 附录 B 里出现的 decisionId（决定卡片/附录 A 上的 ID 是否可点） */
   auditIds: Set<string>;
+  /** 其中由全局放行（accept-all）自动批准的 decisionId：徽标要区分人工确认与系统代答 */
+  autoApprovedIds: Set<string>;
 }
 
 function nodeLink(id: string, ctx: CardContext): string {
@@ -810,7 +826,11 @@ function renderNodeCard(node: Node, ctx: CardContext): string {
     if (hasDrift(df)) badges.push(badge('漂移', 'drift'));
     else if (latest?.outcome === 'identical') badges.push(badge('复现一致', 'ok'));
     else if (latest?.outcome === 'error') badges.push(badge('复跑失败', 'err'));
-    if (df.manifest?.permissionDecisionId) badges.push(badge('已确认取数'));
+    const pdid = df.manifest?.permissionDecisionId;
+    if (pdid) {
+      // 区分「用户亲手确认」与「Accept All 自动放行」；拿不到审计条目时用中性措辞
+      badges.push(badge(ctx.autoApprovedIds.has(pdid) ? '已过确认门（自动放行）' : '已过确认门'));
+    }
   }
   const body =
     kind === 'sourceTable' ? sourceTableBody(dataOf<SourceTableNodeData>(node))
@@ -992,13 +1012,16 @@ export function renderAppendixB(audit: AuditAppendix | null | undefined, nodes: 
 
   const entries = audit.entries ?? [];
   const source = audit.sessionFile
-    ? `<code>${esc(audit.sessionFile)}.audit.jsonl</code>`
+    ? `<code>${esc(auditSidecarLabel(audit.sessionFile))}</code>`
     : '当前会话的审计 sidecar';
+  // 过滤数用服务端实际参与过滤的数（可能被 500 上限截断），不拿前端请求数充数
+  const filterCount = audit.serverRequested ?? audit.requestedDecisionIds.length;
   const intro =
     `<p class="note">来源：${source}（服务端只读返回，仅限当前会话` +
     `${audit.sessionId ? ` <code>${esc(audit.sessionId)}</code>` : ''}）。` +
     `会话内共 ${esc(groupDigits(audit.totalInSession ?? entries.length))} 条记录，本附录带出与画布节点 Manifest 的 ` +
-    `<code>permissionDecisionId</code> 关联的 ${entries.length} 条（按 ${audit.requestedDecisionIds.length} 个 decisionId 过滤）。` +
+    `<code>permissionDecisionId</code> 关联的 ${entries.length} 条（按 ${filterCount} 个 decisionId 过滤）。` +
+    (audit.truncated ? '<strong>⚠ 审计通道截断，仅带出前 500 个 decisionId；未带出的部分请回会话审计 sidecar 查证。</strong>' : '') +
     `记录里只有命令原文与决策，<strong>不含任何查询结果</strong>。</p>`;
 
   if (!entries.length) {
@@ -1204,7 +1227,7 @@ function renderFooter(input: DeliveryReportInput, stats: ReportStats): string {
 <p>校验和算法 ${esc(checksumNote)}（见 <code>docs/tasks/T1.1-analysis-manifest/design.md</code>）；` +
   `复跑与漂移语义见 <code>docs/tasks/T1.2-dataframe-rerun-drift/design.md</code>；` +
   `权限审计记录模型见 <code>docs/tasks/T1.3-permission-audit-trail/design.md</code>。</p>
-${input.audit?.sessionFile ? `<p>审计来源：<code>${esc(input.audit.sessionFile)}.audit.jsonl</code>（只读，仅当前会话）。</p>` : ''}
+${input.audit?.sessionFile ? `<p>审计来源：<code>${esc(auditSidecarLabel(input.audit.sessionFile))}</code>（只读，仅当前会话）。</p>` : ''}
 </footer>`;
 }
 
@@ -1231,12 +1254,19 @@ export function buildDeliveryReportHtml(input: DeliveryReportInput): string {
     downByNode.set(e.source, down);
   }
   const auditIds = new Set((input.audit?.entries ?? []).map((e) => e.decisionId));
+  const autoApprovedIds = new Set(
+    (input.audit?.entries ?? [])
+      .filter((e) => (e.type === 'permission_decision' && e.source === 'accept-all')
+        || (e.type === 'permission_request' && e.gate === 'accept-all'))
+      .map((e) => e.decisionId),
+  );
   const ctx: CardContext = {
     nodesById,
     upByNode,
     downByNode,
     chartResults: input.chartResults ?? {},
     auditIds,
+    autoApprovedIds,
   };
 
   const stats = computeStats({ ...input, nodes, edges }, layout);
@@ -1377,10 +1407,9 @@ export function collectPermissionDecisionIds(nodes: Node[]): string[] {
 export async function fetchAuditAppendix(decisionIds: string[]): Promise<AuditAppendix> {
   const base: AuditAppendix = { available: false, requestedDecisionIds: decisionIds, entries: [] };
   if (!decisionIds.length) {
-    return {
-      ...base,
-      reason: '画布上没有任何节点带 permissionDecisionId：这些结果都没有经过取数确认门（不带 -o 的加载、SQL 编辑器人工执行、复跑等），因此没有可带出的确认记录。',
-    };
+    // 没有任何节点过确认门：不需要请求审计通道，也不是「通道不可用」。
+    // available: true + 空 entries 让 renderAppendixB 走「没有关联记录」的如实说明分支。
+    return { ...base, available: true, totalInSession: 0 };
   }
   try {
     const url = `${apiBase()}/api/permission-audit?decisionIds=${encodeURIComponent(decisionIds.join(','))}`;
@@ -1389,6 +1418,8 @@ export async function fetchAuditAppendix(decisionIds: string[]): Promise<AuditAp
       sessionId?: string;
       sessionFile?: string;
       total?: number;
+      requested?: number;
+      truncated?: boolean;
       entries?: unknown;
       error?: string;
     } | null;
@@ -1400,6 +1431,8 @@ export async function fetchAuditAppendix(decisionIds: string[]): Promise<AuditAp
       sessionId: payload.sessionId || undefined,
       sessionFile: payload.sessionFile || undefined,
       requestedDecisionIds: decisionIds,
+      serverRequested: typeof payload.requested === 'number' ? payload.requested : undefined,
+      truncated: payload.truncated === true,
       totalInSession: typeof payload.total === 'number' ? payload.total : undefined,
       entries: parseAuditEntries(payload.entries),
     };

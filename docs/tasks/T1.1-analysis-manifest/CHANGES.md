@@ -1,6 +1,6 @@
 # T1.1 改动清单
 
-分支 `feature/phase1-trusted-analysis`。共 16 个文件（4 新增 / 12 修改）。
+分支 `feature/phase1-trusted-analysis`。共 18 个文件（7 新增 / 11 修改；三件套交付物按 3 个文件计，此前误按 1 行计为 16）。
 
 ## 新增文件
 

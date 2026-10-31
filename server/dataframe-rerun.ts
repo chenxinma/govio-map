@@ -62,17 +62,24 @@ export interface RerunOptions {
 /**
  * 复跑前置校验：Manifest 必须固化了「SQL + 数据源 + DataFrame 名」才可复跑。
  * 返回 null 表示可复跑，否则返回不可复跑的原因（直接给用户看）。
+ *
+ * Manifest 来自本机 canvas sidecar（客户端 canvas_save 写入，未做 schema 校验），
+ * 执行前先做形状校验：字段必须是字符串，dfName 必须是 CLI 安全标识符——
+ * 避免畸形留痕把非字符串传进 CLI 参数或借 dfName 注入额外参数。
  */
 export function rerunBlockReason(manifest: AnalysisManifest | null | undefined): string | null {
   if (!manifest) return "该节点没有分析留痕（Manifest），无法复跑";
-  if (!manifest.sql.trim()) {
-    return `该节点的留痕未固化 SQL（origin=${manifest.origin}），无法复跑`;
+  if (typeof manifest.sql !== "string" || !manifest.sql.trim()) {
+    return `该节点的留痕未固化 SQL（origin=${String(manifest.origin)}），无法复跑`;
   }
-  if (!manifest.datasource.trim()) {
+  if (typeof manifest.datasource !== "string" || !manifest.datasource.trim()) {
     return "该节点的留痕未固化数据源，无法复跑";
   }
-  if (!manifest.dfName) {
+  if (typeof manifest.dfName !== "string" || !manifest.dfName) {
     return "该节点的留痕缺少 DataFrame 名，无法复跑";
+  }
+  if (!/^[A-Za-z0-9_]+$/.test(manifest.dfName)) {
+    return "该节点留痕的 DataFrame 名含非法字符（仅限字母/数字/下划线），无法复跑";
   }
   return null;
 }

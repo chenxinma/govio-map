@@ -97,14 +97,14 @@ console.log("\n[1] 复跑参数来自 Manifest 固化的 SQL（非当前输入�
     calls.push(args);
     return args[1] === "release" ? JSON.stringify({ success: true }) : loadOutput(1200);
   };
-  // 「当前输入」：SQL 编辑器里用户正在改的另一份 SQL，绝不能出现在复跑参数里
-  const currentEditorInput = "SELECT * FROM something_else";
   const record = await rerunDataFrame(manifest, { runCli: runner, sessionId: "sess-rerun", now: () => FIXED_NOW });
 
   const loadArgs = calls[0] ?? [];
   check("只调用了 load + release 两条命令", calls.length === 2 && loadArgs[1] === "load" && calls[1][1] === "release");
   check("SQL 全文作为单个数组参数原样传入（含换行/引号/中文）", loadArgs[loadArgs.length - 1] === SQL);
-  check("未使用任何当前输入", !loadArgs.some((a) => a.includes("something_else")) && currentEditorInput !== SQL);
+  // 结构性保证：rerunDataFrame 的入参只有 Manifest，不存在「当前输入」通道；
+  // 这里断言 argv 里没有 Manifest 之外的 SQL 痕迹
+  check("argv 未混入 Manifest 之外的 SQL", !loadArgs.some((a) => a.includes("something_else")));
   check("数据源取自 Manifest", loadArgs.includes("--datasource") && loadArgs[loadArgs.indexOf("--datasource") + 1] === "sales");
   check("写入临时 DataFrame 名而非原名（不覆盖已交付结果）", loadArgs[loadArgs.indexOf("--name") + 1].startsWith(RERUN_TMP_PREFIX) && !loadArgs.includes("df_orders"));
   check("临时名是 CLI 安全标识符", /^[a-z0-9_]+$/.test(loadArgs[loadArgs.indexOf("--name") + 1]));
@@ -113,6 +113,15 @@ console.log("\n[1] 复跑参数来自 Manifest 固化的 SQL（非当前输入�
   check("tempDfNameFor 归一化非法字符", tempDfNameFor("DF-Orders 表", FIXED_NOW).startsWith(RERUN_TMP_PREFIX) && /^[a-z0-9_]+$/.test(tempDfNameFor("DF-Orders 表", FIXED_NOW)));
   check("记录带会话 ID / 临时名 / 完成时间", record.sessionId === "sess-rerun" && record.tempDfName === loadArgs[loadArgs.indexOf("--name") + 1] && record.rerunAt === FIXED_NOW.toISOString());
   check("不可复跑的 Manifest 被拦住", rerunBlockReason({ ...manifest, sql: "" }) !== null && rerunBlockReason({ ...manifest, datasource: "" }) !== null && rerunBlockReason(manifest) === null);
+  // 畸形留痕（sidecar 由客户端写入，未做 schema 校验）的形状防御
+  check("非字符串 sql/datasource 被拦住（不把非字符串传进 CLI 参数）",
+    rerunBlockReason({ ...manifest, sql: 42 as unknown as string }) !== null
+    && rerunBlockReason({ ...manifest, datasource: { name: "sales" } as unknown as string }) !== null);
+  check("dfName 含非法字符被拦住（仅限字母/数字/下划线）",
+    rerunBlockReason({ ...manifest, dfName: "df orders" }) !== null
+    && rerunBlockReason({ ...manifest, dfName: "df_x;touch pwned" }) !== null
+    && rerunBlockReason({ ...manifest, dfName: 7 as unknown as string }) !== null
+    && rerunBlockReason({ ...manifest, dfName: "df_ok" }) === null);
   check("无 SQL 的节点不渲染复跑按钮（canRerun）", canRerun({ manifest } as unknown as DataFrameNodeData) === true && canRerun({ manifest: { ...manifest, sql: "  " } } as unknown as DataFrameNodeData) === false);
 }
 
@@ -228,6 +237,7 @@ const driftRecord: RerunRecord = await rerunDataFrame(manifest, {
   const afterIdentical = withRerunRecord(nodeData, identicalRecord);
   check("一致 → 记录追加到 rerunHistory（最新在前）", afterIdentical.rerunHistory?.[0] === identicalRecord);
   check("一致 → 刷新 manifest.executedAt 为复跑时间", afterIdentical.manifest?.executedAt === FIXED_NOW.toISOString());
+  check("一致 → 首次固化时间 firstExecutedAt 不被刷新覆盖", afterIdentical.manifest?.firstExecutedAt === "2026-10-30T22:30:00.000Z");
   check("一致 → 原执行时间保留在记录 before 里", afterIdentical.rerunHistory?.[0].before.executedAt === "2026-10-30T22:30:00.000Z");
   check("一致 → 不显示漂移警告", hasDrift(afterIdentical) === false);
   check("一致 → Manifest 其余字段未被改写", afterIdentical.manifest?.sql === SQL && afterIdentical.manifest?.checksum?.schemaHash === manifest.checksum?.schemaHash);
@@ -248,6 +258,13 @@ const driftRecord: RerunRecord = await rerunDataFrame(manifest, {
     capped = withRerunRecord(capped, { ...identicalRecord, rerunAt: new Date(FIXED_NOW.getTime() + i * 1000).toISOString() });
   }
   check(`记录条数封顶 ${MAX_RERUN_HISTORY}（最新在前）`, capped.rerunHistory?.length === MAX_RERUN_HISTORY && capped.rerunHistory?.[0].rerunAt === new Date(FIXED_NOW.getTime() + (MAX_RERUN_HISTORY + 4) * 1000).toISOString());
+  check("连续复跑把历史顶满后，firstExecutedAt 仍可回溯首次交付时间", capped.manifest?.firstExecutedAt === "2026-10-30T22:30:00.000Z");
+
+  // 旧留痕没有 firstExecutedAt 字段：首次一致复跑时从 record.before 补齐
+  const legacy = { ...manifest } as AnalysisManifest & { firstExecutedAt?: string };
+  delete legacy.firstExecutedAt;
+  const afterLegacy = withRerunRecord({ ...nodeData, manifest: legacy }, identicalRecord);
+  check("旧留痕缺 firstExecutedAt 时从 before.executedAt 补齐", afterLegacy.manifest?.firstExecutedAt === "2026-10-30T22:30:00.000Z");
 }
 
 // ── 5. store 全链路 + canvas sidecar 往返 ──────────────────────────────────
