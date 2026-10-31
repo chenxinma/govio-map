@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-31T21:40:49+08:00",
+  "updatedAt": "2026-10-31T22:47:47+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -480,6 +480,15 @@
           "note": "主 session 独立验收通过：commit 81441c9；docs/USER-MANUAL.md 368 行/12 节/132 表格行；Phase2/3 关键词与内部术语双零命中（grep 复核）；抽查对照表 3 组条目（导出按钮禁用态/漂移标签/复跑四态）与权限卡章节均与代码实际行为一致；build/lint 不受影响。遗留 5 项见 design.md §4，其中 README 安装口径不一致与 /clear-canvas 文案不符两项建议后续单独小修"
         }
       ]
+    },
+    {
+      "id": "X7",
+      "title": "启动时 cwd 规范大小写（Windows 会话恢复静默失败修复）",
+      "status": "pending",
+      "dependsOn": [],
+      "note": "截图任务中发现的真 bug：会话头 cwd 记为 D:/Work/...（大写 W，Electron/历史启动路径），dev server process.cwd() 为 D:/work/...（磁盘规范小写），pi findMostRecentSession 的 cwd 过滤为大小写敏感字符串比较 → 全部历史会话落选 → 后端静默创建空会话（画布空白无报错）。修复方向：backend 启动时（agentSetup 前）在 win32 上用 fs.realpathSync.native 等取磁盘规范大小写并 process.chdir，或传入与历史会话一致的 cwd；补回归断言（构造大小写不同的伪会话头验证 continueRecent 命中）。",
+      "outputDir": "docs/tasks/X7-cwd-case-normalization/",
+      "history": []
     }
   ],
   "pullRequests": {
