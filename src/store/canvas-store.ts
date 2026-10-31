@@ -242,6 +242,11 @@ export const useCanvasStore = create<CanvasStore>()(
             tableName: event.tableName || "",
             database: event.database || "",
             fields: event.fields || [],
+            // 数据源标注字段按需透传（T2.0）：缺失时不写键，旧节点形状与 UI 回退不变
+            ...(event.datasource ? { datasource: event.datasource } : {}),
+            ...(event.datasourceType ? { datasourceType: event.datasourceType } : {}),
+            ...(event.schema ? { schema: event.schema } : {}),
+            ...(event.qualifiedName ? { qualifiedName: event.qualifiedName } : {}),
           },
         };
         break;

@@ -52,6 +52,13 @@ const nodeTypes: NodeTypes = {
 | database | string | 数据库名 |
 | fields | TableField[] | 字段列表 |
 | rowCount? | number | 行数 |
+| datasource? | string | 数据源名（observe config.yaml datasources 键，即 `observe load --datasource` 取值），T2.0 |
+| datasourceType? | DatasourceType | 数据源类型（duckdb/postgres/mysql/oracle/hive/trino/sqlalchemy-generic/unknown），决定 SQL 表引用段式，T2.0 |
+| schema? | string | 所属 schema（取图谱 PhysicalTable.schema），T2.0 |
+| qualifiedName? | string | SQL 中应使用的全限定表名（duckdb 三段式 catalog.schema.table 等），T2.0 |
+
+四个 T2.0 字段全部可选：取值来源分层（图谱 → 数据源声明/config.yaml → 省略，禁止猜测）与各类型 SQL
+引用规则见 `docs/specs/11-datasource-schema-conventions.md`；旧节点无这些字段，UI 回退旧显示。
 
 ### SQLQueryNodeData
 
@@ -140,9 +147,10 @@ type CanvasNodeData = SourceTableNodeData | SQLQueryNodeData | DataFrameNodeData
 
 ### 布局
 
-1. **头部**：紫色左边框，Database 图标 + 表名，数据库 + 行数（等宽大写 + 1.2px 字距）
-2. **字段列表**：默认显示前 6 个字段，PK/FK 标签，字段名 + 类型；超出可展开/折叠
-3. **操作栏**：引用按钮 + 删除按钮
+1. **头部**：紫色左边框，Database 图标 + 表名，右侧 datasourceType 徽标（node-source/10 紫底，等宽大写，字段缺失时不渲染），数据库 + 行数（等宽大写 + 1.2px 字距）
+2. **全限定名行**（有 qualifiedName 时渲染）：等宽字体展示 SQL 应使用的全限定表名 + 一键复制按钮（复制后短暂显示对勾）；字段缺失时整行不渲染（回退旧显示）
+3. **字段列表**：默认显示前 6 个字段，PK/FK 标签，字段名 + 类型；超出可展开/折叠
+4. **操作栏**：引用按钮 + 删除按钮
 
 ### 字段标签
 

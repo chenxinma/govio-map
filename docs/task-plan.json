@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-31T18:43:02+08:00",
+  "updatedAt": "2026-10-31T19:08:49+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -213,7 +213,7 @@
           "id": "T2.0",
           "title": "SourceTable 数据源类型与 schema 标注约定",
           "kr": "T2.1 前置（用户指令 2026-10-31）",
-          "status": "pending",
+          "status": "done",
           "dependsOn": [],
           "outputDir": "docs/tasks/T2.0-sourcetable-datasource-type/",
           "scope": "sourceTable 节点保存数据源类型（duckdb/postgres/mysql/oracle/hive/trino/sqlalchemy-generic）与全限定名 qualifiedName；govio_create_source_table 工具参数与描述扩展（取值来源：图谱 Datasource/PhysicalTable 查询或数据源声明文件）；节点 UI 显示类型徽标与可复制全限定名；新建 docs/specs/11-datasource-schema-conventions.md 说明各数据源类型的 schema 标注方式（duckdb 三段式 catalog.schema.table 含 chocolate 实证案例；postgres/mysql 两段式 schema.table）；旧节点无新字段时回退原显示（向后兼容）。动机案例：docs/tasks/BUGFIX-load-parse.md（agent 盲猜表名三次试错）。",
@@ -225,7 +225,20 @@
             "新增 scripts/verify-source-table.ts（事件流 → 节点 → sidecar 往返 + 旧节点兼容），纳入 npm run verify 聚合与 tsconfig.scripts",
             "npm run build / lint / verify 全绿；三件套交付物齐全"
           ],
-          "history": []
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-10-31T18:52:00+08:00",
+              "by": "worker",
+              "note": "开始实现：SourceTableNodeData 增 datasource/datasourceType/schema/qualifiedName 可选字段 + govio_create_source_table 参数与描述扩展 + 事件链贯通 + 节点 UI 徽标/复制 + specs/11 约定文档 + verify-source-table 脚本"
+            },
+            {
+              "status": "done",
+              "at": "2026-10-31T19:08:49+08:00",
+              "by": "worker",
+              "note": "实现完成：SourceTableNodeData 增 DATASOURCE_TYPES/DatasourceType + datasource/datasourceType/schema/qualifiedName 可选字段（缺失不写键）；govio_create_source_table 参数全 Optional 扩展 + description 取值来源分层指导（图谱/声明/config.yaml，禁止猜测拿不到就省略）+ 枚举外类型丢弃；事件链 queue→ws→canvas-service→store 贯通；SourceTableNode 类型徽标 + qualifiedName 一键复制（缺字段回退旧显示）；新增 docs/specs/11-datasource-schema-conventions.md（duckdb 三段式含 chocolate 实证报错对照、postgres/mysql/通用 SQLAlchemy 规则）；specs/02 同步。验证：build ✓ lint 0 error verify 聚合 manifest 61/rerun 71/audit 97/export 126 无回归 + verify:source-table 39/39。交付物 docs/tasks/T2.0-sourcetable-datasource-type/{design,CHANGES,verification}.md；遗留问题 7 项见 design.md 第 7 节"
+            }
+          ]
         },
         {
           "id": "T2.1",

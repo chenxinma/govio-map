@@ -1,5 +1,6 @@
 import { EventEmitter } from "events";
 import type { AnalysisManifest } from "../src/types/manifest.js";
+import type { DatasourceType } from "../src/types/index.js";
 
 export type GovioNodeType = "sqlQuery" | "dataFrame" | "report" | "sourceTable" | "chart";
 
@@ -24,6 +25,12 @@ export interface GovioNodeCreateEvent {
   tableName?: string;
   database?: string;
   fields?: Array<{ name: string; type: string; description?: string; references?: { table: string; field: string } }>;
+  // sourceTable 数据源标注（T2.0）：由 govio_create_source_table 透传，字段语义与取值来源
+  // 见 src/types/index.ts 的 SourceTableNodeData；缺失时不写键（旧节点形状不变）。
+  datasource?: string;
+  datasourceType?: DatasourceType;
+  schema?: string;
+  qualifiedName?: string;
   // chart (Plotly figure: data = traces, layout optional; type = chart type
   // label for the node header, set by resolveChartConfig)
   config?: {

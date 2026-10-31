@@ -1,4 +1,4 @@
-import type { AnalysisManifest } from '../types';
+import type { AnalysisManifest, DatasourceType } from '../types';
 
 export interface CanvasEvent {
   type: "govio_node_create";
@@ -18,6 +18,11 @@ export interface CanvasEvent {
   tableName?: string;
   database?: string;
   fields?: Array<{ name: string; type: string; nullable: boolean; description?: string; isPrimaryKey?: boolean; isForeignKey?: boolean; references?: { table: string; field: string } }>;
+  /** sourceTable 数据源标注（T2.0）：字段语义见 SourceTableNodeData，缺失时不建键 */
+  datasource?: string;
+  datasourceType?: DatasourceType;
+  schema?: string;
+  qualifiedName?: string;
   referencedNodes?: Array<{ nodeId: string; label: string }>;
   // chart (Plotly figure)
   config?: {

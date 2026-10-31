@@ -1,6 +1,6 @@
 import { memo, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Database, Quote, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Database, Quote, Trash2, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react';
 import type { SourceTableNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
 
@@ -9,6 +9,7 @@ function SourceTableNode({ data, id }: NodeProps) {
   const addReference = useCanvasStore((s) => s.addReference);
   const deleteNodes = useCanvasStore((s) => s.deleteNodes);
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   const visibleFields = expanded ? nodeData.fields : nodeData.fields.slice(0, 6);
   const remaining = nodeData.fields.length - 6;
 
@@ -18,12 +19,49 @@ function SourceTableNode({ data, id }: NodeProps) {
         <div className="flex items-center gap-2 mb-1">
           <Database size={14} className="text-node-source" />
           <span className="text-sm font-medium text-text-primary">{nodeData.tableName}</span>
+          {/* 数据源类型徽标（T2.0）：旧节点无 datasourceType 时不渲染，回退旧显示 */}
+          {nodeData.datasourceType && (
+            <span
+              className="ml-auto flex-shrink-0 text-[10px] px-1 py-0.5 rounded bg-node-source/10 text-node-source font-mono uppercase"
+              title={nodeData.datasource ? `数据源：${nodeData.datasource}` : '数据源类型'}
+            >
+              {nodeData.datasourceType}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3 text-xs text-text-muted font-mono uppercase tracking-[1.2px]">
           <span>{nodeData.database}</span>
           <span>{nodeData.rowCount?.toLocaleString()} rows</span>
         </div>
       </div>
+
+      {/* SQL 全限定表名（T2.0）：一键复制，缺失时不渲染，不出现 undefined 文案 */}
+      {nodeData.qualifiedName && (
+        <div className="border-t border-border-subtle px-4 py-1.5 flex items-center gap-1.5">
+          <span
+            className="flex-1 min-w-0 truncate text-[11px] font-mono text-text-muted"
+            title={`SQL 表引用：${nodeData.qualifiedName}`}
+          >
+            {nodeData.qualifiedName}
+          </span>
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              try {
+                await navigator.clipboard.writeText(nodeData.qualifiedName!);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              } catch {
+                // Clipboard unavailable (e.g. insecure context); ignore.
+              }
+            }}
+            className="flex-shrink-0 flex items-center p-0.5 rounded text-text-dim hover:text-brand hover:bg-brand/5 transition-colors"
+            title="复制全限定名"
+          >
+            {copied ? <Check size={11} className="text-brand" /> : <Copy size={11} />}
+          </button>
+        </div>
+      )}
 
       <div className="border-t border-border-subtle px-4 py-2">
         {visibleFields.map((field) => (

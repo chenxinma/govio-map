@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import { permissionManager } from "../permission-manager.js";
+import { DATASOURCE_TYPES, type DatasourceType } from "../../src/types/index.js";
 import {
   buildManifest,
   piSessionContext,
@@ -12,6 +13,12 @@ import {
 
 const OBSERVE_LOAD_RE = /\bgovio-cli\s+observe\s+load\b/;
 const OUTPUT_FLAG_RE = /(?:^|\s|=)(?:-o|--output)(?=\s|=|$)/;
+
+/** 枚举外的 datasourceType 取值（如 tds）不落盘：省略字段而非猜测/造値（T2.0） */
+function normalizeDatasourceType(value: string | undefined): DatasourceType | undefined {
+  if (!value) return undefined;
+  return (DATASOURCE_TYPES as readonly string[]).includes(value) ? (value as DatasourceType) : undefined;
+}
 
 export function shouldAskPermission(cmd: string): boolean {
   if (!OBSERVE_LOAD_RE.test(cmd)) return false;
@@ -583,7 +590,11 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "govio_create_source_table",
     label: "Govio Source Table",
-    description: "Create a source table node on the canvas showing the column schema. Each field must carry all three parts from the govio physical-table column query result: column name (column_name), description name (name) and data type (data_type). Call this after querying a PhysicalTable's column structure via govio-cli query.",
+    description:
+      "Create a source table node on the canvas showing the column schema. Each field must carry all three parts from the govio physical-table column query result: column name (column_name), description name (name) and data type (data_type). Call this after querying a PhysicalTable's column structure via govio-cli query. " +
+      "Datasource annotation (datasource/datasourceType/schema/qualifiedName) must come from authoritative sources, NEVER guessed: the graph query result (PhysicalTable `schema`/`full_table_name`; Datasource node `datasource_name`/`source_type` when present) or the datasource declaration (meta datasource file `source_type`; observe config.yaml datasources url scheme, e.g. duckdb:// means duckdb). " +
+      "qualifiedName is the table reference to use inside SQL: duckdb needs three-part catalog.schema.table (e.g. chocolate.chocolate.dim_product - a bare table name fails with 'does not exist' and two parts with 'Ambiguous reference'), postgres uses schema.table, mysql uses the bare table name or db.table. " +
+      "If a value cannot be obtained from those sources, OMIT the parameter instead of inventing one.",
     parameters: Type.Object({
       tableName: Type.String({ description: "Physical table name `full_table_name`" }),
       database: Type.Optional(Type.String({ description: "Database name" })),
@@ -601,17 +612,28 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         }),
         { description: "Column definitions of the table" }
       ),
+      datasource: Type.Optional(Type.String({ description: "数据源名（observe config.yaml 的 datasources 键，即 `observe load --datasource` 的取值，如 'chocolate'）。来源：图谱 Datasource 节点 datasource_name、数据源声明文件或用户指令；拿不到就省略，不得猜测" })),
+      datasourceType: Type.Optional(Type.String({ description: "数据源类型：'duckdb' | 'postgres' | 'mysql' | 'oracle' | 'hive' | 'trino' | 'sqlalchemy-generic' | 'unknown'。来源（不得猜测，拿不到就省略）：图谱 Datasource 节点 source_type、数据源声明文件 source_type、或 observe config.yaml 该数据源 url scheme（duckdb:// → 'duckdb'；其他 SQLAlchemy URL 能判定则填对应类型，判不了填 'sqlalchemy-generic'）" })),
+      schema: Type.Optional(Type.String({ description: "所属 schema，取图谱 PhysicalTable 查询结果的 `schema` 属性（如 'chocolate'）；拿不到就省略，不得猜测" })),
+      qualifiedName: Type.Optional(Type.String({ description: "SQL 中应使用的全限定表名，按 datasourceType 构造：duckdb 三段式 catalog.schema.table（文件库 catalog=库文件名，如 'chocolate.chocolate.dim_product'；裸表名报 does not exist、两段式报 Ambiguous reference）；postgres 两段式 schema.table；mysql 裸表名或 db.table。来源：图谱 PhysicalTable.full_table_name（schema.table）+ 数据源类型按上述规则构造，或查询结果直接给出；构造不出就省略，不得猜测" })),
     }),
     execute: async (_toolCallId, params) => {
+      const datasourceType = normalizeDatasourceType(params.datasourceType);
       pushGovioNode({
         nodeType: "sourceTable",
         title: params.tableName,
         tableName: params.tableName,
         database: params.database || "",
         fields: params.fields,
+        // 数据源标注（T2.0）：仅在 agent 提供了可信取值时透传，缺失不写键
+        ...(params.datasource ? { datasource: params.datasource } : {}),
+        ...(datasourceType ? { datasourceType } : {}),
+        ...(params.schema ? { schema: params.schema } : {}),
+        ...(params.qualifiedName ? { qualifiedName: params.qualifiedName } : {}),
       });
+      const qualified = params.qualifiedName ? `, qualified: ${params.qualifiedName}` : "";
       return {
-        content: [{ type: "text", text: `Created source table node: ${params.tableName} (${params.fields.length} fields)` }],
+        content: [{ type: "text", text: `Created source table node: ${params.tableName} (${params.fields.length} fields${qualified})` }],
         details: {},
       };
     },
