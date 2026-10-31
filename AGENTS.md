@@ -33,9 +33,9 @@ agent（pi 会话）生成/执行 SQL 时必须遵守的硬规则。动机案例
 4. **跨数据源 join 必须走两段式**：一次 `observe load` 只连一个 `--datasource`（CLI 单连接执行、无跨源联邦能力），禁止假设单条 SQL 能引用多个数据源的表。正确做法：分别 `observe load` 各源 DataFrame，再 `observe load --memory --sql "... JOIN ..."` 合并（见 `docs/tasks/CLI-cross-schema-analysis.md` 场景 B）。
 5. **observe load 的 jq 摘要配方必须保留失败信号**：CLI 在 SQL 失败时可能退出码 0 只返回 `{success:false, error}`，摘要只用
    ```bash
-   govio-cli observe load ... 2>&1 | jq '{success, error, name, rows, columns}'
+   govio-cli observe load ... 2>&1 | jq '{success, error, name, rows, columns, column_info}'
    ```
-   旧配方 `{name, rows, columns}` 会把失败投影成全 null、抹掉 `success:false`（BUGFIX-load-parse 诱因之一），禁止再用。
+   旧配方 `{name, rows, columns}` 会把失败投影成全 null、抹掉 `success:false`（BUGFIX-load-parse 诱因之一），禁止再用；也不得省略 `column_info`——否则节点列结构为空且 Manifest 无校验和（列结构是元数据非数据行，体积很小）。服务端对缺 column_info 的摘要输出会用 observe info 回补（fix/df-columns-fallback），但配方本身应带全字段。
 6. **禁止 `head` / `tail` / `sed` 截断 observe load 输出**（既有纪律）：stdout 是完整 JSON，后端依赖它建画布节点并固化 Manifest；控制输出量只用 CLI 自身参数（`observe info --rows 0`、load 不带 `-o`）或上述 jq 字段投影。
 
 ## Commands

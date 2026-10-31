@@ -167,6 +167,17 @@ export function isTrustworthyLoadOutput(load: ObserveLoadOutput | null): boolean
   if (load.success === true) return true;
   return typeof load.rows === "number" || Array.isArray(load.column_info) || Array.isArray(load.schema);
 }
+/**
+ * jq 摘要管道（如 `| jq '{success,error,name,rows,columns}'`）会保留成功信号与行列数，
+ * 但丢掉 `column_info`（列结构）。若直接采用，节点列结构表为空、Manifest 也因无列信息
+ * 而不产出校验和（漂移检测退化为行/列数对比）。此函数用 ObserveStore 的 `observe info`
+ * 结果补列信息；行/列数仍以 load 输出为准。纯函数便于单测；info 为 null 时原样返回。
+ */
+export function enrichLoadOutput(load: ObserveLoadOutput, info: ObserveLoadOutput | null): ObserveLoadOutput {
+  if (Array.isArray(load.column_info) || Array.isArray(load.schema) || !info) return load;
+  const column_info = info.column_info ?? info.schema ?? [];
+  return { ...load, column_info, ...(info.schema ? { schema: info.schema } : {}) };
+}
 
 /**
  * Read DataFrame stats from the ObserveStore. Agent-added shell pipelines
@@ -495,10 +506,13 @@ async function handleLoadResult(
   // stdout 可能被摘要管道（jq/head）改写成合法但不可信的 JSON（失败加载投影成
   // 全 null 字段）。只有可信的成功载荷才直接采用；否则回退到 ObserveStore 复核，
   // 复核不到（说明确实没加载成功）就不建节点，避免为失败加载固化错误 Manifest。
-  const parsed = isTrustworthyLoadOutput(load)
-    ? load
-    : (await readObserveInfo(args.name));
+  const trusted = isTrustworthyLoadOutput(load);
+  let parsed: ObserveLoadOutput | null = trusted ? load : (await readObserveInfo(args.name));
   if (!parsed) return;
+  // 摘要管道丢列结构时，用 ObserveStore 补列信息（节点列结构与 Manifest 校验和依赖它）
+  if (trusted && !Array.isArray(parsed.column_info) && !Array.isArray(parsed.schema)) {
+    parsed = enrichLoadOutput(parsed, await readObserveInfo(args.name));
+  }
   const columns = mapColumnInfo(parsed.column_info || parsed.schema || [], parsed.rows || 0);
   // --datasource loads come from a DB; --memory loads derive from upstream
   // DataFrames, whose names are reported back as `source_tables`.

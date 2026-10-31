@@ -20,7 +20,7 @@ import {
   MANIFEST_SCHEMA_VERSION,
 } from "../server/analysis-manifest.js";
 import { canvasPathFor, loadCanvas, saveCanvas } from "../server/session-history.js";
-import govioCanvasExtension, { extractSqlFromCommand, isTrustworthyLoadOutput } from "../server/extensions/govio-canvas.js";
+import govioCanvasExtension, { extractSqlFromCommand, isTrustworthyLoadOutput, enrichLoadOutput } from "../server/extensions/govio-canvas.js";
 import { flushGovioNodes } from "../server/govio-node-queue.js";
 import type { Node, Edge } from "@xyflow/react";
 import type { AnalysisManifest } from "../src/types/manifest.js";
@@ -280,6 +280,16 @@ console.log("\n[4] govio-canvas 扩展事件流填充 Manifest");
     "isTrustworthyLoadOutput: 成功 jq 摘要（有数值 rows）可信",
     isTrustworthyLoadOutput({ name: "dim_product", rows: 12, columns: 2, schema: null } as never) === true,
   );
+  // 回归（会话 01a192a5 实证）：jq 摘要丢 column_info 时，enrichLoadOutput 用 observe info 补列结构，
+  // 行/列数仍以 load 输出为准；Manifest 校验和依赖列信息，补回后才能产出。
+  const jqSummary = { success: true, name: "top3", rows: 3, columns: 3 } as never;
+  const infoWithCols = { rows: 3, columns: 3, column_info: [{ name: "product_name", dtype: "str" }, { name: "total_sales", dtype: "double" }] } as never;
+  const enriched = enrichLoadOutput(jqSummary, infoWithCols);
+  check("enrichLoadOutput: 摘要缺 column_info 时用 info 补列结构", Array.isArray(enriched.column_info) && enriched.column_info!.length === 2);
+  check("enrichLoadOutput: 行/列数以 load 输出为准", enriched.rows === 3 && enriched.columns === 3 && enriched.success === true);
+  check("enrichLoadOutput: load 自带 column_info 时不采用 info", (enrichLoadOutput({ success: true, rows: 1, column_info: [{ name: "a", dtype: "int" }] } as never, infoWithCols) as { column_info: unknown[] }).column_info.length === 1);
+  check("enrichLoadOutput: info 为 null 时原样返回", enrichLoadOutput(jqSummary, null) === jqSummary);
+  check("enrichLoadOutput: info 仅有 schema 键时也能补", Array.isArray((enrichLoadOutput(jqSummary, { schema: [{ column: "x", dtype: "int" }] } as never) as { column_info: unknown[] }).column_info));
 
   // 事件流层面：显式 success:false 的 tool_result 直接早退，不生成任何节点事件。
   const failCmd = `govio-cli observe load --name df_should_not_exist --datasource govio_demo --sql "SELECT * FROM nope" 2>&1`;
