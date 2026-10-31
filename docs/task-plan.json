@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-31T19:58:00+08:00",
+  "updatedAt": "2026-10-31T19:36:20+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -426,7 +426,7 @@
     {
       "id": "X5",
       "title": "SQL 生成纪律与 CLI 输出契约加固",
-      "status": "done",
+      "status": "accepted",
       "dependsOn": [
         "T2.0"
       ],
@@ -444,6 +444,12 @@
           "at": "2026-10-31T19:58:00+08:00",
           "by": "worker",
           "note": "实现完成：① AGENTS.md 新增「SQL 生成纪律」章节（6 条硬规则：qualifiedName 强制引用、specs/11 限定名规则引用、Catalog/Binder Error 先查元数据、跨源 join 两段式、jq 摘要配方保留 success/error、禁止截断 load 输出）；② 新增 server/observe-load-schema.ts 共享 typebox 校验器（宽松契约：全 Optional + null 容忍 + 开放对象；parseObserveLoadOutput/isLoadFailure/observeColumnName），三处消费统一（govio-canvas handleLoadResult 与 isTrustworthyLoadOutput 协同、dataframe-rerun parseLoadOutput/extractLoadError、parquet-api execute-sql），isTrustworthyLoadOutput 逻辑未改仅换共享类型；③ verify-manifest-roundtrip 新增 [6] 节 26 项断言（五种输入分类矩阵与现行为一致，BUGFIX 修复未放松）。验证：build ✓ lint 0 ✓ verify 聚合 manifest 87(61+26)/rerun 71/audit 97/export 126/source-table 39 全绿无回归，verify 后工作区无残留。交付物 docs/tasks/X5-sql-discipline/{design,CHANGES,verification}.md；遗留 5 项见 design.md §5（用户级 addendum jq 配方待主 session 提请、addReference 未带 qualifiedName 建议单独小任务）"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-10-31T19:36:20+08:00",
+          "by": "main-session",
+          "note": "主 session 独立验收通过：commit fd3f2f1；build ✓ / lint 0 / verify 全绿无回归（manifest 87(+26)/rerun 71/audit 97/export 126/source-table 39），verify 后工作区干净；抽查三项落地——AGENTS.md SQL 生成纪律章节、observe-load-schema.ts typebox 校验器被且仅被三个消费点引用、isTrustworthyLoadOutput 逻辑零改动（BUGFIX 行为保持）、[6] 节五形态分类矩阵。遗留：用户级 addendum jq 配方待用户更新；addReference 载荷未带 qualifiedName（建议单独小任务）"
         }
       ]
     }
