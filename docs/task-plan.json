@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-31T21:10:17+08:00",
+  "updatedAt": "2026-10-31T21:40:49+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -395,7 +395,7 @@
       "title": "安全基线合入 main",
       "status": "pending",
       "dependsOn": [],
-      "note": "security/hardening 分支（659916c）已推送，待 code review 后合入",
+      "note": "security/hardening 已提 PR #12（合并顺序 1/3）；phase1/phase2 已预合并该分支并验证无冲突。合并 #12 后关闭本项",
       "outputDir": "docs/tasks/X1-security-baseline/",
       "history": []
     },
@@ -481,5 +481,16 @@
         }
       ]
     }
-  ]
+  ],
+  "pullRequests": {
+    "order": [
+      "#12 security/hardening",
+      "#13 feature/phase1-trusted-analysis",
+      "#14 feature/phase2-semantic-layer"
+    ],
+    "note": "依序合并：#12 → #13 → #14（后两者已预合并前者并验证零冲突）",
+    "security": "https://github.com/chenxinma/govio-map/pull/12",
+    "phase1": "https://github.com/chenxinma/govio-map/pull/13",
+    "phase2": "https://github.com/chenxinma/govio-map/pull/14"
+  }
 }
