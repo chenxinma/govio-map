@@ -46,12 +46,21 @@ export async function listSessions(): Promise<SessionListItem[]> {
     }));
 }
 
-export function deleteSession(path: string): void {
+/**
+ * Validate a client-supplied session path: must be a .jsonl file inside the
+ * session directory. Returns the resolved path or throws.
+ */
+export function assertValidSessionPath(path: string): string {
   const dir = getSessionDir();
   const resolved = resolvePath(path);
   if (!resolved.startsWith(dir + sep) || !resolved.endsWith(".jsonl")) {
     throw new Error(`invalid session path: ${path}`);
   }
+  return resolved;
+}
+
+export function deleteSession(path: string): void {
+  const resolved = assertValidSessionPath(path);
   if (existsSync(resolved)) unlinkSync(resolved);
   const canvas = canvasPathFor(resolved);
   if (existsSync(canvas)) unlinkSync(canvas);
