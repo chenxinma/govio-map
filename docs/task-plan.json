@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-31T20:43:57+08:00",
+  "updatedAt": "2026-10-31T21:07:53+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -456,11 +456,24 @@
     {
       "id": "X6",
       "title": "用户手册（简版）",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "note": "用户指令 2026-10-31：面向企业内数据分析用户编写一份简单的用户手册，只覆盖已交付的真实功能，不写愿景性内容",
       "outputDir": "docs/tasks/X6-user-manual/",
-      "history": []
+      "history": [
+        {
+          "status": "in_progress",
+          "at": "2026-10-31T20:45:48+08:00",
+          "by": "worker",
+          "note": "开工：通读 README/specs/组件源码核实已交付功能，编写 docs/USER-MANUAL.md（面向企业内数据分析用户的简版手册），配套 design.md/CHANGES.md/verification.md（条目→出处对照表 + 未交付功能自查）"
+        },
+        {
+          "status": "done",
+          "at": "2026-10-31T21:07:53+08:00",
+          "by": "worker",
+          "note": "完成：docs/USER-MANUAL.md 落盘（368 行 / 12 节 / 18 张表格，面向非开发者，无源码路径与内部模块名）。写作前逐一通读事实核对源（README/package.json/specs 00-03·08·10-11/ROADMAP/T1.1-T1.4·T2.0 design/20+ 组件与 server 文件）；verification.md 给出 §2–§12 全部按钮级操作的「条目→出处」对照表。自查：ROADMAP Phase 2/3 关键词零命中（grep -cE 17 词 = 0）；内部术语 grep 无输出。npm run build ✓ / npm run lint 0 error（纯文档任务，未改任何源码）。交付物：docs/tasks/X6-user-manual/{design,CHANGES,verification}.md；遗留问题 5 项记在 design.md §4（README govio-cli 安装口径待同步、/clear-canvas 描述文案与行为不符等）"
+        }
+      ]
     }
   ]
 }
