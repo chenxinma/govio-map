@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-31T21:07:53+08:00",
+  "updatedAt": "2026-10-31T21:10:17+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -456,7 +456,7 @@
     {
       "id": "X6",
       "title": "用户手册（简版）",
-      "status": "done",
+      "status": "accepted",
       "dependsOn": [],
       "note": "用户指令 2026-10-31：面向企业内数据分析用户编写一份简单的用户手册，只覆盖已交付的真实功能，不写愿景性内容",
       "outputDir": "docs/tasks/X6-user-manual/",
@@ -472,6 +472,12 @@
           "at": "2026-10-31T21:07:53+08:00",
           "by": "worker",
           "note": "完成：docs/USER-MANUAL.md 落盘（368 行 / 12 节 / 18 张表格，面向非开发者，无源码路径与内部模块名）。写作前逐一通读事实核对源（README/package.json/specs 00-03·08·10-11/ROADMAP/T1.1-T1.4·T2.0 design/20+ 组件与 server 文件）；verification.md 给出 §2–§12 全部按钮级操作的「条目→出处」对照表。自查：ROADMAP Phase 2/3 关键词零命中（grep -cE 17 词 = 0）；内部术语 grep 无输出。npm run build ✓ / npm run lint 0 error（纯文档任务，未改任何源码）。交付物：docs/tasks/X6-user-manual/{design,CHANGES,verification}.md；遗留问题 5 项记在 design.md §4（README govio-cli 安装口径待同步、/clear-canvas 描述文案与行为不符等）"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-10-31T21:10:17+08:00",
+          "by": "main-session",
+          "note": "主 session 独立验收通过：commit 81441c9；docs/USER-MANUAL.md 368 行/12 节/132 表格行；Phase2/3 关键词与内部术语双零命中（grep 复核）；抽查对照表 3 组条目（导出按钮禁用态/漂移标签/复跑四态）与权限卡章节均与代码实际行为一致；build/lint 不受影响。遗留 5 项见 design.md §4，其中 README 安装口径不一致与 /clear-canvas 文案不符两项建议后续单独小修"
         }
       ]
     }
