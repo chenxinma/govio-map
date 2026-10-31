@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-31T21:40:49+08:00",
+  "updatedAt": "2026-10-31T23:33:50+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -393,11 +393,18 @@
     {
       "id": "X1",
       "title": "安全基线合入 main",
-      "status": "pending",
+      "status": "accepted",
       "dependsOn": [],
       "note": "security/hardening 已提 PR #12（合并顺序 1/3）；phase1/phase2 已预合并该分支并验证无冲突。合并 #12 后关闭本项",
       "outputDir": "docs/tasks/X1-security-baseline/",
-      "history": []
+      "history": [
+        {
+          "status": "accepted",
+          "at": "2026-10-31T23:33:50+08:00",
+          "by": "main-session",
+          "note": "PR #12 已合并入 main（14e39cf）。CORS 通配/WS Origin/session_open 校验/回环绑定/key 脱敏/危险命令闸门全部就位。合并前待办的人工冒烟仍需执行（步骤见 T1.*/verification.md）"
+        }
+      ]
     },
     {
       "id": "X2",
@@ -478,8 +485,23 @@
           "at": "2026-10-31T21:10:17+08:00",
           "by": "main-session",
           "note": "主 session 独立验收通过：commit 81441c9；docs/USER-MANUAL.md 368 行/12 节/132 表格行；Phase2/3 关键词与内部术语双零命中（grep 复核）；抽查对照表 3 组条目（导出按钮禁用态/漂移标签/复跑四态）与权限卡章节均与代码实际行为一致；build/lint 不受影响。遗留 5 项见 design.md §4，其中 README 安装口径不一致与 /clear-canvas 文案不符两项建议后续单独小修"
+        },
+        {
+          "status": "note",
+          "at": "2026-10-31T22:51:04+08:00",
+          "by": "main-session",
+          "note": "补充 8 张界面截图（moli CDP 自动化拍摄，1440x900@2x）：01 总览/02 历史会话/03 分析留痕详情/04 数据预览/05 SQL 编辑器/06 LLM 设置/07 数据源面板/09 交付报告样例，嵌入 USER-MANUAL.md 对应章节。图表节点特写未单拍（当前画布无图表节点，图表已在 01 与 09 中呈现）。拍摄中发现 X7 bug（cwd 大小写致会话恢复静默失败）已另立任务"
         }
       ]
+    },
+    {
+      "id": "X7",
+      "title": "启动时 cwd 规范大小写（Windows 会话恢复静默失败修复）",
+      "status": "pending",
+      "dependsOn": [],
+      "note": "截图任务中发现的真 bug：会话头 cwd 记为 D:/Work/...（大写 W，Electron/历史启动路径），dev server process.cwd() 为 D:/work/...（磁盘规范小写），pi findMostRecentSession 的 cwd 过滤为大小写敏感字符串比较 → 全部历史会话落选 → 后端静默创建空会话（画布空白无报错）。修复方向：backend 启动时（agentSetup 前）在 win32 上用 fs.realpathSync.native 等取磁盘规范大小写并 process.chdir，或传入与历史会话一致的 cwd；补回归断言（构造大小写不同的伪会话头验证 continueRecent 命中）。",
+      "outputDir": "docs/tasks/X7-cwd-case-normalization/",
+      "history": []
     }
   ],
   "pullRequests": {
@@ -488,9 +510,10 @@
       "#13 feature/phase1-trusted-analysis",
       "#14 feature/phase2-semantic-layer"
     ],
-    "note": "依序合并：#12 → #13 → #14（后两者已预合并前者并验证零冲突）",
+    "note": "#12/#13/#14 已合并入 main（14e39cf/3759971/1848b08）；#15 为合并后增量（截图+X7），待合并",
     "security": "https://github.com/chenxinma/govio-map/pull/12",
     "phase1": "https://github.com/chenxinma/govio-map/pull/13",
-    "phase2": "https://github.com/chenxinma/govio-map/pull/14"
+    "phase2": "https://github.com/chenxinma/govio-map/pull/14",
+    "phase2-supplement": "https://github.com/chenxinma/govio-map/pull/15"
   }
 }
