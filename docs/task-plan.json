@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-10-31T01:35:55+08:00",
+  "updatedAt": "2026-10-31T10:20:37+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -180,7 +180,27 @@
           ]
         }
       ],
-      "exitNote": "工程交付完成（T1.1-T1.4 全部 accepted）。北极星指标「可复现率 ≥95%」需在试点团队真实使用中测量后关闭阶段；人工冒烟清单见各任务 verification.md"
+      "exitNote": "工程交付完成（T1.1-T1.4 全部 accepted）。北极星指标「可复现率 ≥95%」需在试点团队真实使用中测量后关闭阶段；人工冒烟清单见各任务 verification.md",
+      "reviewLoop": {
+        "rounds": 3,
+        "completedAt": "2026-10-31T10:20:37+08:00",
+        "verdict": "Merge verdict: OK with notes (R3 blockers-only 终审 Fix verdict: RESOLVED)",
+        "commits": {
+          "r1Fixes": "ec64978",
+          "r2Fixes": "ec7b117"
+        },
+        "round1": "3 并行 reviewer（正确性/安全/测试与可维护性）：0 P0、1 P1（verify:export 污染受跟踪产物+时区依赖）、14 P2 采纳修复、7 项延后",
+        "round2": "2 定向 reviewer（波及半径/测试文档）：Fix verdict RESOLVED+PARTIAL，9 P2（均为 R1 修复波及半径内）全部修复",
+        "round3": "blockers-only 终审：无 P0/P1 阻断项，4 条注释/文档漂移由主 session 直接修正",
+        "deferred": [
+          "人工浏览器/Electron 冒烟（合并前 dev 环境执行，步骤见各 verification.md）",
+          "-oxxx 确认门缺口、CORS 通配、WS Origin 校验、session_open 路径校验 → X1（security/hardening 分支已修，待合入）",
+          "路由级 HTTP/WS e2e 测试 → X4 测试基建",
+          "export-report.ts（约1540行）拆分、NODE_COLORS 多真源 → Phase 2 前",
+          "值级漂移检测 → govio-cli 侧能力",
+          "pendingPermission 前端单槽（既有设计，agent 串行执行工具时不可达）"
+        ]
+      }
     },
     {
       "id": "P2",

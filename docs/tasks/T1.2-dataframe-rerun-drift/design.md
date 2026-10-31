@@ -143,7 +143,7 @@ UI 状态归属（`RerunStatus.tsx`）：
 
 ## 10. 验证策略
 
-`scripts/verify-rerun-drift.ts`（`npm run verify:rerun`，加 `-- --real` 走真实 CLI），62 / 74 项断言，覆盖：复跑参数只来自 Manifest（结构性保证：`rerunDataFrame` 无「当前输入」通道，另有 argv 形状与 `buildRerunLoadArgs` 契约全等的断言）、临时名与释放、三态判定（行数/dtype/列名变化、无校验和退化、无基线）、失败路径与释放、前端写入规则（一致刷新时间、漂移保留原 Manifest 深度相等、封顶、不可变更新）、store → canvas_save → sidecar → hydrateSession 往返、并发点击只发一次请求；`--real` 额外用真实 `govio-cli` + `sales` 数据源跑完整链路并断言「原 DataFrame 未被覆盖」「无临时残留」。详见 `verification.md`。
+`scripts/verify-rerun-drift.ts`（`npm run verify:rerun`，加 `-- --real` 走真实 CLI），交付时 62 / 74 项断言（R1 后 67 / 79，见 docs/tasks/REVIEW-R1-fixes.md），覆盖：复跑参数只来自 Manifest（结构性保证：`rerunDataFrame` 无「当前输入」通道，另有 argv 形状与 `buildRerunLoadArgs` 契约全等的断言）、临时名与释放、三态判定（行数/dtype/列名变化、无校验和退化、无基线）、失败路径与释放、前端写入规则（一致刷新时间、漂移保留原 Manifest 深度相等、封顶、不可变更新）、store → canvas_save → sidecar → hydrateSession 往返、并发点击只发一次请求；`--real` 额外用真实 `govio-cli` + `sales` 数据源跑完整链路并断言「原 DataFrame 未被覆盖」「无临时残留」。详见 `verification.md`。
 
 ## 11. 遗留问题
 

@@ -1019,7 +1019,7 @@ export function renderAppendixB(audit: AuditAppendix | null | undefined, nodes: 
   const source = audit.sessionFile
     ? `<code>${esc(auditSidecarLabel(audit.sessionFile))}</code>`
     : '当前会话的审计 sidecar';
-  // 过滤数用服务端实际参与过滤的数（可能被 500 上限截断），不拿前端请求数充数
+  // 过滤数用服务端实际参与过滤的数（可能被 200 上限截断），不拿前端请求数充数
   const filterCount = audit.serverRequested ?? audit.requestedDecisionIds.length;
   const intro =
     `<p class="note">来源：${source}（服务端只读返回，仅限当前会话` +
