@@ -106,6 +106,16 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
         const loadOutput = await runGovioCliWithArgs(loadArgs);
         const loadResult = JSON.parse(loadOutput);
 
+        // CLI 在 SQL 执行失败时可能以退出码 0 返回 {success:false, error}（表不存在、
+        // catalog 歧义等）。不能当作成功继续建节点，否则前端 SQL 编辑器会误报成功、
+        // 并可能为不存在的 DataFrame 固化错误留痕。透传 CLI 错误给前端。
+        if (loadResult && loadResult.success === false) {
+          const reason = loadResult.error || loadResult.message || "未知错误";
+          res.writeHead(400, { "Content-Type": "application/json", ...CORS_HEADERS });
+          res.end(JSON.stringify({ error: `SQL 执行失败：${reason}` }));
+          return;
+        }
+
         // 获取 DataFrame 信息
         const infoOutput = await runGovioCli(`observe info --name ${name} --rows 0`, true);
         const info = JSON.parse(infoOutput);

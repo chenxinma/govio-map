@@ -139,6 +139,27 @@ export function parseLoadOutput(stdout: string): RerunLoadResult | null {
   return { rowCount, columnCount, columns };
 }
 
+/**
+ * 从 `observe load` 的 stdout 提取可读失败原因，用于复跑错误留痕。
+ *
+ * 区分两种失败，避免把「SQL 执行失败」误报成「输出无法解析」：
+ *  - CLI 明确返回 `{success:false, error}` → 透传 error/message（SQL 错误、表不存在等）
+ *  - 输出不是合法 JSON（被管道截断等）→ 返回 null，由调用方回退到通用「无法解析」文案
+ */
+export function extractLoadError(stdout: string): string | null {
+  let parsed: ObserveLoadOutput;
+  try {
+    parsed = JSON.parse(stdout) as ObserveLoadOutput;
+  } catch {
+    return null;
+  }
+  if (parsed && parsed.success === false) {
+    const reason = parsed.error || parsed.message;
+    return reason ? `observe load 执行失败：${reason}` : "observe load 执行失败（CLI 返回 success:false，未提供错误详情）";
+  }
+  return null;
+}
+
 export interface RerunComparison {
   outcome: Extract<RerunOutcome, "identical" | "drift">;
   after: RerunSnapshot;
@@ -269,10 +290,14 @@ export async function rerunDataFrame(
     const stdout = await runCli(buildRerunLoadArgs(manifest, tempName), RERUN_LOAD_TIMEOUT_MS);
     const result = parseLoadOutput(stdout);
     if (!result) {
+      // 优先透传 CLI 的 success:false 错误（SQL 执行失败等），仅在输出确实无法解析时
+      // 才回退到通用文案，避免把可诊断的 SQL 错误糊成「输出被截断」。
+      const failure = extractLoadError(stdout)
+        ?? "observe load 输出无法解析（命令失败或输出被截断）";
       return errorRecord(
         now().toISOString(),
         before,
-        "observe load 输出无法解析（命令失败或输出被截断）",
+        failure,
         sessionId,
         Date.now() - startedAt,
         tempName,

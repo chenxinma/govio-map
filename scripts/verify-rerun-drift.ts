@@ -22,6 +22,7 @@ import {
   buildRerunLoadArgs,
   compareRerunResult,
   parseLoadOutput,
+  extractLoadError,
   rerunBlockReason,
   rerunDataFrame,
   tempDfNameFor,
@@ -175,6 +176,21 @@ console.log("\n[2] 一致 / 漂移 / 失败 三态判定");
   check("parseLoadOutput 兼容 observe info 的 schema/column 键名", parseLoadOutput(JSON.stringify({ rows: 2, columns: 1, schema: [{ column: "a", dtype: "int32" }] }))?.columns[0].name === "a");
   check("parseLoadOutput 拒绝被截断的输出", parseLoadOutput('{"success": true, "rows": 1') === null);
   check("parseLoadOutput 拒绝 success=false", parseLoadOutput(JSON.stringify({ success: false, message: "boom" })) === null);
+
+  // 回归（人工验收 bug）：SQL 执行失败时 CLI 以退出码 0 返回 success:false，
+  // 旧逻辑统一报「输出无法解析」，掩盖了真实 SQL 错误。extractLoadError 应透传原因。
+  check(
+    "extractLoadError 透传 success:false 的 error 字段",
+    (extractLoadError(JSON.stringify({ success: false, error: "Catalog Error: Table dim_product does not exist" })) ?? "").includes("Table dim_product does not exist"),
+  );
+  check(
+    "extractLoadError 回退到 message 字段",
+    (extractLoadError(JSON.stringify({ success: false, message: "boom" })) ?? "").includes("boom"),
+  );
+  check(
+    "extractLoadError 对合法 JSON 输出返回 null（非失败）",
+    extractLoadError('{"success": true, "rows": 1') === null && extractLoadError(JSON.stringify({ success: true, rows: 1 })) === null,
+  );
 }
 
 console.log("\n[3] 失败路径与临时 DataFrame 释放");
@@ -192,6 +208,20 @@ console.log("\n[3] 失败路径与临时 DataFrame 释放");
   const truncated: GovioCliRunner = async (args) => (args[1] === "release" ? "{}" : '{"success": true, "rows"');
   const truncatedRecord = await rerunDataFrame(manifest, { runCli: truncated, now: () => FIXED_NOW });
   check("输出被截断 → outcome=error", truncatedRecord.outcome === "error" && (truncatedRecord.error ?? "").includes("无法解析"));
+
+  // CLI 退出码 0 但 success:false（固化的 SQL 实际跑不通，如缺 catalog 前缀）：
+  // outcome=error 且透传真实 SQL 错误，而非笼统的「无法解析」。
+  const sqlFailed: GovioCliRunner = async (args) =>
+    args[1] === "release"
+      ? JSON.stringify({ success: true })
+      : JSON.stringify({ success: false, error: "Catalog Error: Table dim_product does not exist" });
+  const sqlFailedRecord = await rerunDataFrame(manifest, { runCli: sqlFailed, now: () => FIXED_NOW });
+  check(
+    "success:false → outcome=error 且透传 SQL 错误（非「无法解析」）",
+    sqlFailedRecord.outcome === "error" &&
+      (sqlFailedRecord.error ?? "").includes("does not exist") &&
+      !(sqlFailedRecord.error ?? "").includes("无法解析"),
+  );
 
   const blockedCalls: string[][] = [];
   const blockedRecord = await rerunDataFrame(

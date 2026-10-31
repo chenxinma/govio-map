@@ -109,11 +109,32 @@ function parseExploreArgs(cmd: string): { dataframes: string[] } | null {
 
 interface ObserveInfo {
   success?: boolean;
+  name?: string;
   rows?: number;
   columns?: number;
+  error?: string;
   schema?: Array<{ name?: string; column?: string; col?: string; dtype: string }>;
   column_info?: Array<{ name?: string; column?: string; col?: string; dtype: string }>;
   source_tables?: string[];
+}
+
+/**
+ * 判断一段已解析的 `observe load` 输出是否是「可信的成功载荷」。
+ *
+ * 为什么需要：agent 常给 CLI 加摘要管道（如 `2>&1 | jq '{name, rows, columns, schema}'`）。
+ * 当底层 SQL 执行失败时，CLI 输出 `{"success": false, "error": "..."}`（退出码仍可能为 0），
+ * 经 jq 投影后变成 `{"name": null, "rows": null, "columns": null, "schema": null}`——
+ * 合法 JSON，但既没有 `success === false` 可供拦截，也没有任何行/列信息。
+ * 若把它当作成功载荷，就会为一次失败的加载建出 0 行节点、固化错误 SQL，
+ * 之后真正成功的加载又因 dfName 去重（manifest 已存在不回填）而被丢弃。
+ *
+ * 规则：只有出现真实的成功信号——数值型 `rows`、或 `column_info`/`schema` 数组、
+ * 或显式 `success === true`——才可信；否则视为失败/摘要噪声，交由 ObserveStore 复核。
+ */
+export function isTrustworthyLoadOutput(load: ObserveInfo | null): boolean {
+  if (!load || load.success === false) return false;
+  if (load.success === true) return true;
+  return typeof load.rows === "number" || Array.isArray(load.column_info) || Array.isArray(load.schema);
 }
 
 /**
@@ -442,7 +463,12 @@ async function handleLoadResult(
     console.warn(`[govio-canvas] handleLoadResult JSON parse failed for '${args.name}': ${err instanceof Error ? err.message : String(err)} (stdout length: ${stdout.length}, first 120 chars: ${JSON.stringify(stdout.slice(0, 120))})`);
   }
   if (load && load.success === false) return;
-  const parsed = load ?? (await readObserveInfo(args.name));
+  // stdout 可能被摘要管道（jq/head）改写成合法但不可信的 JSON（失败加载投影成
+  // 全 null 字段）。只有可信的成功载荷才直接采用；否则回退到 ObserveStore 复核，
+  // 复核不到（说明确实没加载成功）就不建节点，避免为失败加载固化错误 Manifest。
+  const parsed = isTrustworthyLoadOutput(load)
+    ? load
+    : (await readObserveInfo(args.name));
   if (!parsed) return;
   const columns = mapColumnInfo(parsed.column_info || parsed.schema || [], parsed.rows || 0);
   // --datasource loads come from a DB; --memory loads derive from upstream

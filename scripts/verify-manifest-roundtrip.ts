@@ -20,7 +20,7 @@ import {
   MANIFEST_SCHEMA_VERSION,
 } from "../server/analysis-manifest.js";
 import { canvasPathFor, loadCanvas, saveCanvas } from "../server/session-history.js";
-import govioCanvasExtension, { extractSqlFromCommand } from "../server/extensions/govio-canvas.js";
+import govioCanvasExtension, { extractSqlFromCommand, isTrustworthyLoadOutput } from "../server/extensions/govio-canvas.js";
 import { flushGovioNodes } from "../server/govio-node-queue.js";
 import type { Node, Edge } from "@xyflow/react";
 import type { AnalysisManifest } from "../src/types/manifest.js";
@@ -256,6 +256,44 @@ console.log("\n[4] govio-canvas 扩展事件流填充 Manifest");
   check("sqlQuery Manifest 记录来源模型与会话", sqlEvent?.manifest?.origin === "assistant-sql" && sqlEvent?.manifest?.model?.id === "claude-sonnet-4-5" && sqlEvent?.manifest?.sessionId === "sess-verify-e2e");
   check("sqlQuery Manifest 记录消息时间", sqlEvent?.manifest?.executedAt === "2026-10-30T22:29:50.000Z");
   check("sqlQuery Manifest 无结果校验和（尚未执行）", sqlEvent?.manifest?.checksum === undefined);
+
+  // 回归：失败的 observe load 不得建节点（人工验收 bug：jq 摘要管道把 success:false
+  // 投影成全 null 字段，旧逻辑误当作 0 行成功加载，固化了错误 SQL）。
+  // 直接验证根因谓词 isTrustworthyLoadOutput（hermetic，不触发 CLI 回退）。
+  check(
+    "isTrustworthyLoadOutput: jq 投影失败输出（全 null）不可信",
+    isTrustworthyLoadOutput({ name: null, rows: null, columns: null, schema: null } as never) === false,
+  );
+  check(
+    "isTrustworthyLoadOutput: success:false 不可信",
+    isTrustworthyLoadOutput({ success: false, error: "SQL 执行错误" } as never) === false,
+  );
+  check(
+    "isTrustworthyLoadOutput: null / 空对象不可信",
+    isTrustworthyLoadOutput(null) === false && isTrustworthyLoadOutput({} as never) === false,
+  );
+  check(
+    "isTrustworthyLoadOutput: 成功全量载荷可信",
+    isTrustworthyLoadOutput({ success: true, rows: 12, column_info: [] } as never) === true,
+  );
+  check(
+    "isTrustworthyLoadOutput: 成功 jq 摘要（有数值 rows）可信",
+    isTrustworthyLoadOutput({ name: "dim_product", rows: 12, columns: 2, schema: null } as never) === true,
+  );
+
+  // 事件流层面：显式 success:false 的 tool_result 直接早退，不生成任何节点事件。
+  const failCmd = `govio-cli observe load --name df_should_not_exist --datasource govio_demo --sql "SELECT * FROM nope" 2>&1`;
+  await toolResult?.(
+    {
+      toolName: "bash",
+      isError: false,
+      input: { command: failCmd },
+      content: [{ type: "text", text: JSON.stringify({ success: false, error: "Catalog Error: Table nope does not exist" }) }],
+    },
+    piCtx,
+  );
+  const failEvents = flushGovioNodes();
+  check("success:false 的 observe load 不生成 dataFrame 节点事件", failEvents.find((e) => e.nodeType === "dataFrame") === undefined);
 }
 
 // ── 5. 前端 store 写入 -> canvas_save -> loadCanvas -> hydrateSession 全链路 ──
