@@ -69,6 +69,9 @@ export function shouldAskPermission(cmd: string): boolean {
  * 仅限 `observe load` / `observe info` 两个子命令：compare/explore 的数据消费按既有产品决策
  * 不设门；危险命令由 isDangerousCommand 独立拦截，不经此判定。
  *
+ * info 判定限于 `--name` 目标（CLI：`--name NAME` 显示「结构和样本数据」）；`--df`（已加载
+ * DataFrame 列表）与 `--datasource`（数据源名列表）只回元数据摘要、不含数据行，不触发。
+ *
  * 已知缺口（specs/10 同款，有意保留）：`-oxxx`（短选项紧跟值）不触发——正则前瞻要求
  * `-o` 后是空白/`=`/行尾；`--rows=0` / `-r=0` / `--rows 0`（仅结构）不触发；`--rows`
  * 省略时 CLI 默认取 10 行样本，视为读数据。
@@ -76,6 +79,9 @@ export function shouldAskPermission(cmd: string): boolean {
 export function readsDataContent(cmd: string): "load-output" | "info-sample" | null {
   if (OBSERVE_LOAD_RE.test(cmd) && OUTPUT_FLAG_RE.test(cmd)) return "load-output";
   if (!OBSERVE_INFO_RE.test(cmd)) return null;
+  // 仅 `--name <df>` 会拉样本数据行；`--df` / `--datasource` 只列元数据，不设门。
+  const name = extractNamedArg(cmd, "name");
+  if (!name) return null;
   const rowsArg = extractNamedArg(cmd, "rows");
   if (rowsArg !== null) {
     const n = Number(rowsArg);

@@ -21,9 +21,10 @@
 
 **B. `info` 样本读取（`info-sample`）**
 
-- 命令中含 `govio-cli observe info` 子串
+- 命令中含 `govio-cli observe info` 子串**且带 `--name <df>`**（CLI：`--name NAME` 显示「结构和样本数据」）
 - 且 `--rows` 值 > 0（`--rows 5` / `--rows=10`）；`--rows` 省略时 CLI 默认取 10 行样本，也触发
 - `--rows 0` / `--rows=0`（仅结构）**不触发**；`--rows abc`（非法数值）保守当作读数据、触发
+- `--df`（已加载 DataFrame 列表）与 `--datasource`（数据源名列表）只回元数据摘要、不含数据行，**不触发**；无 `--name` 的 `observe info` 同样不触发
 
 危险命令（`isDangerousCommand`：rm -rf / sudo / git push / 下载即执行等）独立于此判定，始终触发。
 

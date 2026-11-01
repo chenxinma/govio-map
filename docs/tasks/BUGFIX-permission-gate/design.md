@@ -29,7 +29,7 @@
 `server/extensions/govio-canvas.ts`：
 - 新增 `OBSERVE_INFO_RE`，`shouldAskPermission` = `isDangerousCommand` ∨ `load -o` ∨ `info 样本行`
 - 导出 `readsDataContent(cmd) -> "load-output" | "info-sample" | null`（判定 + 分类）与 `observeInfoTarget(cmd) -> df名 | null`
-- `info` 样本行判定：`observe info` 子命令且 `--rows` 值 > 0；省略 `--rows`（CLI 默认 10 行）也触发；`--rows 0` / `--rows=0` 仅结构不触发；非法数值保守当作读数据
+- `info` 样本行判定：`observe info` 子命令**且带 `--name <df>`**（CLI：`--name` 显示「结构和样本数据」）且 `--rows` 值 > 0；省略 `--rows`（CLI 默认 10 行）也触发；`--rows 0` / `--rows=0` 仅结构不触发；非法数值保守当作读数据；`--df`（已加载 DataFrame 列表）与 `--datasource`（数据源名列表）只回元数据摘要、不含数据行，**不触发**（无 `--name` 的 `observe info` 同样不触发）
 
 **条件放行（方案 B，避免 EDA/chart 高频弹卡）**：同一 DataFrame 的数据内容读取在本会话内确认过一次（allow / Accept All）后，后续同 df 样本读取免确认。
 - `PermissionManager` 新增 `acceptRead(dfName)` / `isReadAccepted(dfName)`（有界集合，随 `clearAll()` 失效）

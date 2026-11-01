@@ -524,6 +524,9 @@ try {
     check("info 省略 --rows（CLI 默认 10 行样本）触发确认门", shouldAskPermission("govio-cli observe info --name df_x") === true);
     check("info --rows 0（仅结构）不触发", shouldAskPermission("govio-cli observe info --name df_x --rows 0") === false);
     check("info --rows=0（等号形式）不触发", shouldAskPermission("govio-cli observe info --name df_x --rows=0") === false);
+    check("info --df（DataFrame 列表，仅元数据）不触发", shouldAskPermission("govio-cli observe info --df 2>&1") === false);
+    check("info --datasource（数据源名列表，仅元数据）不触发", shouldAskPermission("govio-cli observe info --datasource 2>&1") === false);
+    check("info 无 --name/--df/--datasource（help 等）不触发", shouldAskPermission("govio-cli observe info 2>&1") === false);
     check("info --rows abc（非法数值，保守当作读数据）触发确认门", shouldAskPermission("govio-cli observe info --name df_x --rows abc") === true);
     check("load -o 与 info 样本行都命中时 kinds 可区分", readsDataContent("govio-cli observe load --name df_x --datasource s -o out.json --sql 'SELECT 1'") === "load-output" && readsDataContent("govio-cli observe info --name df_x --rows 5") === "info-sample");
     check("普通加载不读数据内容", readsDataContent("govio-cli observe load --name df_x --datasource s --sql 'SELECT 1'") === null);
