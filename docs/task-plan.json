@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-01T08:23:30+08:00",
+  "updatedAt": "2026-11-01T10:13:10+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -506,7 +506,7 @@
     {
       "id": "X8",
       "title": "取数/读数据确认门缺口修复（BUGFIX）",
-      "status": "done",
+      "status": "accepted",
       "dependsOn": [],
       "note": "会话 2026-10-31T16-22-57「销量top3」实证：observe load 不带 -o 加载后 observe info --rows 5 拉样本行绕过全部确认（软约束被模型忽略）。P1 把 info 样本行读取纳入 shouldAskPermission 闸门（readsDataContent: load-output/info-sample），并按用户选定方案 B 做「同 df 一次确认」条件放行（acceptRead/isReadAccepted，tool_result 记账、被拒不豁免、clearAll 清空、-o 导出不受豁免）；P2 useChat pendingPermission 单槽改 FIFO 队列 + 清理路径不再静默丢卡（后端 clearAll/denyPending 为拒绝唯一事实源，前端只清本地队列）。verify:audit 97→116 全绿，build/lint/verify 聚合无回归。交付 docs/tasks/BUGFIX-permission-gate/ 三件套 + specs/10 同步。",
       "outputDir": "docs/tasks/BUGFIX-permission-gate/",
@@ -516,6 +516,12 @@
           "at": "2026-11-01T08:23:30+08:00",
           "by": "worker-session",
           "note": "实现+验证完成，待主会话验收"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-01T10:13:10+08:00",
+          "by": "main-session",
+          "note": "用户确认冒烟测试通过（含 observe info --df 不误拦回归）。P1 读数据内容闸门（load -o / info --name --rows>0）+ 方案 B 同 df 条件放行 + P2 确认队列均验证有效；verify:audit 119、全 verify 绿。"
         }
       ]
     }
