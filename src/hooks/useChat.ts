@@ -118,6 +118,24 @@ export function useChat() {
   const isObservingRef = useRef(false);
   const observeListResolveRef = useRef<((dataframes: unknown[]) => void) | null>(null);
   const [pendingPermission, setPendingPermission] = useState<PendingPermission | null>(null);
+  /** 当前展示中的确认请求（与 state 同步的镜像，供回调/清理路径读取，避免闭包旧值） */
+  const pendingPermissionRef = useRef<PendingPermission | null>(null);
+  /** 待确认请求队列（FIFO）：并发多个确认请求时逐个弹出，不互相覆盖/丢弃（BUGFIX-permission-gate P2） */
+  const pendingPermissionQueueRef = useRef<PendingPermission[]>([]);
+
+  /** 弹出队列中的下一个待确认请求（无则清空当前卡片） */
+  const showNextPendingPermission = useCallback(() => {
+    const next = pendingPermissionQueueRef.current.shift() ?? null;
+    pendingPermissionRef.current = next;
+    setPendingPermission(next);
+  }, []);
+
+  /** 清空本地待确认队列（后端 clearAll/denyPending 已拒绝并留痕，这里不重复发 deny） */
+  const clearPendingPermissions = useCallback(() => {
+    pendingPermissionQueueRef.current = [];
+    pendingPermissionRef.current = null;
+    setPendingPermission(null);
+  }, []);
   const [needsConfig, setNeedsConfig] = useState(false);
   const [modelsConfig, setModelsConfig] = useState<ModelsConfig | null>(null);
   const modelsConfigRef = useRef<ModelsConfig | null>(null);
@@ -476,7 +494,14 @@ export function useChat() {
 
           case "tool_permission_request":
             if (data.requestId && data.command) {
-              setPendingPermission({ requestId: data.requestId, command: data.command });
+              const req: PendingPermission = { requestId: data.requestId, command: data.command };
+              if (pendingPermissionRef.current) {
+                // 已有卡片在等决策：入队，当前卡片处理完后自动弹出下一个
+                pendingPermissionQueueRef.current.push(req);
+              } else {
+                pendingPermissionRef.current = req;
+                setPendingPermission(req);
+              }
             }
             break;
 
@@ -580,9 +605,10 @@ export function useChat() {
     ws.send(JSON.stringify({ type: "abort" }));
     isStreamingRef.current = false;
     setIsStreaming(false);
-    setPendingPermission(null);
+    // 后端 abort → denyPending() 已拒绝所有挂起请求并留痕，这里只清本地队列（不重复发 deny）
+    clearPendingPermissions();
     finalizeCurrent();
-  }, [finalizeCurrent]);
+  }, [clearPendingPermissions, finalizeCurrent]);
 
   const clearMessages = useCallback(() => {
     setMessages([]);
@@ -603,9 +629,10 @@ export function useChat() {
       }
       ws.send(JSON.stringify({ type: "clear" }));
     }
-    setPendingPermission(null);
+    // 后端 clear → clearAll() 已拒绝所有挂起请求并留痕，这里只清本地队列（不再发 deny）
+    clearPendingPermissions();
     clearMessages();
-  }, [clearMessages, finalizeCurrent]);
+  }, [clearMessages, clearPendingPermissions, finalizeCurrent]);
 
   const loadMoreHistory = useCallback(() => {
     const ws = wsRef.current;
@@ -629,10 +656,11 @@ export function useChat() {
       setIsStreaming(false);
       finalizeCurrent();
     }
-    setPendingPermission(null);
+    // 后端 session_open → clearAll() 已拒绝所有挂起请求并留痕，这里只清本地队列
+    clearPendingPermissions();
     clearMessages();
     ws.send(JSON.stringify({ type: "session_open", path }));
-  }, [clearMessages, finalizeCurrent]);
+  }, [clearMessages, clearPendingPermissions, finalizeCurrent]);
 
   const deleteSession = useCallback((path: string) => {
     const ws = wsRef.current;
@@ -642,7 +670,7 @@ export function useChat() {
 
   const respondPermission = useCallback((decision: PermissionDecision, editedCommand?: string) => {
     const ws = wsRef.current;
-    const pending = pendingPermission;
+    const pending = pendingPermissionRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN || !pending) return;
     const payload: Record<string, unknown> = {
       type: "tool_permission_response",
@@ -653,12 +681,12 @@ export function useChat() {
       payload.editedCommand = editedCommand;
     }
     ws.send(JSON.stringify(payload));
-    setPendingPermission(null);
-  }, [pendingPermission]);
+    showNextPendingPermission();
+  }, [showNextPendingPermission]);
 
   const acceptAllPermission = useCallback(() => {
     const ws = wsRef.current;
-    const pending = pendingPermission;
+    const pending = pendingPermissionRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN || !pending) return;
     ws.send(JSON.stringify({
       type: "tool_permission_response",
@@ -666,8 +694,11 @@ export function useChat() {
       decision: "allow",
     }));
     ws.send(JSON.stringify({ type: "permission_accept_all" }));
-    setPendingPermission(null);
-  }, [pendingPermission]);
+    // Accept All 关闭了后续逐条确认（含已入队的）：放行当前后清空队列，
+    // 剩余挂起请求由后端 requestPermission 在放行模式下自动允许，不需逐个弹卡。
+    pendingPermissionQueueRef.current = [];
+    showNextPendingPermission();
+  }, [showNextPendingPermission]);
 
   const observeList = useCallback((): Promise<unknown[]> => {
     return new Promise((resolve, reject) => {

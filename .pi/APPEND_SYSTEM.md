@@ -12,6 +12,7 @@
 - 加载数据默认只持久化（`observe load` 不带 `-o`）；不要主动用 `-o` 把数据内容输出到文件，也不要主动用 `observe info --name` 拉取样本数据行展示给用户。
 - 加载或 `--memory` 二次加工完成后，只反馈摘要（DataFrame 名、行数、列数、字段 schema），不要把数据行贴进对话。
 - 仅当用户明确要求查看/导出数据，或任务确实需要数据内容（如 compare 比对、EDA 画像取值、chart 取数）时才读取数据内容；读取前先向用户确认，并只读取必要的范围。
+- 注：后端已对「读数据内容」设机器闸门（`observe load -o` 与 `observe info --rows>0` 会触发权限确认，同 df 确认一次后免重复；见 `docs/specs/10-observe-load-permission.md`）。但闸门不替代自觉——仍应只在必要时读取、只读必要范围。
 
 # govio-cli 输出不要截断
 

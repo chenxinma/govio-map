@@ -1,12 +1,16 @@
-# `govio-cli observe load -o` 执行权限拦截设计
+# 取数确认门（`observe load -o` 导出 + `observe info` 样本读取）
 
 ## 背景
 
-`govio-cli observe load -o <output>` 会将数据内容写出/显示。当 agent 自动生成该命令时，存在未经用户许可即导出敏感数据的风险。需要在前端向用户请求许可，用户可一次性 Accept All（本会话内）或拒绝/编辑命令后执行。
+`govio-cli observe load -o <output>` 会将数据内容写出/显示；`govio-cli observe info --name <df> --rows N`（N>0）会把样本数据行拉进对话上下文。当 agent 自动生成这些命令时，存在未经用户许可即暴露/导出敏感数据的风险。需要在前端向用户请求许可，用户可一次性 Accept All（本会话内）或拒绝/编辑命令后执行。
+
+> 2026-10-31 BUGFIX-permission-gate 扩展：原版仅覆盖 `load -o`。实证案例（会话 `2026-10-31T16-22-57`「销量top3」）——agent 用不带 `-o` 的 `observe load` 加载后直接 `observe info --rows 5` 拉样本行展示，`.pi/APPEND_SYSTEM.md`「非必要不读取数据内容」软约束被完全绕过，全程零确认零审计。机器闸门必须独立于模型自觉。
 
 ## 触发条件
 
-匹配规则（在 `tool_call` 事件中，`toolName === "bash"`）：
+匹配规则（在 `tool_call` 事件中，`toolName === "bash"`），命中任一即触发：
+
+**A. `load` 导出（`load-output`）**
 
 - 命令中含 `govio-cli observe load` 子串
 - 且命令中含 `-o` 标志的以下形式：
@@ -15,7 +19,15 @@
   - `-o xxx` / `--output xxx`
   - ⚠ `-oxxx`（短选项紧跟值，中间无空格/等号）**当前不触发**：`OUTPUT_FLAG_RE` 的前瞻要求 `-o` 后是空白/`=`/行尾。已知缺口，govio-cli 自身与技能文档均使用带空格形式；若需覆盖需另评估误判面
 
-实现是两条独立正则的 AND（`server/extensions/govio-canvas.ts` 的 `shouldAskPermission`）：`OBSERVE_LOAD_RE = /\bgovio-cli\s+observe\s+load\b/` 与 `OUTPUT_FLAG_RE = /(?:^|\s|=)(?:-o|--output)(?=\s|=|$)/`，两条分别匹配、同时命中才触发确认门。
+**B. `info` 样本读取（`info-sample`）**
+
+- 命令中含 `govio-cli observe info` 子串
+- 且 `--rows` 值 > 0（`--rows 5` / `--rows=10`）；`--rows` 省略时 CLI 默认取 10 行样本，也触发
+- `--rows 0` / `--rows=0`（仅结构）**不触发**；`--rows abc`（非法数值）保守当作读数据、触发
+
+危险命令（`isDangerousCommand`：rm -rf / sudo / git push / 下载即执行等）独立于此判定，始终触发。
+
+实现集中在 `server/extensions/govio-canvas.ts`：`shouldAskPermission(cmd)` = `isDangerousCommand` ∨ `load -o` ∨ `info 样本行`；导出 `readsDataContent(cmd) -> "load-output" | "info-sample" | null` 与 `observeInfoTarget(cmd) -> df名 | null` 供条件放行记账与测试断言。
 
 ## 架构
 
@@ -45,6 +57,19 @@ agent → bash tool_call 事件
 - acceptAll 是**单例内存态**（当前架构同时只有一个活动会话），不持久化；`clearAll()`（清空/切换会话）时关闭。开关每次真正变更都写一条 `permission_mode` 审计条目。
 - pending request 在 session abort 时自动 deny，避免 Promise 永远挂起。
 - 审计写入是「尽力而为」：落盘失败只告警，绝不阻断确认流或命令执行（见下文「审计留痕」）。
+
+### 条件放行（同一 DataFrame 一次确认）
+
+为避免 EDA/chart 取数等高频场景反复弹卡，`info` 样本读取采用**按 df 条件放行**（方案 B）：
+
+- 同一 DataFrame 的数据内容读取在本会话内确认过一次（`allow` / Accept All）后，后续同 df 的样本读取不再重复确认。
+- 豁免登记在 `tool_result`（命令真正执行后）由 `permissionManager.acceptRead(dfName)` 记账——被拒绝/被修改的命令不产生豁免。
+- `isReadAccepted(dfName)` 在 `tool_call` 里短路后续同类读取。
+- 豁免仅限 `info-sample`：`load -o` 导出、危险命令、不同 df 的读取仍**逐次确认**；`clearAll()` 清空登记（跨会话不继承豁免）；登记集有界（`DECISION_INDEX_LIMIT`）防长会话无限增长。
+
+### 确认队列（防静默悬死）
+
+`useChat` 的 `pendingPermission` 从单槽改为 **FIFO 队列**（`pendingPermissionQueueRef`）：并发多个 `tool_permission_request` 时逐个弹卡处理，不互相覆盖/丢弃。会话切换/清空/中止时只清本地队列——后端 `clearAll()`/`denyPending()` 已拒绝所有挂起请求并留痕，前端不重复发 deny（避免同一请求双记决策）。
 
 ## 模块
 

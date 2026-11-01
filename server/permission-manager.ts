@@ -78,6 +78,8 @@ export class PermissionManager {
   private decisionsByCommand = new Map<string, { decisionId: string; decision: PermissionDecision }>();
   /** toolCallId → 决策 ID（同一次工具调用的确认与结果精确对应） */
   private decisionsByToolCall = new Map<string, string>();
+  /** 已确认读过数据内容的 DataFrame 名（条件放行：同 df 后续读取免确认，BUGFIX-permission-gate） */
+  private readAccepted = new Set<string>();
   /** 已补记过「迟到决策」的 decisionId（插入序，用于幂等：重复迟到 resolve 只记一次） */
   private lateAudited = new Set<string>();
 
@@ -114,6 +116,27 @@ export class PermissionManager {
     this.decisionsByCommand.clear();
     this.decisionsByToolCall.clear();
     this.lateAudited.clear();
+    this.readAccepted.clear();
+  }
+
+  /**
+   * 条件放行登记：用户已确认读取过该 DataFrame 的数据内容（allow / Accept All），
+   * 本会话内后续同 df 的样本读取不再重复确认（方案 B：同一数据集一次确认）。
+   * 只在命令真正执行后由 tool_result 记账，被拒绝/被修改的命令不产生豁免。
+   */
+  acceptRead(dfName: string): void {
+    if (!dfName) return;
+    this.readAccepted.add(dfName);
+    while (this.readAccepted.size > DECISION_INDEX_LIMIT) {
+      const oldest = this.readAccepted.values().next().value;
+      if (oldest === undefined) break;
+      this.readAccepted.delete(oldest);
+    }
+  }
+
+  /** 该 DataFrame 的数据内容读取是否已确认过（本会话内） */
+  isReadAccepted(dfName: string): boolean {
+    return this.readAccepted.has(dfName);
   }
 
   denyPending(reason: string, source: PermissionDecisionSource = "abort"): void {

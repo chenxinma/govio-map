@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-01T00:45:23+08:00",
+  "updatedAt": "2026-11-01T08:23:30+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -502,6 +502,22 @@
       "note": "截图任务中发现的真 bug：会话头 cwd 记为 D:/Work/...（大写 W，Electron/历史启动路径），dev server process.cwd() 为 D:/work/...（磁盘规范小写），pi findMostRecentSession 的 cwd 过滤为大小写敏感字符串比较 → 全部历史会话落选 → 后端静默创建空会话（画布空白无报错）。修复方向：backend 启动时（agentSetup 前）在 win32 上用 fs.realpathSync.native 等取磁盘规范大小写并 process.chdir，或传入与历史会话一致的 cwd；补回归断言（构造大小写不同的伪会话头验证 continueRecent 命中）。",
       "outputDir": "docs/tasks/X7-cwd-case-normalization/",
       "history": []
+    },
+    {
+      "id": "X8",
+      "title": "取数/读数据确认门缺口修复（BUGFIX）",
+      "status": "done",
+      "dependsOn": [],
+      "note": "会话 2026-10-31T16-22-57「销量top3」实证：observe load 不带 -o 加载后 observe info --rows 5 拉样本行绕过全部确认（软约束被模型忽略）。P1 把 info 样本行读取纳入 shouldAskPermission 闸门（readsDataContent: load-output/info-sample），并按用户选定方案 B 做「同 df 一次确认」条件放行（acceptRead/isReadAccepted，tool_result 记账、被拒不豁免、clearAll 清空、-o 导出不受豁免）；P2 useChat pendingPermission 单槽改 FIFO 队列 + 清理路径不再静默丢卡（后端 clearAll/denyPending 为拒绝唯一事实源，前端只清本地队列）。verify:audit 97→116 全绿，build/lint/verify 聚合无回归。交付 docs/tasks/BUGFIX-permission-gate/ 三件套 + specs/10 同步。",
+      "outputDir": "docs/tasks/BUGFIX-permission-gate/",
+      "history": [
+        {
+          "status": "done",
+          "at": "2026-11-01T08:23:30+08:00",
+          "by": "worker-session",
+          "note": "实现+验证完成，待主会话验收"
+        }
+      ]
     }
   ],
   "pullRequests": {

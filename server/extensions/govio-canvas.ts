@@ -19,6 +19,7 @@ import {
 } from "../analysis-manifest.js";
 
 const OBSERVE_LOAD_RE = /\bgovio-cli\s+observe\s+load\b/;
+const OBSERVE_INFO_RE = /\bgovio-cli\s+observe\s+info\b/;
 const OUTPUT_FLAG_RE = /(?:^|\s|=)(?:-o|--output)(?=\s|=|$)/;
 
 /**
@@ -52,8 +53,41 @@ function normalizeDatasourceType(value: string | undefined): DatasourceType | un
 
 export function shouldAskPermission(cmd: string): boolean {
   if (isDangerousCommand(cmd)) return true;
-  if (!OBSERVE_LOAD_RE.test(cmd)) return false;
-  return OUTPUT_FLAG_RE.test(cmd);
+  if (OBSERVE_LOAD_RE.test(cmd) && OUTPUT_FLAG_RE.test(cmd)) return true;
+  return readsDataContent(cmd) !== null;
+}
+
+/**
+ * 「读数据内容」判定（BUGFIX-permission-gate）：凡向对话暴露数据行的命令都要过确认门。
+ *
+ * 动机案例：会话 2026-10-31T16-22-57「销量top3」——agent 用不带 `-o` 的 `observe load`
+ * 加载（不触发确认门）后，直接 `observe info --name <df> --rows 5` 把样本数据行拉进
+ * 上下文展示，.pi/APPEND_SYSTEM.md「非必要不读取数据内容」的软约束被完全绕过，全程零确认
+ * 零审计。机器闸门必须独立于模型自觉。
+ *
+ * 返回 "load-output"（load 带 `-o` 导出）/ "info-sample"（info 拉样本行）/ null（不读数据）。
+ * 仅限 `observe load` / `observe info` 两个子命令：compare/explore 的数据消费按既有产品决策
+ * 不设门；危险命令由 isDangerousCommand 独立拦截，不经此判定。
+ *
+ * 已知缺口（specs/10 同款，有意保留）：`-oxxx`（短选项紧跟值）不触发——正则前瞻要求
+ * `-o` 后是空白/`=`/行尾；`--rows=0` / `-r=0` / `--rows 0`（仅结构）不触发；`--rows`
+ * 省略时 CLI 默认取 10 行样本，视为读数据。
+ */
+export function readsDataContent(cmd: string): "load-output" | "info-sample" | null {
+  if (OBSERVE_LOAD_RE.test(cmd) && OUTPUT_FLAG_RE.test(cmd)) return "load-output";
+  if (!OBSERVE_INFO_RE.test(cmd)) return null;
+  const rowsArg = extractNamedArg(cmd, "rows");
+  if (rowsArg !== null) {
+    const n = Number(rowsArg);
+    if (Number.isFinite(n) && n <= 0) return null;
+  }
+  return "info-sample";
+}
+
+/** `observe info --name` 的 DataFrame 名（含 `--rows 0` 的结构读取）；非 info 子命令或取不到名时为 null */
+export function observeInfoTarget(cmd: string): string | null {
+  if (!OBSERVE_INFO_RE.test(cmd)) return null;
+  return extractNamedArg(cmd, "name");
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -786,7 +820,15 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event) => {
     if (!isToolCallEventType("bash", event)) return;
     const cmd = event.input.command;
-    if (!shouldAskPermission(cmd)) return;
+    const gateKind = shouldAskPermission(cmd) ? (readsDataContent(cmd) ?? "other") : null;
+    if (!gateKind) return;
+
+    // 条件放行（BUGFIX-permission-gate 方案 B）：同一 DataFrame 的数据内容读取在
+    // 本会话内确认过一次（allow/Accept All）即不再重复打扰；`-o` 导出、危险命令、
+    // 不同 DataFrame 的读取仍逐次确认。决策只对执行生效的命令做记录（tool_result
+    // 的 acceptRead 记账），被拒绝/被修改的命令不产生豁免。
+    const infoDf = gateKind === "info-sample" ? observeInfoTarget(cmd) : null;
+    if (infoDf && permissionManager.isReadAccepted(infoDf)) return;
 
     // 全局放行也走 requestPermission（manager 内部会直接允许）：审计日志需要留下
     // 「这条命令在放行模式下被执行过」的记录，否则放行期间的取数无任何留痕。
@@ -808,6 +850,12 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
     const stdout = extractTextContent(event.content);
 
     if (!/govio-cli\s+observe/.test(cmd)) return;
+    // 条件放行记账：命令真正执行（有结果）才登记「该 DataFrame 已确认」，
+    // 供后续同类读取免确认（见 tool_call 的 isReadAccepted 短路）。
+    const readDf = readsDataContent(cmd) === "info-sample" ? observeInfoTarget(cmd) : null;
+    if (readDf && permissionManager.decisionIdForExecution(cmd, event.toolCallId)) {
+      permissionManager.acceptRead(readDf);
+    }
     const subcommand = parseObserveSubcommand(cmd);
     console.log("[govio-canvas] tool_result subcommand:", subcommand, "cmd:", cmd.slice(0, 120));
 

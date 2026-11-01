@@ -49,7 +49,7 @@ import {
 } from "../server/permission-manager.js";
 import { buildManifest } from "../server/analysis-manifest.js";
 import { deleteSession, getSessionDir, saveCanvas } from "../server/session-history.js";
-import govioCanvasExtension, { shouldAskPermission } from "../server/extensions/govio-canvas.js";
+import govioCanvasExtension, { shouldAskPermission, readsDataContent, observeInfoTarget } from "../server/extensions/govio-canvas.js";
 import { flushGovioNodes } from "../server/govio-node-queue.js";
 import type { AnalysisManifest } from "../src/types/manifest.js";
 
@@ -508,15 +508,101 @@ try {
     );
   }
 
-  // ── 8. 确认门触发条件（shouldAskPermission 直接断言，对齐 specs/10）────
-  console.log("\n[8] shouldAskPermission 触发条件");
+  // ── 8. 确认门触发条件（shouldAskPermission / readsDataContent 直接断言）────
+  console.log("\n[8] 确认门触发条件（load -o 导出 + info 样本行读取）");
   {
     check("-o=xxx 触发确认门", shouldAskPermission("govio-cli observe load --name df_x --datasource sales -o=out.json --sql 'SELECT 1'") === true);
     check("--output xxx 触发确认门", shouldAskPermission("govio-cli observe load --name df_x --datasource sales --output out.json --sql 'SELECT 1'") === true);
-    check("observe compare -o 不触发（只拦 observe load）", shouldAskPermission("govio-cli observe compare --source a --target b -o out.json") === false);
+    check("observe compare -o 不触发（只拦 observe load/info）", shouldAskPermission("govio-cli observe compare --source a --target b -o out.json") === false);
     check("SQL/路径文本里的 -o 不误判", shouldAskPermission(`govio-cli observe load --name df_x --datasource sales --sql "SELECT * FROM t WHERE p = '-o'"`) === false);
     check("不带 -o 的普通加载不触发", shouldAskPermission("govio-cli observe load --name df_x --datasource sales --sql 'SELECT 1' 2>&1") === false);
     check("-oxxx（短选项紧跟值）当前不触发（已知缺口，specs/10 已标注）", shouldAskPermission("govio-cli observe load --name df_x -oout.json --sql 'SELECT 1'") === false);
+
+    // 读数据内容闸门（BUGFIX-permission-gate）：observe info 拉样本行也要过确认
+    check("info --rows 5（拉样本行）触发确认门", shouldAskPermission("govio-cli observe info --name df_x --rows 5") === true);
+    check("info --rows 10 触发确认门", shouldAskPermission("govio-cli observe info --name df_x --rows 10") === true);
+    check("info 省略 --rows（CLI 默认 10 行样本）触发确认门", shouldAskPermission("govio-cli observe info --name df_x") === true);
+    check("info --rows 0（仅结构）不触发", shouldAskPermission("govio-cli observe info --name df_x --rows 0") === false);
+    check("info --rows=0（等号形式）不触发", shouldAskPermission("govio-cli observe info --name df_x --rows=0") === false);
+    check("info --rows abc（非法数值，保守当作读数据）触发确认门", shouldAskPermission("govio-cli observe info --name df_x --rows abc") === true);
+    check("load -o 与 info 样本行都命中时 kinds 可区分", readsDataContent("govio-cli observe load --name df_x --datasource s -o out.json --sql 'SELECT 1'") === "load-output" && readsDataContent("govio-cli observe info --name df_x --rows 5") === "info-sample");
+    check("普通加载不读数据内容", readsDataContent("govio-cli observe load --name df_x --datasource s --sql 'SELECT 1'") === null);
+    check("observeInfoTarget 提取 df 名", observeInfoTarget("govio-cli observe info --name df_target --rows 5") === "df_target");
+    check("observeInfoTarget 对非 info 命令返回 null", observeInfoTarget("govio-cli observe load --name df_x --datasource s --sql 'SELECT 1'") === null);
+  }
+
+  // ── 9. 条件放行（同 df 一次确认）+ P2 确认队列 ──────────────────────
+  console.log("\n[9] 条件放行（同 df 一次确认）与确认队列");
+  {
+    permissionManager.clearAll();
+    type Handler = (event: unknown, ctx: unknown) => unknown;
+    const handlers2 = new Map<string, Handler>();
+    const piStub2 = {
+      registerTool: () => {},
+      on: (name: string, handler: Handler) => { handlers2.set(name, handler); return () => {}; },
+    };
+    govioCanvasExtension(piStub2 as unknown as Parameters<typeof govioCanvasExtension>[0]);
+    const toolCall2 = handlers2.get("tool_call");
+    const toolResult2 = handlers2.get("tool_result");
+    const piCtx2 = {
+      sessionManager: { getSessionId: () => "sess-verify-cond" },
+      model: { provider: "anthropic", id: "claude-sonnet-4-5" },
+    };
+    const bashCall2 = (id: string, command: string) => ({ type: "tool_call", toolCallId: id, toolName: "bash", input: { command } });
+    const bashResult2 = (id: string, command: string) => ({
+      toolName: "bash",
+      toolCallId: id,
+      isError: false,
+      input: { command },
+      content: [{ type: "text", text: JSON.stringify({ success: true, rows: 3, columns: 1, column_info: [{ name: "id", dtype: "int64" }] }) }],
+    });
+
+    // 第一次 info 读样本：触发确认门（前端解 allow）
+    const condRequests: PermissionRequest[] = [];
+    const unsubCond = permissionManager.onRequest((req) => {
+      condRequests.push(req);
+      permissionManager.resolve(req.requestId, { decision: "allow" });
+    });
+    const infoCmd = 'govio-cli observe info --name df_cond --rows 5 2>&1';
+    const first = await toolCall2?.(bashCall2("c1", infoCmd), piCtx2);
+    check("同 df 首次样本读取触发确认门", first === undefined && condRequests.length === 1 && condRequests[0].command === infoCmd);
+    await toolResult2?.(bashResult2("c1", infoCmd), piCtx2);
+    check("命令执行后登记条件放行", permissionManager.isReadAccepted("df_cond") === true);
+
+    // 同 df 第二次：不再触发确认（条件放行）
+    const infoCmd2 = 'govio-cli observe info --name df_cond --rows 8 2>&1';
+    const second = await toolCall2?.(bashCall2("c2", infoCmd2), piCtx2);
+    check("同 df 后续样本读取免确认（方案 B）", second === undefined && condRequests.length === 1);
+
+    // 不同 df：仍需确认
+    const infoCmd3 = 'govio-cli observe info --name df_other --rows 5 2>&1';
+    const third = await toolCall2?.(bashCall2("c3", infoCmd3), piCtx2);
+    check("不同 df 的样本读取仍触发确认门", third === undefined && condRequests.length === 2 && condRequests[1].command === infoCmd3);
+    await toolResult2?.(bashResult2("c3", infoCmd3), piCtx2);
+
+    // 被拒绝的命令不产生豁免：再次读同 df 仍需确认
+    unsubCond();
+    permissionManager.clearAll(); // 清掉 df_cond/df_other 的放行登记
+    const denyScript: PermissionDecisionInput[] = [{ decision: "deny", reason: "不给看" }];
+    const unsubDeny = permissionManager.onRequest((req) => {
+      const next = denyScript.shift();
+      if (next) permissionManager.resolve(req.requestId, next);
+    });
+    const deniedCmd = 'govio-cli observe info --name df_deny --rows 5 2>&1';
+    const denied = (await toolCall2?.(bashCall2("c4", deniedCmd), piCtx2)) as { block?: boolean } | undefined;
+    check("被拒绝的样本读取被阻断", denied?.block === true);
+    check("被拒绝的命令不产生条件放行豁免", permissionManager.isReadAccepted("df_deny") === false);
+    unsubDeny();
+
+    // clearAll 清空条件放行登记（会话切换不把豁免带过去）
+    permissionManager.acceptRead("df_keep");
+    check("acceptRead 登记后可查", permissionManager.isReadAccepted("df_keep") === true);
+    permissionManager.clearAll();
+    check("clearAll 清空条件放行登记（跨会话不继承豁免）", permissionManager.isReadAccepted("df_keep") === false);
+
+    // -o 导出不受条件放行影响：同 df 反复导出仍逐次确认
+    permissionManager.acceptRead("df_export");
+    check("-o 导出命令不受 info 条件放行豁免", shouldAskPermission("govio-cli observe load --name df_export --datasource s -o out.json --sql 'SELECT 1'") === true);
   }
 } finally {
   setAuditSessionResolver(null);
