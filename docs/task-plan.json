@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-03T22:27:46+08:00",
+  "updatedAt": "2026-11-03T22:31:44+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -497,7 +497,7 @@
     {
       "id": "X7",
       "title": "启动时 cwd 规范大小写（Windows 会话恢复静默失败修复）",
-      "status": "done",
+      "status": "accepted",
       "dependsOn": [],
       "note": "截图任务中发现的真 bug：会话头 cwd 记为 D:/Work/...（大写 W，Electron/历史启动路径），dev server process.cwd() 为 D:/work/...（磁盘规范小写），pi findMostRecentSession 的 cwd 过滤为大小写敏感字符串比较 → 全部历史会话落选 → 后端静默创建空会话（画布空白无报错）。修复方向：backend 启动时（agentSetup 前）在 win32 上用 fs.realpathSync.native 等取磁盘规范大小写并 process.chdir，或传入与历史会话一致的 cwd；补回归断言（构造大小写不同的伪会话头验证 continueRecent 命中）。",
       "outputDir": "docs/tasks/X7-cwd-case-normalization/",
@@ -513,6 +513,12 @@
           "at": "2026-11-03T12:59:24.302Z",
           "by": "worker",
           "note": "实现 server/cwd-normalize.ts + agent.ts 三处接入 + verify:cwd 13 项断言；build/lint/verify 全绿，既有断言 92/71/119/126/39 零回归"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-03T22:31:44+08:00",
+          "by": "main-session",
+          "note": "用户确认验收通过。独立复跑 build ✓ / lint 0 / verify 全绿（manifest 92 / rerun 71 / audit 119 / export 126 / source-table 39 / cwd 13）；抽查 cwd-normalize.ts（realpathSync.native + 幂等 chdir）与 agent.ts 三处接入（agentSetup/getOrCreateSession/openSessionFile）实现正确。"
         }
       ]
     },
@@ -541,7 +547,7 @@
     {
       "id": "X9",
       "title": "对话展示改版：assistant 去气泡化 + tool 调用可展开查看命令",
-      "status": "done",
+      "status": "accepted",
       "dependsOn": [],
       "note": "用户需求 2026-11-01：agent 回复内容多，气泡占位且一次 agent_start→agent_end 的分段输出被拆成多个气泡。① 用户消息保留气泡；② assistant 回复保持现有分段输出（thinking/工具行/markdown 正文逐段），但不再用气泡卡片包裹（无边框背景、宽度放开）；③ tool 调用行（至少 bash）可展开查看具体命令（args）与执行结果摘要。实现面：useChat ToolCall 增 args（tool_start/input）；session-history buildRounds 的 toolCall block 带 arguments（历史回放同样可展开）；ws-handler tool_start 转发 args；ChatMessage ToolPill→可展开 ToolRow（bash 显命令，其它工具显 args JSON）；specs/03-chat.md 同步。验证：build/lint/verify 全绿（前端视图变更不影响既有断言），人工冒烟：流式与历史回放下 assistant 分段无气泡、bash 行可展开见命令、导出会话 JSON 不回归。",
       "outputDir": "docs/tasks/X9-chat-display/",
@@ -563,6 +569,12 @@
           "at": "2026-11-03T12:48:17+08:00",
           "by": "worker",
           "note": "实现完成：ws-handler 转发 args、session-history 回放 args、ChatMessage 去气泡+ToolRow 展开、specs 同步；build/lint/verify 全绿（447 断言零回归），三件套落盘"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-03T22:31:44+08:00",
+          "by": "main-session",
+          "note": "用户确认验收通过。抽查 ChatMessage.tsx（assistant 去气泡 w-full、ToolRow 可展开 bash 命令/args JSON ≤20 行）、ws-handler 转发 args、session-history buildRounds 回放 args、export-session 含 tools；verify 全绿无回归。"
         }
       ]
     }
