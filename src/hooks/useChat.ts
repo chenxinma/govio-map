@@ -8,6 +8,8 @@ export interface ToolCall {
   toolName: string;
   toolCallId?: string;
   success?: boolean;
+  /** 工具入参（tool_start 转发的 args），供 ToolRow 展开查看具体命令 */
+  args?: Record<string, unknown> | string;
 }
 
 export interface ModelOption {
@@ -79,6 +81,7 @@ interface WSEvent {
   content?: string;
   toolName?: string;
   toolCallId?: string;
+  args?: Record<string, unknown> | string;
   success?: boolean;
   dataframes?: unknown[];
   requestId?: string;
@@ -393,10 +396,12 @@ export function useChat() {
               // Tool events arrive after message_end; the bubble is no longer thinking-only.
               reusableThinkingId.current = null;
               const toolName = data.toolName || "unknown";
+              const tool: ToolCall = { toolName, toolCallId: data.toolCallId, success: undefined };
+              if (data.args !== undefined) tool.args = data.args;
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === toolStartId
-                    ? { ...m, isStreaming: true, tools: [...(m.tools || []), { toolName, toolCallId: data.toolCallId, success: undefined }] }
+                    ? { ...m, isStreaming: true, tools: [...(m.tools || []), tool] }
                     : m
                 )
               );

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-01T10:23:03+08:00",
+  "updatedAt": "2026-11-03T12:48:17+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -528,7 +528,7 @@
     {
       "id": "X9",
       "title": "对话展示改版：assistant 去气泡化 + tool 调用可展开查看命令",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "note": "用户需求 2026-11-01：agent 回复内容多，气泡占位且一次 agent_start→agent_end 的分段输出被拆成多个气泡。① 用户消息保留气泡；② assistant 回复保持现有分段输出（thinking/工具行/markdown 正文逐段），但不再用气泡卡片包裹（无边框背景、宽度放开）；③ tool 调用行（至少 bash）可展开查看具体命令（args）与执行结果摘要。实现面：useChat ToolCall 增 args（tool_start/input）；session-history buildRounds 的 toolCall block 带 arguments（历史回放同样可展开）；ws-handler tool_start 转发 args；ChatMessage ToolPill→可展开 ToolRow（bash 显命令，其它工具显 args JSON）；specs/03-chat.md 同步。验证：build/lint/verify 全绿（前端视图变更不影响既有断言），人工冒烟：流式与历史回放下 assistant 分段无气泡、bash 行可展开见命令、导出会话 JSON 不回归。",
       "outputDir": "docs/tasks/X9-chat-display/",
@@ -538,6 +538,18 @@
           "at": "2026-11-01T10:23:03+08:00",
           "by": "main-session",
           "note": "用户提出需求，已调研 useChat/ChatMessage/session-history 实现面，排入任务"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-03T12:43:55+08:00",
+          "by": "worker",
+          "note": "X9 worker 开工（对话展示改版）"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-03T12:48:17+08:00",
+          "by": "worker",
+          "note": "实现完成：ws-handler 转发 args、session-history 回放 args、ChatMessage 去气泡+ToolRow 展开、specs 同步；build/lint/verify 全绿（447 断言零回归），三件套落盘"
         }
       ]
     }

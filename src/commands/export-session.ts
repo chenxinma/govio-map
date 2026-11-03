@@ -9,6 +9,7 @@ export function exportSession(messages: ChatMessage[], nodes: Node[], edges: Edg
       role: m.role,
       content: m.content,
       thinking: m.thinking,
+      tools: m.tools,
       referencedNodes: m.referencedNodes,
     })),
     canvas: {

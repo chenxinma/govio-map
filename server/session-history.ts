@@ -10,6 +10,8 @@ export function getSessionDir(): string {
 export interface DisplayToolCall {
   toolName: string;
   success?: boolean;
+  /** 工具入参（pi transcript toolCall block 的 arguments），供前端 ToolRow 展开查看 */
+  args?: unknown;
 }
 
 export interface DisplayMessage {
@@ -142,12 +144,17 @@ function buildRounds(entries: SessionEntry[]): Round[] {
       let text = "";
       let thinking = "";
       const tools: DisplayToolCall[] = [];
-      for (const b of (m.content ?? []) as Array<{ type: string; text?: string; thinking?: string; id?: string; name?: string }>) {
+      for (const b of (m.content ?? []) as Array<{ type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: unknown; args?: unknown; input?: unknown }>) {
         if (b.type === "text") text += b.text ?? "";
         else if (b.type === "thinking") thinking += b.thinking ?? "";
         else if (b.type === "toolCall" && b.id && b.name) {
           toolIndex.set(b.id, { tools, idx: tools.length });
-          tools.push({ toolName: b.name });
+          const call: DisplayToolCall = { toolName: b.name };
+          // pi transcript 结构为 {type:"toolCall", id, name, arguments}；
+          // 兼容 args/input 变体，取不到留空（前端降级为无参数信息）。
+          const args = b.arguments ?? b.args ?? b.input;
+          if (args !== undefined) call.args = args;
+          tools.push(call);
         }
       }
       if (!text && !thinking && tools.length === 0) continue;
@@ -200,7 +207,7 @@ if (process.env.NODE_ENV !== "production") {
   const entries: SessionEntry[] = [];
   for (let i = 0; i < 12; i++) {
     entries.push(entry(`u${i}`, { role: "user", content: `question ${i}` }));
-    entries.push(entry(`a${i}`, { role: "assistant", content: [{ type: "text", text: `answer ${i}` }, { type: "toolCall", id: `t${i}`, name: "bash" }] }));
+    entries.push(entry(`a${i}`, { role: "assistant", content: [{ type: "text", text: `answer ${i}` }, { type: "toolCall", id: `t${i}`, name: "bash", arguments: { command: `echo ${i}` } }] }));
     entries.push(entry(`r${i}`, { role: "toolResult", toolCallId: `t${i}`, isError: false }));
   }
   const page1 = buildTranscript(entries, { rounds: 10 });
@@ -208,6 +215,7 @@ if (process.env.NODE_ENV !== "production") {
   assert(page1.hasMore, "page1 hasMore");
   assert(page1.messages[0].content === "question 2", "page1 starts at round 2");
   assert(page1.messages[1].tools?.[0].success === true, "tool success backfilled");
+  assert((page1.messages[1].tools?.[0].args as { command?: string })?.command === "echo 2", "tool args parsed");
   const page2 = buildTranscript(entries, { rounds: 10, beforeEntryId: page1.oldestEntryId });
   assert(page2.messages.length === 4 && !page2.hasMore, "page2 holds rounds 0-1");
   const ref = buildTranscript([entry("x", { role: "user", content: 'REF:[{"tbl_a": "data"}, {"tbl_b": "d2"}]\nreal question' })]);

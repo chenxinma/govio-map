@@ -92,7 +92,9 @@ interface ChatMessage {
 
 interface ToolCall {
   toolName: string;
+  toolCallId?: string;
   success?: boolean;  // undefined=运行中, true=成功, false=失败
+  args?: Record<string, unknown> | string;  // 工具入参（tool_start 转发 / 历史回放带出）
 }
 ```
 
@@ -104,18 +106,22 @@ interface ToolCall {
 
 ### 助手消息渲染
 
-- 左对齐，标准边框
+- 去气泡化：无边框、无背景、无圆角，内容铺满面板宽度（与用户气泡区分）
+- 保持分段输出：每个 `message_start` 起一段（thinking 折叠段 / 工具行 / markdown 正文）
 - 可折叠 Thinking 区域（默认折叠）
-- ToolPills 工具调用标签（运行中显示 spinner，成功绿色勾，失败红色叉）
+- ToolRows 工具调用行（见下）
 - 正文通过 `react-markdown` + `remark-gfm` 渲染
 - 空内容且正在流式输出时显示 "思考中..." 加载动画
 
-### ToolPill
+### ToolRow
 
-胶囊标签，显示工具名 + 状态图标：
-- 运行中：灰色背景 + Loader2 spinner
-- 成功：绿色 Check 图标
-- 失败：红色 X 图标
+可展开的工具调用行（替代旧 ToolPill 胶囊），每行独立 useState，默认收起：
+- 行内：展开箭头 + 工具名 + 状态图标（运行中 spinner / 成功绿勾 / 失败红叉）
+- 点击展开显示入参 `args`：
+  - `bash` 工具显示 `args.command` 命令字符串
+  - 其它工具显示 `JSON.stringify(args, null, 2)`，截断 ≤20 行
+  - 无 args（旧历史/未转发）显示「无参数信息」
+- 工具执行结果仍只显示 success 状态，不展开结果体
 
 ## useChat Hook
 
@@ -147,8 +153,8 @@ interface ToolCall {
 | message_start | 创建新的助手消息（空内容，isStreaming=true） |
 | thinking_delta | 追加思考内容到当前消息 |
 | text_delta | 追加正文内容到当前消息 |
-| tool_start | 追加工具调用标签（success=undefined） |
-| tool_end | 更新最后一个工具标签的 success 状态 |
+| tool_start | 追加工具调用行（success=undefined），携带 args（工具入参） |
+| tool_end | 按 toolCallId 匹配工具行的 success 状态 |
 | message_end | 终结当前消息（isStreaming=false） |
 | agent_end | 标记流式输出结束 |
 | observe_list_result | 解析 DataFrame 列表，resolve Promise |

@@ -75,7 +75,9 @@ export function setupWebSocket(server: import("http").Server) {
             }
             break;
           case "tool_execution_start":
-            ws.send(JSON.stringify({ type: "tool_start", toolName: event.toolName, toolCallId: event.toolCallId }));
+            // args 原样随事件体 JSON 序列化（不嵌套字符串，避免转义问题），
+            // 前端 ToolRow 展开可见具体命令（bash 为 command，其它为 args JSON）。
+            ws.send(JSON.stringify({ type: "tool_start", toolName: event.toolName, toolCallId: event.toolCallId, args: event.args }));
             break;
           case "tool_execution_end":
             console.log(`[ws] Tool execution end: ${event.toolName} success=${!event.isError}`);

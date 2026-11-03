@@ -22,28 +22,61 @@ const NODE_COLORS: Record<NodeType, string> = {
   chart: "text-node-chart",
 };
 
-function ToolPill({ tool }: { tool: ToolCall }) {
+function formatArgs(tool: ToolCall): string | null {
+  const { args } = tool;
+  if (args === undefined || args === null) return null;
+  if (typeof args === "string") return args;
+  // bash 展开可见具体命令；其它工具展示 args 的 JSON。
+  if (tool.toolName === "bash" && typeof args.command === "string") return args.command;
+  return JSON.stringify(args, null, 2);
+}
+
+function ToolRow({ tool }: { tool: ToolCall }) {
+  const [open, setOpen] = useState(false);
   const isSuccess = tool.success === true;
   const isFail = tool.success === false;
   const isRunning = tool.success === undefined;
+  const full = formatArgs(tool);
+  const lines = full ? full.split("\n") : [];
+  // 非 bash 工具的 args JSON 截断 ≤20 行，避免展开区过高。
+  const truncated = tool.toolName !== "bash" && lines.length > 20;
+  const display = full === null ? null : truncated ? lines.slice(0, 20).join("\n") + "\n…" : full;
 
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-[#f0f0f0] border border-border-subtle text-text-secondary">
-      <Wrench size={10} />
-      <span>{tool.toolName}</span>
-      {isRunning && <Loader2 size={10} className="animate-spin" />}
-      {isSuccess && <Check size={10} className="text-brand" />}
-      {isFail && <X size={10} className="text-error" />}
-    </span>
+    <div className="rounded border border-border-subtle bg-[#f0f0f0]">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-1.5 px-2 py-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <Wrench size={10} />
+        <span className="font-mono">{tool.toolName}</span>
+        {isRunning && <Loader2 size={10} className="animate-spin" />}
+        {isSuccess && <Check size={10} className="text-brand" />}
+        {isFail && <X size={10} className="text-error" />}
+      </button>
+      {open && (
+        <div className="px-2 pb-2">
+          {display !== null ? (
+            <pre className="p-2 rounded bg-bg-primary text-xs font-mono text-text-secondary whitespace-pre-wrap break-words border border-border-subtle">
+              {display}
+            </pre>
+          ) : (
+            <span className="text-xs text-text-muted">无参数信息</span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
-function ToolPills({ tools }: { tools: ToolCall[] }) {
+function ToolRows({ tools }: { tools: ToolCall[] }) {
   if (!tools || tools.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-1 mb-2">
+    <div className="flex flex-col gap-1 mb-2">
       {tools.map((tool, i) => (
-        <ToolPill key={`${tool.toolName}-${i}`} tool={tool} />
+        <ToolRow key={tool.toolCallId ?? `${tool.toolName}-${i}`} tool={tool} />
       ))}
     </div>
   );
@@ -95,11 +128,11 @@ export default function ChatMessage({ message }: { message: ChatMessageType }) {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}>
       <div
-        className={`max-w-[90%] rounded-lg px-3 py-2 text-sm ${
+        className={
           isUser
-            ? "bg-bg-primary border-l-2 border-brand text-text-primary"
-            : "bg-bg-primary border border-border-default text-text-primary"
-        }`}
+            ? "max-w-[90%] rounded-lg px-3 py-2 text-sm bg-bg-primary border-l-2 border-brand text-text-primary"
+            : "w-full text-sm text-text-primary"
+        }
       >
         {isUser ? (
           <>
@@ -117,7 +150,7 @@ export default function ChatMessage({ message }: { message: ChatMessageType }) {
         ) : (
           <>
             {message.thinking && <ThinkingSection content={message.thinking} />}
-            {message.tools && message.tools.length > 0 && <ToolPills tools={message.tools} />}
+            {message.tools && message.tools.length > 0 && <ToolRows tools={message.tools} />}
             {message.content ? (
               <div className="chat-markdown prose prose-invert prose-sm max-w-none">
                 <Markdown
