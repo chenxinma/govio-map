@@ -4,6 +4,7 @@ import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import govioCanvasExtension from "./extensions/govio-canvas.js";
 import { ensureGovioCli, downloadGovioSkills } from "./govio-installer.js";
+import { applyCanonicalCwd } from "./cwd-normalize.js";
 import { getSessionDir } from "./session-history.js";
 import { setAuditSessionResolver } from "./permission-audit.js";
 
@@ -88,7 +89,9 @@ function declareHostPiPackageRoot(): void {
 export async function agentSetup() {
   // Resolve cwd at call time so the Electron main process can chdir()
   // before the agent boots (module-level evaluation would be too early).
-  const cwd = process.cwd();
+  // X7: canonicalize on-disk casing first — Windows preserves the launch-path
+  // casing in process.cwd(), but pi matches session-header cwds case-sensitively.
+  const cwd = applyCanonicalCwd();
   ensureElectronRunAsNode();
   declareHostPiPackageRoot();
 
@@ -156,7 +159,9 @@ export async function getOrCreateSession(forceNew = false): Promise<AgentSession
   if (session) return session;
   if (!resLoader) throw Error("Agent not ready.");
 
-  const cwd = process.cwd();
+  // X7: cwd must be disk-canonical (case included) for SessionManager's
+  // case-sensitive session-header matching to resume the recent session.
+  const cwd = applyCanonicalCwd();
   const dir = getSessionDir();
   const useRecent = !resumedOnce && !forceNew;
   resumedOnce = true;
@@ -180,7 +185,7 @@ export async function openSessionFile(path: string): Promise<AgentSession> {
   resetSession();
   resumedOnce = true;
 
-  const cwd = process.cwd();
+  const cwd = applyCanonicalCwd();
   const sessionManager = SessionManager.open(path, getSessionDir(), cwd);
 
   const { session: newSession } = await createAgentSession({
