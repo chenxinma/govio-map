@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-03T22:31:44+08:00",
+  "updatedAt": "2026-11-03T22:43:32+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -18,7 +18,7 @@
       "verification.md"
     ],
     "statusProtocol": "子任务开始时将自己的 status 置为 in_progress 并追加 history；完成实现与验证后置为 done；主 session 验收后置为 accepted 或 rejected。任何状态变更必须同步追加 history 条目并刷新顶层 updatedAt。",
-    "commitProtocol": "每个任务完成后在任务分支上独立 commit，message 前缀为任务 ID（如 T1.1:）。"
+    "commitProtocol": "每个任务完成后在任务分支上独立 commit，message 前缀为任务 ID（如 T1.1:）。合入 main 纪律：bugfix 可直接 push main；界面交互优化/新功能/大改动必须走 GitHub PR（任务分支 → PR → Merge pull request #N → 清理分支），后续任务默认全部经 PR；判不准时按 PR 处理。详见 AGENTS.md「合入 main 纪律（PR 门禁）」。"
   },
   "phases": [
     {

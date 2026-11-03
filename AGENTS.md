@@ -77,6 +77,20 @@ pending → in_progress → done → accepted / rejected
 - 三件套落盘 + task-plan 状态置 `done` + 单次 commit（ID 前缀）
 - 未完成项如实报告，禁止虚报验证结果
 
+### 合入 main 纪律（PR 门禁）
+
+按变更性质分两类：
+
+| 变更类型 | 合入方式 |
+|---|---|
+| **bugfix**（小范围缺陷修复，不改交互/不加功能） | 可直接 commit 到 `main` 并 push（单次 commit，ID 前缀） |
+| **界面交互优化、新功能、大改动**（含 P2/P3 任务、X 项里的功能/体验类，如 T2.x、X3、X9 这类） | 必须走 **GitHub PR**：任务分支 → PR → （评审/CI）→ `Merge pull request #N` → 清理分支。**后续任务默认全部经 PR** |
+
+- PR 合并后主会话做验收（独立复跑验证 + 抽查）→ `accepted` 置位 + 单独 commit
+- 判不准是 bugfix 还是功能时，**按 PR 处理**（宁重勿漏）
+- 验收 commit（`chore(plan): accept ...`）与 task-plan 更新属文档记账，可直接 push `main`，不受 PR 门禁约束
+- 实例参考：PR 合并惯例见 `docs/task-plan.json → pullRequests`（#12-#17）；X7/X9 走本地 merge 是历史例外，已过 PR 的 #12-#17 是标准形态
+
 ### 主会话：验收协议
 
 1. 独立复跑验证门槛（不转述 worker 报告），确认断言数变化与新增用例吻合
