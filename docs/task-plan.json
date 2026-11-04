@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-04T21:31:45+08:00",
+  "updatedAt": "2026-11-04T22:51:03+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -417,7 +417,7 @@
     {
       "id": "X3",
       "title": "前端 bundle 拆分（plotly 懒加载）",
-      "status": "in_progress",
+      "status": "accepted",
       "dependsOn": [],
       "outputDir": "docs/tasks/X3-bundle-splitting/",
       "history": [
@@ -426,6 +426,18 @@
           "at": "2026-11-04T21:31:45+08:00",
           "by": "main-session",
           "note": "计划编制：选定与 X4 作为本轮 Orca 并行执行任务（价值×独立性），补全 scope/acceptance，派发 Orca worker（独立 worktree）执行"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-04T22:51:03+08:00",
+          "by": "orca-worker:ctx_d64d182ddc91",
+          "note": "worker_done 汇报：commit 9502bc0，主 chunk 6,071,629→1,424,488 bytes(↓76.5%)，plotly 拆独立 chunk 按需加载；build/lint/verify(460 断言) 全绿；三件套齐全"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-04T22:51:03+08:00",
+          "by": "main-session",
+          "note": "PR #18 合并(merge 5aa5205)。验收：主会话独立复跑 build/lint/verify 全绿(460 断言失败 0，跑后 git status 干净)；抽查 use-plotly.ts 动态 import+模块缓存、ChartNode/ChartModal 懒加载与 hasError 降级、build 产物主 chunk 仅剩 import() 引用"
         }
       ],
       "scope": "分析 vite build 产物，将 plotly.js-dist-min 改为懒加载（动态 import，chart 节点渲染时才加载），主 bundle 体积有可量化下降；保持 chart 节点/ChartModal 渲染行为与现有 UI 不回归。涉及文件：src/components/Nodes/ChartNode.tsx、ChartModal.tsx、src/utils/export-report.ts、vite.config.ts。注意 src/types/plotly.d.ts 为类型声明不打包。若拆分后仍有明显大依赖，可顺带记录分析结论到 design.md 遗留问题，但不扩大改造范围。",
@@ -624,6 +636,7 @@
     "phase2-supplement": "https://github.com/chenxinma/govio-map/pull/15",
     "status": "all-merged",
     "fix-df-columns": "https://github.com/chenxinma/govio-map/pull/16",
-    "sql-discipline-move": "https://github.com/chenxinma/govio-map/pull/17"
+    "sql-discipline-move": "https://github.com/chenxinma/govio-map/pull/17",
+    "x3-bundle-split": "https://github.com/chenxinma/govio-map/pull/18"
   }
 }
