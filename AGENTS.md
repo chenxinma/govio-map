@@ -77,6 +77,19 @@ pending → in_progress → done → accepted / rejected
 - 三件套落盘 + task-plan 状态置 `done` + 单次 commit（ID 前缀）
 - 未完成项如实报告，禁止虚报验证结果
 
+### Orca 编排派发 SOP（多 worker 并行执行）
+
+任务经 Orca worker（各自独立 worktree）并行执行时适用；pi 交互会话作为 coordinator。实例参考：X3/X4 派发（`docs/task-plan.json → crossCutting`）。
+
+1. **派发前准备**（主会话串行写者）：task-plan 补全任务 scope/acceptance 并置 `in_progress` + history；写八段式任务书 `docs/tasks/<outputDir>/DISPATCH.md`（自包含，含最终输出格式）；计划+任务书单次 commit（`chore(plan): ...`）
+2. **worktree 隔离**：每个 worker `--worktree new-top-level --repo id:<repoId> --name <短名>`（重派时复用既有 worktree），保证单写者纪律不跨分支破坏
+3. **环境准备**：`.agents/`（skills）被 gitignore，fresh worktree 不含 → 任务书第一步必须是 `cp -r <主仓>/.agents ./`（约 350K）
+4. **派发**：`orca orchestration worker-start --spec-file docs/tasks/<ID>/DISPATCH.md --worktree ... --agent <agent> --json`；独立 worker 全部启动后结束回合等 Orca 唤醒，**禁止轮询**
+5. **任务书送达确认**：`--task` 复用/重派的 dispatch 可能不带 spec（agent 启动后不开工）→ `orca orchestration send --to dispatch:<id> --type dispatch --body "$(cat docs/tasks/<ID>/DISPATCH.md)"` 重发正文（`$( )` 结果不二次求值，含反引号也安全）；worktree 建于任务书 commit 之前时正文即唯一事实源，附 `git show main:...` 对照路径
+6. **并行模式的写权变通**：worker **不改** task-plan.json（多分支同改必冲突），主会话验收时统一记账（done/accepted + history + updatedAt）；其余完成定义不变
+7. **失败恢复**：启动/模型通道错误（订阅失效等）→ 停下问用户（换 agent/换模型/续订），禁止静默换 agent；用户明确要求重派后 `task-update --id <task_id> --status ready --run <run_id>` → `worker-start --task <task_id> --run <run_id> --worktree <placement> --agent <agent>`（复用原 spec；`--retry-of` 须指向 latest settled dispatch，常不适用）；重派前 `git -C <worktree> log/status` 确认无残留半成品
+8. **验收合入**：`worker_done` 汇报后按「验收协议」独立复跑 + 抽查；功能/大改动按 PR 门禁合入
+
 ### 合入 main 纪律（PR 门禁）
 
 按变更性质分两类：
