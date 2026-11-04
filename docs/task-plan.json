@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-04T22:51:03+08:00",
+  "updatedAt": "2026-11-04T23:26:30+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -452,7 +452,7 @@
     {
       "id": "X4",
       "title": "核心链路集成测试基建",
-      "status": "in_progress",
+      "status": "accepted",
       "dependsOn": [],
       "outputDir": "docs/tasks/X4-test-infra/",
       "history": [
@@ -461,6 +461,18 @@
           "at": "2026-11-04T21:31:45+08:00",
           "by": "main-session",
           "note": "计划编制：选定与 X4 作为本轮 Orca 并行执行任务（价值×独立性），补全 scope/acceptance，派发 Orca worker（独立 worktree）执行"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-04T23:26:30+08:00",
+          "by": "orca-worker:ctx_890cdf9894cd",
+          "note": "worker_done 汇报：commit 1191f53，vitest 5 + 4 条链路 38 用例（ws-handler 权限流 10/govio-canvas 事件转换 10/canvas-store 11/sidecar 往返 7），接入 verify 聚合；零业务代码改动；三件套齐全"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-04T23:26:30+08:00",
+          "by": "main-session",
+          "note": "PR #19 合并(merge c89a4ed)。验收：主会话独立复跑 build/lint/verify 全绿——既有 6 脚本断言零回归(92/71/119/126/39/13)、38 用例全过、跑后 git status 干净；抽查 ws-handler 权限决策流用例、BUGFIX-load-parse 回归与注入防护用例、verify 链末节接线真实有效"
         }
       ],
       "scope": "建立核心链路集成测试基建（vitest 或等价方案 + mock/fixture），不依赖真实 govio-cli 与真实 LLM。覆盖核心链路关键路径：① ws-handler 消息处理与权限流（permission-manager allow/deny/edit 决策分支）；② govio-canvas 扩展工具结果/事件 → GovioNodeCreateEvent 转换；③ canvas-store 节点创建/自动边/positionNewNode 布局；④ canvas sidecar（.canvas.json）持久化往返。测试接入 npm run verify 聚合（如新增 verify:integration 或独立 npm run test:integration 并纳入 verify），既有断言零回归。",
@@ -637,6 +649,7 @@
     "status": "all-merged",
     "fix-df-columns": "https://github.com/chenxinma/govio-map/pull/16",
     "sql-discipline-move": "https://github.com/chenxinma/govio-map/pull/17",
-    "x3-bundle-split": "https://github.com/chenxinma/govio-map/pull/18"
+    "x3-bundle-split": "https://github.com/chenxinma/govio-map/pull/18",
+    "x4-test-infra": "https://github.com/chenxinma/govio-map/pull/19"
   }
 }
