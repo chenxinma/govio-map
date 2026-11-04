@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-03T22:43:32+08:00",
+  "updatedAt": "2026-11-04T21:31:45+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -417,18 +417,48 @@
     {
       "id": "X3",
       "title": "前端 bundle 拆分（plotly 懒加载）",
-      "status": "pending",
+      "status": "in_progress",
       "dependsOn": [],
       "outputDir": "docs/tasks/X3-bundle-splitting/",
-      "history": []
+      "history": [
+        {
+          "status": "in_progress",
+          "at": "2026-11-04T21:31:45+08:00",
+          "by": "main-session",
+          "note": "计划编制：选定与 X4 作为本轮 Orca 并行执行任务（价值×独立性），补全 scope/acceptance，派发 Orca worker（独立 worktree）执行"
+        }
+      ],
+      "scope": "分析 vite build 产物，将 plotly.js-dist-min 改为懒加载（动态 import，chart 节点渲染时才加载），主 bundle 体积有可量化下降；保持 chart 节点/ChartModal 渲染行为与现有 UI 不回归。涉及文件：src/components/Nodes/ChartNode.tsx、ChartModal.tsx、src/utils/export-report.ts、vite.config.ts。注意 src/types/plotly.d.ts 为类型声明不打包。若拆分后仍有明显大依赖，可顺带记录分析结论到 design.md 遗留问题，但不扩大改造范围。",
+      "acceptance": [
+        "plotly 相关代码从主 chunk 移出，仅渲染 chart 节点时加载（build 产物 chunk 清单可断言主 chunk 不含 plotly）",
+        "chart 节点与 ChartModal 渲染功能不回归（记录手动冒烟或自动化断言）",
+        "verification.md 含拆分前后 bundle 体积对比数据（主 chunk / 总产物大小）",
+        "npm run build / lint / verify 全绿，verify 全跑后 git status --porcelain 干净",
+        "docs/tasks/X3-bundle-splitting/ 下 design.md、CHANGES.md、verification.md 三件套齐全"
+      ]
     },
     {
       "id": "X4",
       "title": "核心链路集成测试基建",
-      "status": "pending",
+      "status": "in_progress",
       "dependsOn": [],
       "outputDir": "docs/tasks/X4-test-infra/",
-      "history": []
+      "history": [
+        {
+          "status": "in_progress",
+          "at": "2026-11-04T21:31:45+08:00",
+          "by": "main-session",
+          "note": "计划编制：选定与 X4 作为本轮 Orca 并行执行任务（价值×独立性），补全 scope/acceptance，派发 Orca worker（独立 worktree）执行"
+        }
+      ],
+      "scope": "建立核心链路集成测试基建（vitest 或等价方案 + mock/fixture），不依赖真实 govio-cli 与真实 LLM。覆盖核心链路关键路径：① ws-handler 消息处理与权限流（permission-manager allow/deny/edit 决策分支）；② govio-canvas 扩展工具结果/事件 → GovioNodeCreateEvent 转换；③ canvas-store 节点创建/自动边/positionNewNode 布局；④ canvas sidecar（.canvas.json）持久化往返。测试接入 npm run verify 聚合（如新增 verify:integration 或独立 npm run test:integration 并纳入 verify），既有断言零回归。",
+      "acceptance": [
+        "测试框架与 npm script 落地，一键可运行",
+        "至少覆盖上述 4 条核心链路的关键路径，含失败/边界用例",
+        "npm run verify 纳入集成测试，既有断言零回归且断言数变化与新增用例吻合",
+        "npm run build / lint / verify 全绿，verify 全跑后 git status --porcelain 干净",
+        "docs/tasks/X4-test-infra/ 下 design.md、CHANGES.md、verification.md 三件套齐全"
+      ]
     },
     {
       "id": "X5",
