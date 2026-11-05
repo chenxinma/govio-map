@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
 import { getOrCreateSession, resetSession, openSessionFile, runGovioCli } from "./agent.js";
 import { listSessions, deleteSession, saveCanvas, loadCanvas, buildTranscript, assertValidSessionPath } from "./session-history.js";
+import { buildInjectionContext, composePrompt, buildTraceEntry, recordInjectionTrace } from "./prompt-injection.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
 import { permissionManager, type PermissionDecision } from "./permission-manager.js";
 import { isAgentConfigNeeded, completeAgentSetup } from "./backend.js";
@@ -208,12 +209,20 @@ export function setupWebSocket(server: import("http").Server) {
       case "prompt":
         if (msg.content) {
           setCurrentReferencedNodes(msg.referencedNodes);
-          const prompt = makePrompt(msg);
-          if (session.isStreaming) {
-            session.steer(prompt).finally(clearCurrentReferencedNodes);
-          } else {
-            session.prompt(prompt).finally(clearCurrentReferencedNodes);
-          }
+          // 注入（表限定名 + 图谱实体）需异步查图谱；makePrompt 内部永不 throw，
+          // 图谱失败降级为现状行为（不阻断会话）。流式判定推迟到派发时刻。
+          void (async () => {
+            const prompt = await makePrompt(msg, session);
+            if (session.isStreaming) {
+              await session.steer(prompt);
+            } else {
+              await session.prompt(prompt);
+            }
+          })()
+            .catch((err) => {
+              console.error("[ws] prompt dispatch failed:", err);
+            })
+            .finally(clearCurrentReferencedNodes);
         }
         break;
       case "steer":
@@ -519,17 +528,23 @@ export function setupWebSocket(server: import("http").Server) {
   return wss;
 }
 
-function makePrompt(msg: WSMessage): string {
-  let prompt = "";
-  if (msg.referencedNodes && msg.referencedNodes.length > 0) {
-    // Serialize each ref as proper JSON so quotes/newlines in labels or node
-    // data cannot break the REF:[...] envelope or inject extra structure.
-    const entries = msg.referencedNodes.map((ref) =>
-      JSON.stringify({ [ref.label ?? ""]: ref.data ?? "" }),
+async function makePrompt(msg: WSMessage, session: SessionInstance): Promise<string> {
+  const sessionFile = session.sessionManager.getSessionFile() ?? null;
+  // ① 表事实：消息内 ref.data + canvas sidecar 节点数据（含 T2.0 标注字段）合并
+  // ② 图谱实体：govio-cli query，失败降级（graphStatus=degraded）
+  const ctx = await buildInjectionContext({
+    content: msg.content ?? "",
+    referencedNodes: msg.referencedNodes,
+    canvasNodes: sessionFile ? loadCanvas(sessionFile)?.nodes : undefined,
+  });
+  const prompt = composePrompt({ content: msg.content ?? "", referencedNodes: msg.referencedNodes }, ctx);
+  // 注入留痕：被注入节点 + 图谱实体 ID 列表随会话 sidecar 持久化（append-only）
+  if (sessionFile && (ctx.tables.length > 0 || ctx.graphEntities.length > 0)) {
+    recordInjectionTrace(
+      sessionFile,
+      buildTraceEntry(ctx, { sessionId: session.sessionId, sessionFile, content: msg.content ?? "" }),
     );
-    prompt += `REF:[${entries.join(", ")}]\n`;
   }
-  prompt += msg.content;
   console.debug("[ws] prompt: " + prompt);
   return prompt;
 }
