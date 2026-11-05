@@ -58,6 +58,19 @@ vi.mock("../../server/backend.js", () => ({
   startBackend: vi.fn(),
 }));
 
+// T2.1：图谱查询执行器 mock——测试不得 spawn 真实 govio-cli；默认返回一组指标行。
+const graphMock = vi.hoisted(() => ({
+  runGraphQuery: vi.fn(async (): Promise<Array<Record<string, unknown>>> => [
+    { id: "ME1", code: "m_sales_amount", name: "销售额", definition: "销售金额合计", metric_type: "atomic", formula: "", unit: "元" },
+  ]),
+}));
+
+vi.mock("../../server/graph-query.js", () => ({
+  __esModule: true,
+  GRAPH_QUERY_TIMEOUT_MS: 6000,
+  runGraphQuery: graphMock.runGraphQuery,
+}));
+
 vi.mock("../../server/models-config.js", () => ({
   __esModule: true,
   readModelsConfig: vi.fn(async () => ({ providers: {} })),
@@ -310,5 +323,73 @@ describe("ws-handler 消息处理 + 权限决策流", () => {
     await new Promise((r) => setTimeout(r, 80));
     expect(col.messages.filter((m) => m.type === "error")).toHaveLength(0);
     ws.close();
+  });
+
+  // ── T2.1：图谱定义自动注入（makePrompt → REF/CTX 序列化） ──────────────
+
+  it("prompt 注入：CTX 行含 qualifiedName/datasourceType，用户内容原样保留", async () => {
+    const { ws, col } = await connectWithCollector(port);
+    await col.waitFor((m) => m.type === "session_ready");
+
+    ws.send(JSON.stringify({
+      type: "prompt",
+      content: "查一下产品",
+      referencedNodes: [{
+        nodeId: "n-product",
+        label: "dim_product",
+        type: "sourceTable",
+        data: JSON.stringify({
+          full_table_name: "dim_product",
+          qualifiedName: "chocolate.chocolate.dim_product",
+          datasource: "chocolate",
+          datasourceType: "duckdb",
+          schema: "chocolate",
+          fields: [],
+        }),
+      }],
+    }));
+    const fake = (agentModule as unknown as { __fakeSession: { prompt: ReturnType<typeof vi.fn> } }).__fakeSession;
+    await vi.waitFor(() => expect(fake.prompt.mock.calls.length).toBeGreaterThan(0));
+    const sent = fake.prompt.mock.calls.at(-1)![0] as string;
+    expect(sent).toMatch(/^REF:\[/);
+    expect(sent).toContain("CTX:");
+    expect(sent).toContain("chocolate.chocolate.dim_product");
+    expect(sent).toContain('"datasourceType":"duckdb"');
+    expect(sent).toContain("查一下产品");
+    ws.close();
+  });
+
+  it("T2.1 降级：图谱不可达时 prompt 照常派发（不阻断会话），CTX 仍含表事实并标记 degraded", async () => {
+    graphMock.runGraphQuery.mockImplementation(async () => {
+      throw new Error("spawn govio-cli ENOENT");
+    });
+    try {
+      const { ws, col } = await connectWithCollector(port);
+      await col.waitFor((m) => m.type === "session_ready");
+
+      ws.send(JSON.stringify({
+        type: "prompt",
+        content: "降级也要能问",
+        referencedNodes: [{
+          nodeId: "n-product",
+          label: "dim_product",
+          type: "sourceTable",
+          data: JSON.stringify({ qualifiedName: "chocolate.chocolate.dim_product", datasourceType: "duckdb", tableName: "dim_product", schema: "chocolate" }),
+        }],
+      }));
+      const fake = (agentModule as unknown as { __fakeSession: { prompt: ReturnType<typeof vi.fn> } }).__fakeSession;
+      await vi.waitFor(() => expect(fake.prompt.mock.calls.length).toBeGreaterThan(0));
+      const sent = fake.prompt.mock.calls.at(-1)![0] as string;
+      expect(sent).toContain("CTX:");
+      expect(sent).toContain("chocolate.chocolate.dim_product");
+      expect(sent).toContain('"graphStatus":"degraded"');
+      expect(sent).toContain("降级也要能问");
+      expect(col.messages.filter((m) => m.type === "error")).toHaveLength(0);
+      ws.close();
+    } finally {
+      graphMock.runGraphQuery.mockImplementation(async () => [
+        { id: "ME1", code: "m_sales_amount", name: "销售额", definition: "销售金额合计", metric_type: "atomic", formula: "", unit: "元" },
+      ]);
+    }
   });
 });
