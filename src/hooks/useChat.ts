@@ -2,6 +2,14 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { Node, Edge } from "@xyflow/react";
 import type { ReferencedNode } from "../types";
 import type { ModelsConfig } from "../types/models-config";
+import type {
+  WSClientMessage,
+  WSServerMessage,
+  WSDataFrameSummary,
+  WSObserveInfo,
+  WSSessionListItem,
+  WSPermissionDecision,
+} from "../types/ws-protocol";
 import { useCanvasStore } from "../store/canvas-store";
 
 export interface ToolCall {
@@ -19,19 +27,12 @@ export interface ModelOption {
   label: string;
 }
 
-export interface DataFrameSummary {
-  name: string;
-  rows: number;
-  columns: number;
-  column_info?: Array<{ name: string; dtype: string }>;
-}
-
-export interface ObserveInfo {
-  datasources?: string[];
-  dataframes?: {
-    dataframes?: DataFrameSummary[];
-  };
-}
+// 线上载荷形状的单一来源是 types/ws-protocol.ts（X2 契约）；
+// 以下别名保持既有 UI 导入路径不变（DataSourcesModal / PermissionCard 等）。
+export type DataFrameSummary = WSDataFrameSummary;
+export type ObserveInfo = WSObserveInfo;
+export type SessionListItem = WSSessionListItem;
+export type PermissionDecision = WSPermissionDecision;
 
 const MODEL_STORAGE_KEY = "govio.selectedModel";
 
@@ -65,51 +66,14 @@ export interface PendingPermission {
   command: string;
 }
 
-export interface SessionListItem {
-  id: string;
-  path: string;
-  name: string | null;
-  preview: string;
-  messageCount: number;
-  modified: string;
-}
-
-export type PermissionDecision = "allow" | "deny" | "edit";
-
-interface WSEvent {
-  type: string;
-  content?: string;
-  toolName?: string;
-  toolCallId?: string;
-  args?: Record<string, unknown> | string;
-  success?: boolean;
-  dataframes?: unknown[];
-  requestId?: string;
-  command?: string;
-  config?: ModelsConfig;
-  message?: string;
-  provider?: string;
-  modelId?: string;
-  info?: ObserveInfo;
-  sessions?: SessionListItem[];
-  messages?: unknown[];
-  hasMore?: boolean;
-  oldestEntryId?: string | null;
-  replace?: boolean;
-  nodes?: unknown[];
-  edges?: unknown[];
-  path?: string;
-  clientMsgId?: string;
-  disposition?: string;
-  pendingSteering?: number;
-  pendingFollowUp?: number;
-  clearedSteering?: number;
-  clearedFollowUp?: number;
-}
-
 let msgIdCounter = 0;
 function nextMsgId(): string {
   return `msg-${++msgIdCounter}`;
+}
+
+/** /ws 出站消息统一出口：编译期对齐 WSClientMessage 契约（X2） */
+function sendClientMessage(ws: WebSocket, msg: WSClientMessage): void {
+  ws.send(JSON.stringify(msg));
 }
 
 export function useChat() {
@@ -166,14 +130,14 @@ export function useChat() {
   const sendSetModel = useCallback((opt: ModelOption) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: "set_model", provider: opt.provider, modelId: opt.modelId }));
+    sendClientMessage(ws, { type: "set_model", provider: opt.provider, modelId: opt.modelId });
   }, []);
 
   const sendCanvasSnapshot = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const { nodes, edges } = useCanvasStore.getState();
-    ws.send(JSON.stringify({ type: "canvas_save", nodes, edges }));
+    sendClientMessage(ws, { type: "canvas_save", nodes, edges });
   }, []);
 
   // Persist canvas snapshots alongside the session (debounced on any node/edge change).
@@ -262,7 +226,7 @@ export function useChat() {
     ws.onmessage = (event) => {
       if (wsRef.current !== ws) return;
       try {
-        const data: WSEvent = JSON.parse(event.data);
+        const data: WSServerMessage = JSON.parse(event.data);
 
         switch (data.type) {
           case "session_ready":
@@ -283,7 +247,7 @@ export function useChat() {
               sendSetModel(selectedModelRef.current);
             }
             if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: "get_models_config" }));
+              sendClientMessage(ws, { type: "get_models_config" });
             }
             break;
 
@@ -397,7 +361,7 @@ export function useChat() {
               reusableThinkingId.current = null;
               const toolName = data.toolName || "unknown";
               const tool: ToolCall = { toolName, toolCallId: data.toolCallId, success: undefined };
-              if (data.args !== undefined) tool.args = data.args;
+              if (data.args !== undefined) tool.args = data.args as ToolCall["args"];
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === toolStartId
@@ -589,25 +553,22 @@ export function useChat() {
     };
     setMessages((prev) => [...prev, userMsg]);
 
-    const payload: Record<string, unknown> = { content, clientMsgId: msgId };
-    if (referencedNodes && referencedNodes.length > 0) {
-      payload.referencedNodes = referencedNodes;
-    }
+    const refs = referencedNodes && referencedNodes.length > 0 ? referencedNodes : undefined;
 
     if (isSteering) {
       // Steering: inject the message into the running agent. Mark the local
       // bubble as queued; it flips to delivered when the backend confirms the
       // queue accepted it (steer_queued) or an assistant turn resumes.
-      ws.send(JSON.stringify({ type: "steer", ...payload }));
+      sendClientMessage(ws, { type: "steer", content, clientMsgId: msgId, referencedNodes: refs });
     } else {
-      ws.send(JSON.stringify({ type: "prompt", ...payload }));
+      sendClientMessage(ws, { type: "prompt", content, clientMsgId: msgId, referencedNodes: refs });
     }
   }, []);
 
   const abort = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: "abort" }));
+    sendClientMessage(ws, { type: "abort" });
     isStreamingRef.current = false;
     setIsStreaming(false);
     // 后端 abort → denyPending() 已拒绝所有挂起请求并留痕，这里只清本地队列（不重复发 deny）
@@ -627,12 +588,12 @@ export function useChat() {
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       if (isStreamingRef.current) {
-        ws.send(JSON.stringify({ type: "abort" }));
+        sendClientMessage(ws, { type: "abort" });
         isStreamingRef.current = false;
         setIsStreaming(false);
         finalizeCurrent();
       }
-      ws.send(JSON.stringify({ type: "clear" }));
+      sendClientMessage(ws, { type: "clear" });
     }
     // 后端 clear → clearAll() 已拒绝所有挂起请求并留痕，这里只清本地队列（不再发 deny）
     clearPendingPermissions();
@@ -643,20 +604,20 @@ export function useChat() {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN || !oldestEntryIdRef.current) return;
     setHistoryLoading(true);
-    ws.send(JSON.stringify({ type: "session_messages", beforeEntryId: oldestEntryIdRef.current }));
+    sendClientMessage(ws, { type: "session_messages", beforeEntryId: oldestEntryIdRef.current });
   }, []);
 
   const fetchSessions = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: "session_list" }));
+    sendClientMessage(ws, { type: "session_list" });
   }, []);
 
   const openSession = useCallback((path: string) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     if (isStreamingRef.current) {
-      ws.send(JSON.stringify({ type: "abort" }));
+      sendClientMessage(ws, { type: "abort" });
       isStreamingRef.current = false;
       setIsStreaming(false);
       finalizeCurrent();
@@ -664,28 +625,22 @@ export function useChat() {
     // 后端 session_open → clearAll() 已拒绝所有挂起请求并留痕，这里只清本地队列
     clearPendingPermissions();
     clearMessages();
-    ws.send(JSON.stringify({ type: "session_open", path }));
+    sendClientMessage(ws, { type: "session_open", path });
   }, [clearMessages, clearPendingPermissions, finalizeCurrent]);
 
   const deleteSession = useCallback((path: string) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: "session_delete", path }));
+    sendClientMessage(ws, { type: "session_delete", path });
   }, []);
 
   const respondPermission = useCallback((decision: PermissionDecision, editedCommand?: string) => {
     const ws = wsRef.current;
     const pending = pendingPermissionRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN || !pending) return;
-    const payload: Record<string, unknown> = {
-      type: "tool_permission_response",
-      requestId: pending.requestId,
-      decision,
-    };
-    if (decision === "edit" && editedCommand) {
-      payload.editedCommand = editedCommand;
-    }
-    ws.send(JSON.stringify(payload));
+    sendClientMessage(ws, decision === "edit" && editedCommand
+      ? { type: "tool_permission_response", requestId: pending.requestId, decision, editedCommand }
+      : { type: "tool_permission_response", requestId: pending.requestId, decision });
     showNextPendingPermission();
   }, [showNextPendingPermission]);
 
@@ -693,12 +648,12 @@ export function useChat() {
     const ws = wsRef.current;
     const pending = pendingPermissionRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN || !pending) return;
-    ws.send(JSON.stringify({
+    sendClientMessage(ws, {
       type: "tool_permission_response",
       requestId: pending.requestId,
       decision: "allow",
-    }));
-    ws.send(JSON.stringify({ type: "permission_accept_all" }));
+    });
+    sendClientMessage(ws, { type: "permission_accept_all" });
     // Accept All 关闭了后续逐条确认（含已入队的）：放行当前后清空队列，
     // 剩余挂起请求由后端 requestPermission 在放行模式下自动允许，不需逐个弹卡。
     pendingPermissionQueueRef.current = [];
@@ -715,7 +670,7 @@ export function useChat() {
       isObservingRef.current = true;
       setIsObserving(true);
       observeListResolveRef.current = resolve;
-      ws.send(JSON.stringify({ type: "observe_list" }));
+      sendClientMessage(ws, { type: "observe_list" });
 
       setTimeout(() => {
         if (isObservingRef.current) {
@@ -736,7 +691,7 @@ export function useChat() {
         return;
       }
       observeInfoResolveRef.current = { resolve, reject };
-      ws.send(JSON.stringify({ type: "observe_info" }));
+      sendClientMessage(ws, { type: "observe_info" });
       setTimeout(() => {
         if (observeInfoResolveRef.current) {
           const { reject: timeoutReject } = observeInfoResolveRef.current;
@@ -758,19 +713,19 @@ export function useChat() {
   const getModelsConfig = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: "get_models_config" }));
+    sendClientMessage(ws, { type: "get_models_config" });
   }, []);
 
   const saveModelsConfig = useCallback((config: ModelsConfig) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: "save_models_config", config }));
+    sendClientMessage(ws, { type: "save_models_config", config });
   }, []);
 
   const saveApiKey = useCallback((apiKey: string) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: "save_models_config", apiKey }));
+    sendClientMessage(ws, { type: "save_models_config", apiKey });
   }, []);
 
   const modelOptions = modelsConfig ? flattenModels(modelsConfig) : [];
