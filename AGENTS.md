@@ -99,6 +99,7 @@ pending → in_progress → done → accepted / rejected
 | **bugfix**（小范围缺陷修复，不改交互/不加功能） | 可直接 commit 到 `main` 并 push（单次 commit，ID 前缀） |
 | **界面交互优化、新功能、大改动**（含 P2/P3 任务、X 项里的功能/体验类，如 T2.x、X3、X9 这类） | 必须走 **GitHub PR**：任务分支 → PR → （评审/CI）→ `Merge pull request #N` → 清理分支。**后续任务默认全部经 PR** |
 
+- **PR 由用户合并**：主会话创建 PR 后停下等用户合并，**不得自行 merge**（用户指令 2026-11-04）；并行 PR 间若有冲突，主会话先行 rebase/消解再交付用户
 - PR 合并后主会话做验收（独立复跑验证 + 抽查）→ `accepted` 置位 + 单独 commit
 - 判不准是 bugfix 还是功能时，**按 PR 处理**（宁重勿漏）
 - 验收 commit（`chore(plan): accept ...`）与 task-plan 更新属文档记账，可直接 push `main`，不受 PR 门禁约束
