@@ -53,6 +53,17 @@ export interface ChatMessage {
   content: string;
   thinking?: string;
   tools?: ToolCall[];
+  /**
+   * thinking/工具区默认展开（本轮 agent 运行中跟随进度）。
+   * agent_end 时清除 → 折叠主要文本输出之前的 thinking 与 tool，突出正文。
+   * 历史消息无此标记，默认折叠。
+   */
+  processOpen?: boolean;
+  /**
+   * 过程消息（无正文，仅 thinking/tool）：agent_end 后折入「已处理」组。
+   * 历史加载时按同一规则标记，恢复后与运行态一致。
+   */
+  folded?: boolean;
   isStreaming?: boolean;
   referencedNodes?: ReferencedNode[];
   /** User message inserted while the agent was running (steering input). */
@@ -119,6 +130,8 @@ export function useChat() {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttempts = useRef(0);
   const currentAssistantId = useRef<string | null>(null);
+  // 本轮（agent_start 起）第一个 assistant 气泡 id：agent_end 时据此圈定本轮消息范围
+  const turnFirstIdRef = useRef<string | null>(null);
   // Whether the current bubble has received body text (text_delta) or tool
   // calls. Thinking-only bubbles (no body text or tools yet) are reusable so
   // consecutive thinking segments merge into one bubble instead of stacking up.
@@ -252,11 +265,17 @@ export function useChat() {
             break;
 
           case "session_messages_result": {
-            const incoming = (data.messages ?? []) as unknown as ChatMessage[];
+            // 历史过程消息（无正文）同样折入「已处理」组，恢复后与运行态一致
+            const incoming = ((data.messages ?? []) as unknown as ChatMessage[]).map((m) =>
+              m.role === "assistant" && !(m.content && m.content.trim())
+                ? { ...m, folded: true }
+                : m
+            );
             if (data.replace) {
               currentAssistantId.current = null;
               currentHasContent.current = false;
               reusableThinkingId.current = null;
+              turnFirstIdRef.current = null;
               setMessages(incoming);
             } else {
               setHistoryLoading(false);
@@ -288,6 +307,11 @@ export function useChat() {
             isStreamingRef.current = true;
             setIsStreaming(true);
             finalizeRef.current();
+            turnFirstIdRef.current = null;
+            // 上一轮遗留的 process 展开态（如 abort 未走 agent_end）一并折叠
+            setMessages((prev) =>
+              prev.map((m) => (m.processOpen ? { ...m, processOpen: undefined } : m))
+            );
             break;
 
           case "message_start": {
@@ -300,7 +324,7 @@ export function useChat() {
               reusableThinkingId.current = null;
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === reusable ? { ...m, isStreaming: true } : m
+                  m.id === reusable ? { ...m, isStreaming: true, processOpen: true } : m
                 )
               );
             } else {
@@ -308,6 +332,7 @@ export function useChat() {
               const assistantId = nextMsgId();
               currentAssistantId.current = assistantId;
               currentHasContent.current = false;
+              if (turnFirstIdRef.current === null) turnFirstIdRef.current = assistantId;
               setMessages((prev) => [
                 ...prev,
                 {
@@ -316,6 +341,7 @@ export function useChat() {
                   content: "",
                   tools: [],
                   isStreaming: true,
+                  processOpen: true,
                 },
               ]);
             }
@@ -415,16 +441,35 @@ export function useChat() {
             break;
           }
 
-          case "agent_end":
+          case "agent_end": {
             isStreamingRef.current = false;
             setIsStreaming(false);
             finalizeRef.current();
-            // Any steering message still shown as queued never got delivered
-            // (the run ended first); surface it plainly so the user can resend.
-            setMessages((prev) =>
-              prev.map((m) => (m.isQueued ? { ...m, isQueued: undefined } : m))
-            );
+            // 一轮完成：
+            // 1) 本轮没有正文的过程 message（thinking/tool）整体折入「已处理」组（folded）；
+            // 2) 正文消息内的 thinking/tool 清除 processOpen → 自动收起，突出正文；
+            // 3) 未送达的排队 steering 显性化（run 先结束了），便于用户重发。
+            const turnFirst = turnFirstIdRef.current;
+            turnFirstIdRef.current = null;
+            setMessages((prev) => {
+              const startIdx = turnFirst ? prev.findIndex((m) => m.id === turnFirst) : -1;
+              return prev.map((m, i) => {
+                const fold =
+                  startIdx >= 0 &&
+                  i >= startIdx &&
+                  m.role === "assistant" &&
+                  !(m.content && m.content.trim());
+                if (!fold && !m.isQueued && !m.processOpen) return m;
+                return {
+                  ...m,
+                  isQueued: undefined,
+                  processOpen: undefined,
+                  ...(fold ? { folded: true } : {}),
+                };
+              });
+            });
             break;
+          }
 
           case "steer_queued":
           case "followUp_queued": {
