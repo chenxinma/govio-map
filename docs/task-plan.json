@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-05T20:12:35+08:00",
+  "updatedAt": "2026-11-05T22:40:33+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -250,7 +250,7 @@
           "id": "T2.1",
           "title": "图谱定义自动注入 Prompt",
           "kr": "KR1",
-          "status": "in_progress",
+          "status": "accepted",
           "dependsOn": [
             "P1.accepted",
             "T2.0"
@@ -269,6 +269,12 @@
               "at": "2026-11-05T20:12:35+08:00",
               "by": "main-session",
               "note": "P1 记账补齐（4 子任务均 accepted + 审查循环终审 OK）后合规解锁；第二批编排：与 X2 并行 Orca 执行（文件切割：X2 动协议类型层，T2.1 动 makePrompt 注入层）；PR 由用户合并"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-11-05T22:40:33+08:00",
+              "by": "main-session",
+              "note": "PR #20 合并(39b4040)。验收：主会话独立复跑 build/lint/verify 全绿（脚本 460→507 含 verify:prompt-injection 47/47、集成 38→40）；抽查 makePrompt 异步注入未动 WSMessage、buildInjectionContext 永不 throw 降级、injection.jsonl 留痕；合并态 main 复验全绿"
             }
           ]
         },
@@ -416,7 +422,7 @@
     {
       "id": "X2",
       "title": "WS 协议契约化（版本化 schema + 双端类型生成）",
-      "status": "in_progress",
+      "status": "accepted",
       "dependsOn": [],
       "outputDir": "docs/tasks/X2-ws-protocol-schema/",
       "history": [
@@ -425,6 +431,12 @@
           "at": "2026-11-05T20:12:26+08:00",
           "by": "main-session",
           "note": "第二批编排：与 T2.1 并行 Orca 执行（文件切割：X2 动协议类型层，T2.1 动 makePrompt 注入层）；PR 由用户合并"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-05T22:40:33+08:00",
+          "by": "main-session",
+          "note": "PR #21 合并(cf2206e)。验收：主会话独立复跑 build/lint/verify 全绿（脚本 460 零回归、集成 38→59 含契约 19 用例）；抽查 PROTOCOL_VERSION/$id 注册表、消息全集漂移防护、拒绝路径逐字节等价、旧 WSMessage/WSEvent 已删；ws-handler.ts 冲突由主会话 rebase 消解（makePrompt=T2.1 异步体+X2 类型签名），合并态 main 复验全绿"
         }
       ],
       "scope": "为 /ws 通道消息定义版本化契约：以 typebox（已在依赖，先例 server/observe-load-schema.ts）定义全量消息 schema（含协议版本字段与兼容策略），导出双端共享 TypeScript 类型（单一来源，生成脚本或共享模块，方案写 design.md），替换 server/ws-handler.ts:12 内联 WSMessage 与 src/hooks/useChat.ts 的松散类型（机械改造、不改语义）；配套契约测试（复用 X4 vitest 基建，纳入 verify 聚合）：合法消息收发匹配 schema、非法/未知消息拒绝路径；同步更新 docs/specs/07-websocket-protocol.md。",
@@ -672,6 +684,8 @@
     "fix-df-columns": "https://github.com/chenxinma/govio-map/pull/16",
     "sql-discipline-move": "https://github.com/chenxinma/govio-map/pull/17",
     "x3-bundle-split": "https://github.com/chenxinma/govio-map/pull/18",
-    "x4-test-infra": "https://github.com/chenxinma/govio-map/pull/19"
+    "x4-test-infra": "https://github.com/chenxinma/govio-map/pull/19",
+    "t21-graph-prompt": "https://github.com/chenxinma/govio-map/pull/20",
+    "x2-ws-protocol": "https://github.com/chenxinma/govio-map/pull/21"
   }
 }
