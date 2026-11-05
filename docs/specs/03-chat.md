@@ -106,16 +106,17 @@ interface ToolCall {
 
 ### 助手消息渲染
 
-- 去气泡化：无边框、无背景、无圆角，内容铺满面板宽度（与用户气泡区分）
+- 内容卡面：白色卡面（`bg-primary`，比面板底色 `#f5f5f5` 亮一档）无圆角、内容铺满面板宽度（与用户气泡同色系、以右对齐+品牌绿边框区分）
 - 保持分段输出：每个 `message_start` 起一段（thinking 折叠段 / 工具行 / markdown 正文）
-- 可折叠 Thinking 区域（默认折叠）
+- 可折叠 Thinking 区域（agent 运行中默认展开跟随进度，`agent_end` 自动折叠；历史消息默认折叠）
+- `agent_end` 后本轮**没有正文的过程 message**（仅 thinking/tool）整体折成一行「已处理」（`ProcessedGroup`），点击展开看具体内容（thinking 全文 + 工具入参直接展开）；连续的过程消息合并为一组，历史加载按同一规则标记
 - ToolRows 工具调用行（见下）
 - 正文通过 `react-markdown` + `remark-gfm` 渲染
 - 空内容且正在流式输出时显示 "思考中..." 加载动画
 
 ### ToolRow
 
-可展开的工具调用行（替代旧 ToolPill 胶囊），每行独立 useState，默认收起：
+可展开的工具调用行（替代旧 ToolPill 胶囊），每行独立 useState，agent 运行中默认展开、`agent_end` 自动折叠（历史消息默认收起）：
 - 行内：展开箭头 + 工具名 + 状态图标（运行中 spinner / 成功绿勾 / 失败红叉）
 - 点击展开显示入参 `args`：
   - `bash` 工具显示 `args.command` 命令字符串

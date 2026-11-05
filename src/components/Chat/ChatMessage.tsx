@@ -31,8 +31,11 @@ function formatArgs(tool: ToolCall): string | null {
   return JSON.stringify(args, null, 2);
 }
 
-function ToolRow({ tool }: { tool: ToolCall }) {
-  const [open, setOpen] = useState(false);
+function ToolRow({ tool, defaultOpen }: { tool: ToolCall; defaultOpen?: boolean }) {
+  // override === null 时跟随 defaultOpen（agent 运行中展开、agent_end 自动折叠）；
+  // 用户点击后固定为手动值，不再被自动开合覆盖。
+  const [override, setOverride] = useState<boolean | null>(null);
+  const open = override ?? !!defaultOpen;
   const isSuccess = tool.success === true;
   const isFail = tool.success === false;
   const isRunning = tool.success === undefined;
@@ -46,7 +49,7 @@ function ToolRow({ tool }: { tool: ToolCall }) {
     <div className="rounded border border-border-subtle bg-[#f0f0f0]">
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => setOverride(!open)}
         className="w-full flex items-center gap-1.5 px-2 py-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -71,24 +74,27 @@ function ToolRow({ tool }: { tool: ToolCall }) {
   );
 }
 
-function ToolRows({ tools }: { tools: ToolCall[] }) {
+function ToolRows({ tools, defaultOpen }: { tools: ToolCall[]; defaultOpen?: boolean }) {
   if (!tools || tools.length === 0) return null;
   return (
     <div className="flex flex-col gap-1 mb-2">
       {tools.map((tool, i) => (
-        <ToolRow key={tool.toolCallId ?? `${tool.toolName}-${i}`} tool={tool} />
+        <ToolRow key={tool.toolCallId ?? `${tool.toolName}-${i}`} tool={tool} defaultOpen={defaultOpen} />
       ))}
     </div>
   );
 }
 
-function ThinkingSection({ content }: { content: string }) {
-  const [open, setOpen] = useState(false);
+function ThinkingSection({ content, defaultOpen }: { content: string; defaultOpen?: boolean }) {
+  // override === null 时跟随 defaultOpen（agent 运行中展开、agent_end 自动折叠）；
+  // 用户点击后固定为手动值，不再被自动开合覆盖。
+  const [override, setOverride] = useState<boolean | null>(null);
+  const open = override ?? !!defaultOpen;
 
   return (
     <div className="mb-2">
       <button
-        onClick={() => setOpen(!open)}
+        onClick={() => setOverride(!open)}
         className="flex items-center gap-1 text-xs text-text-muted hover:text-text-secondary transition-colors"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -122,16 +128,49 @@ function ReferenceChips({ nodes }: { nodes: ReferencedNode[] }) {
   );
 }
 
+/**
+ * agent_end 后折起的过程消息组：本轮没有正文的 message（thinking/tool）
+ * 一起收成一行「已处理」，点击展开看具体内容（thinking 全文 + 工具入参直接展开）。
+ */
+export function ProcessedGroup({ messages }: { messages: ChatMessageType[] }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="border border-border-subtle bg-[#f0f0f0]">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-1.5 px-2 py-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <span>已处理</span>
+      </button>
+      {open && (
+        <div className="flex flex-col gap-2 border-t border-border-subtle bg-bg-primary px-2 py-2">
+          {messages.map((m) => (
+            <div key={m.id}>
+              {m.thinking && <ThinkingSection content={m.thinking} defaultOpen />}
+              {m.tools && m.tools.length > 0 && <ToolRows tools={m.tools} defaultOpen />}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ChatMessage({ message }: { message: ChatMessageType }) {
+  // 已折入「已处理」组的过程消息不再单独渲染（由 ProcessedGroup 统一展示）
+  if (message.folded) return null;
   const isUser = message.role === "user";
 
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}>
+    <div className={`flex ${isUser ? "justify-end mt-3 mb-3" : "justify-start"}`}>
       <div
         className={
           isUser
             ? "max-w-[90%] rounded-lg px-3 py-2 text-sm bg-bg-primary border-l-2 border-brand text-text-primary"
-            : "w-full text-sm text-text-primary"
+            : "w-full bg-bg-primary px-3 py-2 text-sm text-text-primary"
         }
       >
         {isUser ? (
@@ -149,8 +188,12 @@ export default function ChatMessage({ message }: { message: ChatMessageType }) {
           </>
         ) : (
           <>
-            {message.thinking && <ThinkingSection content={message.thinking} />}
-            {message.tools && message.tools.length > 0 && <ToolRows tools={message.tools} />}
+            {message.thinking && (
+              <ThinkingSection content={message.thinking} defaultOpen={!!message.processOpen} />
+            )}
+            {message.tools && message.tools.length > 0 && (
+              <ToolRows tools={message.tools} defaultOpen={!!message.processOpen} />
+            )}
             {message.content ? (
               <div className="chat-markdown prose prose-invert prose-sm max-w-none">
                 <Markdown
