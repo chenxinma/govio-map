@@ -23,6 +23,7 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
+import type { SemanticEntityType } from "../src/types/semantic.js";
 import { runGraphQuery, type GraphRow, type GraphQueryRunner } from "./graph-query.js";
 
 // ---- 注入载荷类型 ----
@@ -44,7 +45,8 @@ export interface TableFact {
   schema?: string;
 }
 
-export type GraphEntityType = "Metric" | "Dimension" | "Col";
+/** 图谱实体类型（与前端 semanticRefs 同源：src/types/semantic.ts，T2.2） */
+export type GraphEntityType = SemanticEntityType;
 
 /** 图谱实体（Metric 指标定义 / Dimension 枚举码值 / Col 字段标准） */
 export interface GraphEntity {

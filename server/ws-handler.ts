@@ -4,6 +4,7 @@ import { getOrCreateSession, resetSession, openSessionFile, runGovioCli } from "
 import { listSessions, deleteSession, saveCanvas, loadCanvas, buildTranscript, assertValidSessionPath } from "./session-history.js";
 import { buildInjectionContext, composePrompt, buildTraceEntry, recordInjectionTrace } from "./prompt-injection.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
+import { setSessionSemanticRefs, clearSessionSemanticRefs, toSemanticRefs } from "./semantic-context.js";
 import { permissionManager } from "./permission-manager.js";
 import { isAgentConfigNeeded, completeAgentSetup } from "./backend.js";
 import { readModelsConfig, writeModelsConfig, createDefaultModelsConfig, maskModelsConfig } from "./models-config.js";
@@ -203,7 +204,10 @@ export function setupWebSocket(server: import("http").Server) {
             .catch((err) => {
               console.error("[ws] prompt dispatch failed:", err);
             })
-            .finally(clearCurrentReferencedNodes);
+            .finally(() => {
+              clearCurrentReferencedNodes();
+              clearSessionSemanticRefs(session.sessionId);
+            });
         }
         break;
       case "steer":
@@ -547,6 +551,9 @@ async function makePrompt(msg: WSClientMessageOf<"prompt">, session: SessionInst
     canvasNodes: sessionFile ? loadCanvas(sessionFile)?.nodes : undefined,
   });
   const prompt = composePrompt({ content: msg.content ?? "", referencedNodes: msg.referencedNodes }, ctx);
+  // T2.2 语义引用归因：本轮注入的图谱实体暂存为「本会话最近一次注入上下文」，
+  // message_end 建 sqlQuery 节点时取来写入 semanticRefs（空则不写键）。
+  setSessionSemanticRefs(session.sessionId, toSemanticRefs(ctx.graphEntities));
   // 注入留痕：被注入节点 + 图谱实体 ID 列表随会话 sidecar 持久化（append-only）
   if (sessionFile && (ctx.tables.length > 0 || ctx.graphEntities.length > 0)) {
     recordInjectionTrace(

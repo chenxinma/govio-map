@@ -13,6 +13,7 @@ import { nodeTypes } from '../Nodes';
 import FloatingPreviewPanel from './FloatingPreviewPanel';
 import CanvasToolbar from './CanvasToolbar';
 import NodeFindBar from './NodeFindBar';
+import LineageLegend from './LineageLegend';
 
 export default function Canvas() {
   const nodes = useCanvasStore((s) => s.nodes);
@@ -86,6 +87,7 @@ export default function Canvas() {
           maskColor="rgba(0, 0, 0, 0.08)"
           className="!bg-bg-primary !border-border-default !rounded-lg"
         />
+        <LineageLegend />
       </ReactFlow>
 
       {previewPanels.map((panel) => (

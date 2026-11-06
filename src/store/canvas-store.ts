@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Node, Edge, Connection, OnNodesChange, OnEdgesChange } from '@xyflow/react';
 import { addEdge, applyNodeChanges, applyEdgeChanges, Position } from '@xyflow/react';
-import type { CanvasNodeData, DataFrameNodeData, ReferencedNode, RerunRecord } from '../types';
+import type { CanvasNodeData, DataFrameNodeData, ReferencedNode, RerunRecord, SemanticRef } from '../types';
+import { lineageEdgeAppearance } from '../utils/lineage';
 import { MOCK_TABLES } from '../data/mock-tables';
 import { nextId, syncCountersFromNodes } from '../services/mock-ai';
 import { getLayoutedElements, positionNewNode } from '../utils/layout';
@@ -82,7 +83,8 @@ export const useCanvasStore = create<CanvasStore>()(
   },
 
   onConnect: (connection) => {
-    set({ edges: addEdge(connection, get().edges) });
+    // 手动连线按数据血缘处理（T2.2）：显式标 lineageKind，形状/样式维持现状
+    set({ edges: addEdge({ ...connection, data: { lineageKind: 'data' } }, get().edges) });
   },
 
   addSourceTableToCanvas: (tableName) => {
@@ -139,6 +141,8 @@ export const useCanvasStore = create<CanvasStore>()(
             sql: event.sql || "",
             outputColumns: event.outputColumns || [],
             ...(event.manifest ? { manifest: event.manifest } : {}),
+            // 语义引用（T2.2 口径溯源）：缺失不写键，旧节点形状不变
+            ...(event.semanticRefs && event.semanticRefs.length > 0 ? { semanticRefs: event.semanticRefs } : {}),
           },
         };
         break;
@@ -187,6 +191,7 @@ export const useCanvasStore = create<CanvasStore>()(
                     type: "smoothstep",
                     animated: true,
                     style: { stroke: "#1db954", strokeWidth: 2 },
+                    data: { lineageKind: "data" },
                   });
                 }
               }
@@ -280,6 +285,7 @@ export const useCanvasStore = create<CanvasStore>()(
             type: "smoothstep",
             animated: true,
             style: { stroke: "#1db954", strokeWidth: 2 },
+            data: { lineageKind: "data" },
           });
         }
       }
@@ -303,8 +309,31 @@ export const useCanvasStore = create<CanvasStore>()(
             type: "smoothstep",
             animated: true,
             style: { stroke: "#1db954", strokeWidth: 2 },
+            data: { lineageKind: "data" },
           });
         }
+      }
+    }
+
+    // 语义血缘边（T2.2 口径沿袭）：新 sqlQuery 的 semanticRefs 与既有 sqlQuery 节点
+    // 有交集（按 entityType+id 判等）时，从旧节点连一条 lineageKind:"semantic" 边；
+    // 同一对节点已有数据血缘边时两线并存（edge id 加 -sem 后缀防冲突）。
+    if (event.nodeType === "sqlQuery" && event.semanticRefs && event.semanticRefs.length > 0) {
+      const refKeys = new Set(event.semanticRefs.map((r: SemanticRef) => `${r.entityType}:${r.id}`));
+      const sem = lineageEdgeAppearance('semantic');
+      for (const old of nodes) {
+        const d = old.data as unknown as CanvasNodeData;
+        if (d.type !== "sqlQuery" || !d.semanticRefs || d.semanticRefs.length === 0) continue;
+        if (!d.semanticRefs.some((r) => refKeys.has(`${r.entityType}:${r.id}`))) continue;
+        newEdges.push({
+          id: `e-${old.id}-${nodeId}-sem`,
+          source: old.id,
+          target: nodeId,
+          type: "smoothstep",
+          animated: sem.animated,
+          style: { stroke: sem.stroke, strokeWidth: sem.strokeWidth, strokeDasharray: sem.strokeDasharray },
+          data: { lineageKind: "semantic" },
+        });
       }
     }
 
