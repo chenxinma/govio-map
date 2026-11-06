@@ -8,7 +8,7 @@ const KINDS: LineageKind[] = ['data', 'semantic'];
 export default function LineageLegend() {
   return (
     <Panel
-      position="bottom-left"
+      position="top-left"
       className="!bg-bg-primary/95 !border-border-default !rounded-lg !shadow-sm px-3 py-2"
     >
       <div className="text-[11px] font-medium text-text-muted mb-1.5">血缘图例</div>
