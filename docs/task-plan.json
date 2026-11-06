@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-06T22:25:00+08:00",
+  "updatedAt": "2026-11-06T23:05:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -317,7 +317,7 @@
           "id": "T2.3",
           "title": "口径冲突检测",
           "kr": "KR3",
-          "status": "pending",
+          "status": "in_progress",
           "dependsOn": [
             "T2.1"
           ],
@@ -327,13 +327,20 @@
             "冲突检测有 CLI 命令支撑",
             "SQL 节点黄色警示态"
           ],
-          "history": []
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-11-06T23:05:00+08:00",
+              "by": "main-session",
+              "note": "T2.2 accepted 后并行派发 pi subagent 双 worker（worktree 隔离；跨 govio/govio-map 两仓；并行模式 worker 不改 task-plan，主会话统一记账）"
+            }
+          ]
         },
         {
           "id": "T2.4",
           "title": "元数据增量导入与校验报告",
           "kr": "KR4",
-          "status": "pending",
+          "status": "in_progress",
           "dependsOn": [],
           "outputDir": "docs/tasks/T2.4-meta-incremental-import/",
           "scope": "govio-meta 导入支持增量更新与校验报告。",
@@ -341,7 +348,14 @@
             "重复导入幂等",
             "校验报告输出到任务目录"
           ],
-          "history": []
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-11-06T23:05:00+08:00",
+              "by": "main-session",
+              "note": "T2.2 accepted 后并行派发 pi subagent 双 worker（worktree 隔离；跨 govio/govio-map 两仓；并行模式 worker 不改 task-plan，主会话统一记账）"
+            }
+          ]
         }
       ]
     },
