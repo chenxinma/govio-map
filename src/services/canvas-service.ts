@@ -1,4 +1,4 @@
-import type { AnalysisManifest, DatasourceType, SemanticRef } from '../types';
+import type { AnalysisManifest, CaliberCheck, DatasourceType, SemanticRef } from '../types';
 
 export interface CanvasEvent {
   type: "govio_node_create";
@@ -35,6 +35,8 @@ export interface CanvasEvent {
   manifest?: AnalysisManifest;
   /** 语义引用（T2.2 口径溯源）：sqlQuery 节点由服务端归因填充，无注入时不建键 */
   semanticRefs?: SemanticRef[];
+  /** 口径冲突检测结果（T2.3）：服务端比对后填充，CLI 失败降级时不建键 */
+  caliberCheck?: CaliberCheck;
 }
 
 export interface CanvasService {
