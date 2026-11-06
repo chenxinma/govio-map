@@ -1,5 +1,6 @@
 import type { AnalysisManifest } from './manifest.js';
 import type { RerunRecord } from './rerun.js';
+import type { SemanticRef } from './semantic.js';
 
 // 分析留痕类型（前后端共享定义见 ./manifest.ts）
 export type {
@@ -9,6 +10,9 @@ export type {
   ManifestModel,
   ManifestOrigin,
 } from './manifest.js';
+
+// 语义引用/血缘分类类型（前后端共享定义见 ./semantic.ts）
+export type { LineageKind, SemanticEntityType, SemanticRef } from './semantic.js';
 
 // 复跑记录类型（前后端共享定义见 ./rerun.ts）
 export type {
@@ -95,6 +99,11 @@ export interface SQLQueryNodeData {
   outputColumns: string[];
   /** 分析留痕：SQL 全文 + 来源模型/会话（服务端事件流填充，可为空表示旧节点） */
   manifest?: AnalysisManifest;
+  /**
+   * 语义引用（T2.2 口径溯源）：本次生成该 SQL 时注入的图谱实体（指标/维度/字段标准）。
+   * 服务端事件流填充；无注入（steer/followUp/图谱无实体）时缺失不写键，旧节点形状不变。
+   */
+  semanticRefs?: SemanticRef[];
   [key: string]: unknown;
 }
 

@@ -1,4 +1,5 @@
 import { pushGovioNode, type GovioNodeCreateEvent } from "../govio-node-queue.js";
+import { getSessionSemanticRefs } from "../semantic-context.js";
 import {
   isLoadFailure,
   observeColumnName,
@@ -901,6 +902,9 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
     // 会话 ID 取自 pi 上下文；生成模型优先取助手消息自带的 provider/model
     // （比 ctx.model 准确：本轮中途切模型时记录的是真实来源）。
     const sessionContext = piSessionContext(ctx);
+    // T2.2 语义引用归因：取「本会话最近一次注入上下文」（makePrompt 暂存）；
+    // steer/followUp/归因缺失时为 undefined → 不写键，禁止猜测补全。
+    const semanticRefs = getSessionSemanticRefs(sessionContext.sessionId);
     const model = toManifestModelFromMessage(event.message) ?? sessionContext.model;
     const executedAt =
       typeof event.message.timestamp === "number"
@@ -927,6 +931,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
           context: { ...sessionContext, model },
           ...(executedAt ? { executedAt } : {}),
         }),
+        ...(semanticRefs && semanticRefs.length > 0 ? { semanticRefs } : {}),
       });
     }
   });

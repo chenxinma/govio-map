@@ -24,6 +24,7 @@ import type {
   ChartNodeData,
   ChartTrace,
   DataFrameNodeData,
+  LineageKind,
   NodeType,
   ReportNodeData,
   RerunRecord,
@@ -31,6 +32,7 @@ import type {
   SQLQueryNodeData,
   TableField,
 } from '../types';
+import { lineageEdgeAppearance, lineageKindOf } from './lineage';
 import { RERUN_OUTCOME_LABELS, formatRerunTime, hasDrift, latestRerun } from './rerun';
 import { manifestModelLabel, manifestOriginLabel } from './manifest-labels';
 import { REPORT_CSS } from './export-report-style';
@@ -269,6 +271,8 @@ export interface LineageEdgeView {
   id: string;
   source: string;
   target: string;
+  /** 血缘分类（T2.2）：数据血缘 / 语义血缘（口径沿袭）；旧边无 data 回退 "data" */
+  lineageKind: LineageKind;
   /** 三次贝塞尔路径（源盒子右侧中点 → 目标盒子左侧中点） */
   path: string;
 }
@@ -364,6 +368,7 @@ export function layoutLineage(nodes: Node[], edges: Edge[]): LineageLayout {
       id: e.id || `${e.source}->${e.target}`,
       source: e.source,
       target: e.target,
+      lineageKind: lineageKindOf(e),
       path: edgePath(s, t),
     });
   }
@@ -399,11 +404,17 @@ export function lineageSvg(layout: LineageLayout): string {
       `viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" ` +
       `role="img" aria-label="画布血缘连线图">`,
     `<defs><marker id="govio-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">` +
-      `<path d="M0,0 L10,5 L0,10 z" fill="#1db954"/></marker></defs>`,
+      `<path d="M0,0 L10,5 L0,10 z" fill="#1db954"/></marker>` +
+      `<marker id="govio-arrow-sem" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">` +
+      `<path d="M0,0 L10,5 L0,10 z" fill="${lineageEdgeAppearance('semantic').stroke}"/></marker></defs>`,
   ];
   for (const e of layout.edges) {
+    // 边样式随 lineageKind 区分（T2.2）：数据血缘绿色实线、语义血缘紫虚线
+    const app = lineageEdgeAppearance(e.lineageKind);
+    const dash = app.strokeDasharray ? ` stroke-dasharray="${app.strokeDasharray}"` : '';
+    const marker = e.lineageKind === 'semantic' ? 'govio-arrow-sem' : 'govio-arrow';
     parts.push(
-      `<path d="${e.path}" fill="none" stroke="#1db954" stroke-width="1.6" marker-end="url(#govio-arrow)">` +
+      `<path d="${e.path}" fill="none" stroke="${app.stroke}" stroke-width="1.6"${dash} marker-end="url(#${marker})">` +
         `<title>${esc(e.source)} → ${esc(e.target)}</title></path>`,
     );
   }
@@ -1201,11 +1212,18 @@ function renderLineageSection(layout: LineageLayout): string {
   const legend = (Object.keys(NODE_LABELS) as NodeType[])
     .map((t) => `<span><i style="background:${esc(NODE_COLORS[t])}"></i>${esc(NODE_LABELS[t])}</span>`)
     .join('');
+  // 边分类图例（T2.2）：数据血缘实线 / 语义血缘虚线
+  const edgeLegend = (["data", "semantic"] as LineageKind[])
+    .map((k) => {
+      const app = lineageEdgeAppearance(k);
+      return `<span><i style="width:22px;height:0;background:none;border-top:2px ${app.strokeDasharray ? 'dashed' : 'solid'} ${esc(app.stroke)}"></i>${esc(app.label)}</span>`;
+    })
+    .join('');
   return `<section id="lineage"><h2><span class="n">1</span> 血缘连线图</h2>` +
-    `<p class="note">按血缘层次从左到右排布（同源同层按画布顺序纵向排列），箭头表示数据流向；点击任意盒子跳到对应节点卡片。` +
+    `<p class="note">按血缘层次从左到右排布（同源同层按画布顺序纵向排列），箭头表示数据流向；实线绿色为数据血缘，虚线紫色为语义血缘（口径沿袭，T2.2）；点击任意盒子跳到对应节点卡片。` +
     `这是一张静态示意图，不复用画布的 ReactFlow 运行时，因此离线打开也能看。</p>` +
     (layout.boxes.length
-      ? `<div class="lineage-wrap">${lineageSvg(layout)}</div><div class="legend">${legend}</div>`
+      ? `<div class="lineage-wrap">${lineageSvg(layout)}</div><div class="legend">${legend}</div><div class="legend">${edgeLegend}</div>`
       : '<p class="note">画布为空。</p>') +
     `</section>`;
 }

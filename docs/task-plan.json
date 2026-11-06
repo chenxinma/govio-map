@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-06T19:49:25+08:00",
+  "updatedAt": "2026-11-06T20:13:22+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -282,7 +282,7 @@
           "id": "T2.2",
           "title": "口径溯源与语义血缘",
           "kr": "KR2",
-          "status": "in_progress",
+          "status": "done",
           "dependsOn": [
             "T2.1"
           ],
@@ -298,6 +298,12 @@
               "at": "2026-11-06T19:49:25+08:00",
               "by": "main-session",
               "note": "T2.1/X2 已合并（PR #20/#21），依赖满足；派发 pi subagent 执行（单 worker，本地 task/T2.2-semantic-lineage 分支，PR 由用户合并）"
+            },
+            {
+              "status": "done",
+              "at": "2026-11-06T20:13:22+08:00",
+              "by": "worker",
+              "note": "口径溯源与语义血缘落地：semanticRefs 归因链路、Edge.data.lineageKind 边分类与画布/导出可视化区分；verify:semantic-lineage 45/45，build/lint/verify 全绿零回归；交付物三件套齐（design/CHANGES/verification）"
             }
           ]
         },
