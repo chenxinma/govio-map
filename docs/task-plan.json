@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-06T23:05:00+08:00",
+  "updatedAt": "2026-11-06T23:55:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -340,7 +340,7 @@
           "id": "T2.4",
           "title": "元数据增量导入与校验报告",
           "kr": "KR4",
-          "status": "in_progress",
+          "status": "done",
           "dependsOn": [],
           "outputDir": "docs/tasks/T2.4-meta-incremental-import/",
           "scope": "govio-meta 导入支持增量更新与校验报告。",
@@ -354,6 +354,12 @@
               "at": "2026-11-06T23:05:00+08:00",
               "by": "main-session",
               "note": "T2.2 accepted 后并行派发 pi subagent 双 worker（worktree 隔离；跨 govio/govio-map 两仓；并行模式 worker 不改 task-plan，主会话统一记账）"
+            },
+            {
+              "status": "done",
+              "at": "2026-11-06T23:55:00+08:00",
+              "by": "main-session",
+              "note": "worker 完成（并行模式主会话代记）。预验收通过：govio pytest 386 passed（+21 新增含幂等用例，4 failed 为 clean-base 预存在、两 worker 独立确认）+ ruff 绿；map build/lint/verify 全绿代码零改动；抽查 import_report 分类/三项校验/--report 契约与幂等测试断言属实；round2 报告 added=0/updated=0 实证幂等。待 PR 合并后置 accepted"
             }
           ]
         }
