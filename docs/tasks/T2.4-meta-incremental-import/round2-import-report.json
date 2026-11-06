@@ -1,0 +1,120 @@
+{
+  "report_version": 1,
+  "generated_at": "2026-11-06T23:22:26+08:00",
+  "csv_dir": "D:\\Work\\gov-io\\govio-t24-demo\\out",
+  "mode": "update",
+  "backend": "networkx",
+  "import_counts": {
+    "nodes": {
+      "PhysicalTable": 4,
+      "Col": 17,
+      "Datasource": 1,
+      "Metric": 1,
+      "Dimension": 1
+    },
+    "edges": {
+      "HAS_COLUMN": 17,
+      "OWNS": 4,
+      "RELATES_TO": 3,
+      "USES_TABLE": 1,
+      "REFERS_COLUMN": 1,
+      "DIMENSION_USED": 1
+    }
+  },
+  "changes": {
+    "nodes": {
+      "PhysicalTable": {
+        "added": 0,
+        "updated": 0,
+        "skipped": 4
+      },
+      "Col": {
+        "added": 0,
+        "updated": 0,
+        "skipped": 17
+      },
+      "Datasource": {
+        "added": 0,
+        "updated": 0,
+        "skipped": 1
+      },
+      "Metric": {
+        "added": 0,
+        "updated": 0,
+        "skipped": 1
+      },
+      "Dimension": {
+        "added": 0,
+        "updated": 0,
+        "skipped": 1
+      }
+    },
+    "edges": {
+      "HAS_COLUMN": {
+        "added": 0,
+        "updated": 0,
+        "skipped": 17
+      },
+      "OWNS": {
+        "added": 0,
+        "updated": 0,
+        "skipped": 4
+      },
+      "RELATES_TO": {
+        "added": 0,
+        "updated": 0,
+        "skipped": 3
+      },
+      "USES_TABLE": {
+        "added": 0,
+        "updated": 0,
+        "skipped": 1
+      },
+      "REFERS_COLUMN": {
+        "added": 0,
+        "updated": 0,
+        "skipped": 1
+      },
+      "DIMENSION_USED": {
+        "added": 0,
+        "updated": 0,
+        "skipped": 1
+      }
+    },
+    "totals": {
+      "added": 0,
+      "updated": 0,
+      "skipped": 51
+    }
+  },
+  "checks": [
+    {
+      "name": "duplicate_node_ids",
+      "status": "pass",
+      "count": 0,
+      "examples": []
+    },
+    {
+      "name": "missing_required",
+      "status": "pass",
+      "count": 0,
+      "examples": []
+    },
+    {
+      "name": "orphan_edges",
+      "status": "pass",
+      "count": 0,
+      "examples": []
+    }
+  ],
+  "summary": {
+    "status": "pass",
+    "checks_total": 3,
+    "checks_failed": 0,
+    "changes_totals": {
+      "added": 0,
+      "updated": 0,
+      "skipped": 51
+    }
+  }
+}
