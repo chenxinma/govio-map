@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-06T23:55:00+08:00",
+  "updatedAt": "2026-11-07T00:10:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -317,7 +317,7 @@
           "id": "T2.3",
           "title": "口径冲突检测",
           "kr": "KR3",
-          "status": "in_progress",
+          "status": "done",
           "dependsOn": [
             "T2.1"
           ],
@@ -333,6 +333,12 @@
               "at": "2026-11-06T23:05:00+08:00",
               "by": "main-session",
               "note": "T2.2 accepted 后并行派发 pi subagent 双 worker（worktree 隔离；跨 govio/govio-map 两仓；并行模式 worker 不改 task-plan，主会话统一记账）"
+            },
+            {
+              "status": "done",
+              "at": "2026-11-07T00:10:00+08:00",
+              "by": "main-session",
+              "note": "worker 完成（并行模式主会话代记）。预验收通过：govio pytest 401 passed（新增 36/36，4 failed 为 clean-base 预存在）+ ruff 绿；map build/lint/verify 全绿（verify:caliber-conflict 43/43，既有零回归）；抽查 caliber.py 宁可 unknown 内核、caliber-check.ts 降级省略键、SQLQueryNode conflict 黄色警示 #F59B23、verify-semantic-lineage 注入 stub 不弱化断言，均属实。待 PR 合并后置 accepted"
             }
           ]
         },
