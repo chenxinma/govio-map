@@ -1,7 +1,7 @@
 {
   "name": "govio-map",
   "private": true,
-  "version": "0.6.1",
+  "version": "0.7.0",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -17,7 +17,7 @@
     "verify:audit": "tsx scripts/verify-permission-audit.ts",
     "verify:export": "tsx scripts/verify-export-report.ts",
     "verify:source-table": "tsx scripts/verify-source-table.ts",
-  "verify:semantic-lineage": "tsx scripts/verify-semantic-lineage.ts",
+    "verify:semantic-lineage": "tsx scripts/verify-semantic-lineage.ts",
     "verify:caliber-conflict": "tsx scripts/verify-caliber-conflict.ts",
     "verify:cwd": "tsx scripts/verify-cwd-normalize.ts",
     "verify:prompt-injection": "tsx scripts/verify-prompt-injection.ts",
