@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-07T00:10:00+08:00",
+  "updatedAt": "2026-11-07T00:40:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -206,7 +206,7 @@
       "id": "P2",
       "name": "语义层集成",
       "northStar": "口径命中率 ≥90%",
-      "status": "in_progress",
+      "status": "accepted",
       "branch": "feature/phase2-semantic-layer（基于 feature/phase1-trusted-analysis a62a9cf）",
       "tasks": [
         {
@@ -317,7 +317,7 @@
           "id": "T2.3",
           "title": "口径冲突检测",
           "kr": "KR3",
-          "status": "done",
+          "status": "accepted",
           "dependsOn": [
             "T2.1"
           ],
@@ -339,6 +339,12 @@
               "at": "2026-11-07T00:10:00+08:00",
               "by": "main-session",
               "note": "worker 完成（并行模式主会话代记）。预验收通过：govio pytest 401 passed（新增 36/36，4 failed 为 clean-base 预存在）+ ruff 绿；map build/lint/verify 全绿（verify:caliber-conflict 43/43，既有零回归）；抽查 caliber.py 宁可 unknown 内核、caliber-check.ts 降级省略键、SQLQueryNode conflict 黄色警示 #F59B23、verify-semantic-lineage 注入 stub 不弱化断言，均属实。待 PR 合并后置 accepted"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-11-07T00:40:00+08:00",
+              "by": "main-session",
+              "note": "PR #25 合并(5c5fc09) + govio PR #14(70d42e1)。合并态复验：map build/lint/verify 全绿（verify:caliber-conflict 43/43）、govio pytest 426 passed/ruff 绿；E2E 真实图库三态实测通过（经 BUGFIX-caliber-cypher 修复 stub 未覆盖的集成缺陷后成立）；skills 已同步运行时副本"
             }
           ]
         },
@@ -346,7 +352,7 @@
           "id": "T2.4",
           "title": "元数据增量导入与校验报告",
           "kr": "KR4",
-          "status": "done",
+          "status": "accepted",
           "dependsOn": [],
           "outputDir": "docs/tasks/T2.4-meta-incremental-import/",
           "scope": "govio-meta 导入支持增量更新与校验报告。",
@@ -366,6 +372,12 @@
               "at": "2026-11-06T23:55:00+08:00",
               "by": "main-session",
               "note": "worker 完成（并行模式主会话代记）。预验收通过：govio pytest 386 passed（+21 新增含幂等用例，4 failed 为 clean-base 预存在、两 worker 独立确认）+ ruff 绿；map build/lint/verify 全绿代码零改动；抽查 import_report 分类/三项校验/--report 契约与幂等测试断言属实；round2 报告 added=0/updated=0 实证幂等。待 PR 合并后置 accepted"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-11-07T00:40:00+08:00",
+              "by": "main-session",
+              "note": "PR #24 合并(12a0018) + govio PR #13(ed09109)。合并态复验：map build/lint/verify 全绿代码零改动、govio pytest 426 passed（幂等用例在内）/ruff 绿；round1/round2 报告证据随 PR 落任务目录，幂等实证成立；skills 已同步运行时副本"
             }
           ]
         }

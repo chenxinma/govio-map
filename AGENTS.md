@@ -14,13 +14,16 @@ skills/govio/assets = ./.agents/skills/govio/assets
 
 ## Govio Skills 同步
 
-Skills 原版在 `D:/work/python/govio/skills/`（由 `package_skills.py` 打包为 `dist/govio-skills.zip`）。`.agents/skills/` 是运行时副本，尚未对外发行，不会自动更新，手动同步：
+Skills 原版在 `D:/Work/gov-io/govio/skills/`（由 `package_skills.py` 打包为 `dist/govio-skills.zip`）。`.agents/skills/` 是运行时副本，尚未对外发行，不会自动更新，手动同步（**只同步源文档，排除 `assets/` 生成物**——assets 随 `meta graph` 按环境生成，盲目覆盖会把别的环境快照盖到 live 图库上）：
 
-```bash
-cp -r "D:/work/python/govio/skills/". .agents/skills/
+```bash\# 同步：仅 skills 源文档（SKILL.md/reference 等），不动 assets/
+cd /d/Work/gov-io/govio-map
+for d in govio govio-eda govio-meta govio-observe govio-query govio-reconcile; do
+  rsync -a --exclude 'assets/' "/d/Work/gov-io/govio/skills/$d/" ".agents/skills/$d/"
+done
 
-# 校验：无输出即一致
-diff -rq "D:/work/python/govio/skills" .agents/skills
+# 校验：预期残留仅 assets/（生成物）、moli-*（非 govio 仓技能），不应有源文档差异
+diff -rq /d/Work/gov-io/govio/skills .agents/skills | rg -v "assets/|moli-"
 ```
 
 ## SQL 生成纪律（运行时约束）
