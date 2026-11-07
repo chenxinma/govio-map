@@ -28,3 +28,39 @@ export interface SemanticRef {
  * 旧边没有 data 字段，按 `"data"` 处理（兼容回退）。
  */
 export type LineageKind = "data" | "semantic";
+
+// ── T2.3 口径冲突检测 ──────────────────────────────────────────────
+
+/**
+ * 口径比对判定：
+ * - `consistent`：与图谱指标定义一致
+ * - `conflict`：确定冲突（比对逻辑只在 govio-cli，见 govio 仓 `metadata/caliber.py`）
+ * - `unknown`：无法判定（CLI 侧判定纪律：宁可 unknown 不误报 conflict）
+ */
+export type CaliberStatus = "consistent" | "conflict" | "unknown";
+
+/** 单项口径差异（与 govio CLI `sql caliber` 输出的 differences 条目同形） */
+export interface CaliberDifference {
+  /** 所属指标（多指标比对时区分；CLI results[].metric.code/name 透传，缺失省略键） */
+  metricCode?: string;
+  metricName?: string;
+  /** 差异维度：aggregation | filter | time_scope | column | metric | sql */
+  aspect: string;
+  /** 图谱口径期望 */
+  expected: string;
+  /** SQL 实际 */
+  found: string;
+  detail?: string;
+}
+
+/**
+ * 口径冲突检测结果（SQL 节点 `caliberCheck` 字段，T2.3）。
+ * 来源：服务端 message_end 经 `govio-cli sql caliber` 比对后写入事件；
+ * CLI 缺失/超时/报错/非 JSON 一律省略键（缺失不写键，旧节点形状不变）。
+ */
+export interface CaliberCheck {
+  /** 汇总状态：任一 conflict → conflict；否则任一 unknown → unknown；否则 consistent */
+  status: CaliberStatus;
+  /** 扁平差异列表（含指标归属）；consistent 时为空 */
+  differences: CaliberDifference[];
+}

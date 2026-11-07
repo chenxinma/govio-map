@@ -1,4 +1,5 @@
 import { pushGovioNode, type GovioNodeCreateEvent } from "../govio-node-queue.js";
+import { runCaliberCheck, type CaliberCliRunner } from "../caliber-check.js";
 import { getSessionSemanticRefs } from "../semantic-context.js";
 import {
   isLoadFailure,
@@ -663,7 +664,10 @@ function handleExploreResult(cmd: string, stdout: string): void {
 
 // ── Extension Entry ────────────────────────────────────────────────
 
-export default function govioCanvasExtension(pi: ExtensionAPI): void {
+export default function govioCanvasExtension(
+  pi: ExtensionAPI,
+  deps: { runCaliberCli?: CaliberCliRunner } = {},
+): void {
   pi.registerTool({
     name: "govio_create_source_table",
     label: "Govio Source Table",
@@ -889,7 +893,7 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
     }
   });
 
-  pi.on("message_end", (event, ctx) => {
+  pi.on("message_end", async (event, ctx) => {
     if (event.message.role !== "assistant") return;
     if (!event.message.content) return;
 
@@ -911,11 +915,12 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
         ? new Date(event.message.timestamp).toISOString()
         : undefined;
 
+    const pendingCaliber: Array<{ nodeEvent: GovioNodeCreateEvent; sql: string }> = [];
     for (const block of sqlBlocks) {
       const dfName = extractDfName(text) || nextDfName();
       // const sourceName = extractDataSource(block.sql);
       const tableName = extractTableName(block.sql);
-      pushGovioNode({
+      const nodeEvent: GovioNodeCreateEvent = {
         nodeType: "sqlQuery",
         title: `Q: ${tableName || dfName}`,
         sql: block.sql,
@@ -932,7 +937,26 @@ export default function govioCanvasExtension(pi: ExtensionAPI): void {
           ...(executedAt ? { executedAt } : {}),
         }),
         ...(semanticRefs && semanticRefs.length > 0 ? { semanticRefs } : {}),
-      });
+      };
+      pushGovioNode(nodeEvent);
+      pendingCaliber.push({ nodeEvent, sql: block.sql });
+    }
+
+    // T2.3 口径冲突检测：semanticRefs 含 Metric 时经 `govio-cli sql caliber` 比对，
+    // 结果补挂到已入队事件的 caliberCheck 字段。pi 的 message_end 扩展钩子先于
+    // WS 广播被 await（agent-session：extensions first, then public listeners），
+    // 故补挂先于 flush 序列化完成，节点建出即带结果。
+    // 降级纪律（T2.2 同款）：CLI 缺失/超时/报错/非 JSON 一律省略键、不阻断、不重试。
+    const metricRefs = (semanticRefs ?? [])
+      .filter((r) => r.entityType === "Metric")
+      .map((r) => r.code ?? r.id);
+    if (metricRefs.length > 0) {
+      await Promise.all(
+        pendingCaliber.map(async ({ nodeEvent, sql }) => {
+          const caliberCheck = await runCaliberCheck(sql, metricRefs, deps.runCaliberCli);
+          if (caliberCheck) nodeEvent.caliberCheck = caliberCheck;
+        }),
+      );
     }
   });
 }

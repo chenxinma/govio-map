@@ -96,7 +96,11 @@ const piStub = {
   registerTool: (tool: StubTool) => { tools.set(tool.name, tool); },
   on: (name: string, handler: unknown) => { handlers.set(name, handler); return () => {}; },
 };
-govioCanvasExtension(piStub as unknown as Parameters<typeof govioCanvasExtension>[0]);
+// T2.3：message_end 会按 semanticRefs 调口径比对 CLI；本脚本只验 semanticRefs，
+// 注入恒失败的 stub 使其走「失败降级省略键」路径，保持脚本不真调 govio-cli（断言不变）。
+govioCanvasExtension(piStub as unknown as Parameters<typeof govioCanvasExtension>[0], {
+  runCaliberCli: () => Promise.reject(new Error("caliber CLI disabled in verify:semantic-lineage")),
+});
 
 type MessageEndHandler = (event: { message: Record<string, unknown> }, ctx: unknown) => void;
 

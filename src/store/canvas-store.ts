@@ -143,6 +143,8 @@ export const useCanvasStore = create<CanvasStore>()(
             ...(event.manifest ? { manifest: event.manifest } : {}),
             // 语义引用（T2.2 口径溯源）：缺失不写键，旧节点形状不变
             ...(event.semanticRefs && event.semanticRefs.length > 0 ? { semanticRefs: event.semanticRefs } : {}),
+            // 口径冲突检测结果（T2.3）：缺失不写键，旧节点形状不变
+            ...(event.caliberCheck ? { caliberCheck: event.caliberCheck } : {}),
           },
         };
         break;

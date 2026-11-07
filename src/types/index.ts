@@ -1,6 +1,6 @@
 import type { AnalysisManifest } from './manifest.js';
 import type { RerunRecord } from './rerun.js';
-import type { SemanticRef } from './semantic.js';
+import type { CaliberCheck, SemanticRef } from './semantic.js';
 
 // 分析留痕类型（前后端共享定义见 ./manifest.ts）
 export type {
@@ -11,8 +11,15 @@ export type {
   ManifestOrigin,
 } from './manifest.js';
 
-// 语义引用/血缘分类类型（前后端共享定义见 ./semantic.ts）
-export type { LineageKind, SemanticEntityType, SemanticRef } from './semantic.js';
+// 语义引用/血缘分类/口径冲突检测类型（前后端共享定义见 ./semantic.ts）
+export type {
+  CaliberCheck,
+  CaliberDifference,
+  CaliberStatus,
+  LineageKind,
+  SemanticEntityType,
+  SemanticRef,
+} from './semantic.js';
 
 // 复跑记录类型（前后端共享定义见 ./rerun.ts）
 export type {
@@ -104,6 +111,11 @@ export interface SQLQueryNodeData {
    * 服务端事件流填充；无注入（steer/followUp/图谱无实体）时缺失不写键，旧节点形状不变。
    */
   semanticRefs?: SemanticRef[];
+  /**
+   * 口径冲突检测结果（T2.3）：服务端 message_end 经 `govio-cli sql caliber` 比对后
+   * 写入；CLI 缺失/超时/报错/非 JSON 时缺失不写键，旧节点形状不变。
+   */
+  caliberCheck?: CaliberCheck;
   [key: string]: unknown;
 }
 
