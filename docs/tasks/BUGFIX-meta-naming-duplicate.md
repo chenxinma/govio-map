@@ -73,6 +73,7 @@
 
 ## 遗留
 
-1. `D:/Work/gov-io/govio/data/meta`（旧两段式 CSV 集，含 `Application.csv`/`Standard.csv`/`USE.csv`）与 `data/meta-rebuild` 仍在磁盘上，后续维护若误指这两个目录会重新引入旧键 → 建议只保留 `govio-map/data/meta` 作为唯一 CSV 目录，另两个待用户确认后清理。
+1. ~~旧 CSV 目录清理~~（已执行 2026-11-08）：`D:/Work/gov-io/govio/data/meta`（旧两段式集，含 `Application.csv`/`Standard.csv`/`USE.csv`）与 `data/meta-rebuild` 已删除（两目录均 gitignore / 未跟踪，govio 仓工作区无变更）。删除前把 CLI 无法重建的三项归档到 `govio-map/data/meta-legacy-app/`（`Application.csv` 1 行、`Standard.csv` 0 行、`USE.csv` 4 条边）；其余均可由 `meta meta` / `meta metric` / `meta rel` 从源库与 `*.normalized.json` 重出。现在唯一事实源 = `govio-map/data/meta`（删除后图库复测：PT=9、Col=106、三段式表 9/9）。
+   注：`govio/tests/regression/data/graph_csv/` 是测试夹具，不在清理范围。
 2. 无 `Application`/`USE` 导入子命令，应用系统归属维度当前无法从 CLI 重建；若需要该维度，需 CLI 侧补子命令。
 3. `meta graph --mode update` 不删旧键的行为仍在：今后任何命名口径调整都必须显式 `rebuild`。
