@@ -32,7 +32,7 @@ import {
   type InjectionContext,
   type TableFact,
 } from "../server/prompt-injection.js";
-import { parseQueryRows, isEmptyResultOutput, type GraphQueryRunner, type GraphRow } from "../server/graph-query.js";
+import { parseQueryRows, isEmptyResultOutput, describeExecError, type GraphQueryRunner, type GraphRow } from "../server/graph-query.js";
 import { buildTranscript } from "../server/session-history.js";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
@@ -279,8 +279,7 @@ console.log("\n[C] 图谱实体注入与降级（图谱不可达不阻断会话�
     runQuery,
   });
   check("图谱不可达整体降级：graphStatus=degraded 且 error 留痕",
-    ctx.graphStatus === "degraded" && !!ctx.graphError && ctx.graphError.includes("ENOENT"));
-  check("降级时表事实照常注入（不依赖图谱）", ctx.tables.length === 1 && ctx.graphEntities.length === 0);
+    ctx.graphStatus === "degraded" && !!ctx.graphError && ctx.graphError.includes("ENOENT"));  check("降级时表事实照常注入（不依赖图谱）", ctx.tables.length === 1 && ctx.graphEntities.length === 0);
   const prompt = composePrompt({ content: "q" }, ctx);
   check("降级后 prompt 仍可用且不阻断（含 CTX 表事实 + 用户内容）",
     prompt.includes("CTX:") && prompt.endsWith("q") && prompt.includes("chocolate.chocolate.dim_product"));
@@ -601,6 +600,30 @@ console.log("\n[G] 空结果处理（BUGFIX-injection-graph-key：Data not found
   })());
   check("isEmptyResultOutput 识别空结果输出",
     isEmptyResultOutput("Data not found.") && isEmptyResultOutput("data not found.") && !isEmptyResultOutput('[{"a":1}]'));
+  // 诊断信息：仅 "Command failed" 无法定位是超时/非 0 退出/被杀
+  const killed = Object.assign(new Error("Command failed: govio-cli query -c X"), {
+    killed: true, signal: "SIGTERM" as const,
+  });
+  const desc = describeExecError(killed, "", "");
+  check("describeExecError 保留超时/信号与退出码（不再只有 Command failed）",
+    desc.includes("killed=true") && desc.includes("signal=SIGTERM"));
+  const exitErr = Object.assign(new Error("Command failed: govio-cli query -c Y"), { code: 1 });
+  check("describeExecError 带退出码与 stderr 尾部",
+    describeExecError(exitErr, "Runtime exception: boom", "").includes("exit=1") &&
+    describeExecError(exitErr, "Runtime exception: boom", "").includes("stderr=Runtime exception: boom"));
+}
+
+{
+  // 多查询集体失败：留痕需保留全部失败项（旧实现只留最后一条）
+  const multiFail: GraphQueryRunner = async (cypher) => {
+    throw new Error(cypher.includes("DIMENSION_USED") ? "dim-fail" : "metrics-fail");
+  };
+  const ctx = await buildInjectionContext({ content: "q", runQuery: multiFail });
+  check("多查询失败时 graphError 记录全部失败项",
+    ctx.graphStatus === "degraded" &&
+    (ctx.graphError ?? "").includes("metrics:") &&
+    (ctx.graphError ?? "").includes("metricDims:") &&
+    (ctx.graphError ?? "").includes(";;"));
 }
 
 // ── 汇总 ────────────────────────────────────────────────────────────────────

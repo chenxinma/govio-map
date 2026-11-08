@@ -27,21 +27,48 @@ export type GraphQueryRunner = (cypher: string) => Promise<GraphRow[]>;
  */
 export const GRAPH_QUERY_TIMEOUT_MS = 12000;
 
-/** 执行一条 Cypher 查询并返回行数组；CLI 报错/输出不可解析时 reject（调用方降级）。
+/**
+ * 失败诊断：execFile 的 error 只给 `Command failed: <cmd>`（stderr 常为空），
+ * 留痕里只剩这一句无法定位是超时/非 0 退出/被杀。这里把退出码、信号、超时标记
+ * 与 stderr/stdout 尾部拼进 message（BUGFIX-graph-query-diag）。
+ */
+export function describeExecError(error: Error, stderr: string, stdout: string): string {
+  const e = error as NodeJS.ErrnoException & { killed?: boolean; signal?: string; code?: number | string };
+  const parts = [String(error.message).split("\n")[0]];
+  if (e.killed) parts.push("killed=true");
+  if (e.signal) parts.push(`signal=${e.signal}`);
+  if (typeof e.code === "number") parts.push(`exit=${e.code}`);
+  else if (e.code) parts.push(`code=${e.code}`);
+  const err = stderr.trim();
+  if (err) parts.push(`stderr=${err.slice(0, 300)}`);
+  const out = stdout.trim();
+  if (out) parts.push(`stdout=${out.slice(0, 200)}`);
+  return parts.join(" | ");
+}
+
+/**
+ * 执行一条 Cypher 查询并返回行数组；CLI 报错/输出不可解析时 reject（调用方降级）。
  * 空结果是合法语义（未命中）：即使旧版 govio-cli 对空结果以非 0 退出码退出，也按空行处理。
+ *
+ * 失败重试一次（只读查询幂等）：注入路径曾因机器负载/瞬时故障间歇降级，
+ * 而降级的代价是整轮图谱实体缺失（semanticRefs 空 → 口径检测静默跳过）。
+ * 只在失败时付出额外延迟，不改变成功路径耗时。
  */
 export const runGraphQuery: GraphQueryRunner = (cypher) =>
-  new Promise((resolve, reject) => {
+  runGraphQueryOnce(cypher).catch(() => runGraphQueryOnce(cypher));
+
+function runGraphQueryOnce(cypher: string): Promise<GraphRow[]> {
+  return new Promise((resolve, reject) => {
     execFile(
       "govio-cli",
       ["query", "-c", cypher],
       { encoding: "utf-8", timeout: GRAPH_QUERY_TIMEOUT_MS },
-      (error, stdout) => {
+      (error, stdout, stderr) => {
         if (error) {
           if (stdout && isEmptyResultOutput(stdout)) {
             resolve([]);
           } else {
-            reject(error);
+            reject(new Error(describeExecError(error, stderr ?? "", stdout ?? "")));
           }
           return;
         }
@@ -53,6 +80,7 @@ export const runGraphQuery: GraphQueryRunner = (cypher) =>
       },
     );
   });
+}
 
 /**
  * 空结果形态：govio-cli 对无行查询打印 `Data not found.`（实测无 `[]` 行；

@@ -271,14 +271,18 @@ export async function buildInjectionContext(opts: BuildInjectionOptions): Promis
     const settled = await Promise.allSettled(
       queries.map(async (q) => ({ key: q.key, rows: await runQuery(q.cypher) })),
     );
-    for (const s of settled) {
+    const failures: string[] = [];
+    settled.forEach((s, i) => {
       if (s.status === "fulfilled") {
         rowsByKey.set(s.value.key, s.value.rows);
       } else {
         graphStatus = "degraded";
-        graphError = String(s.reason instanceof Error ? s.reason.message : s.reason);
+        // 记录每条失败（旧实现只留最后一条，多查询集体失败时定位不到全貌）
+        const msg = String(s.reason instanceof Error ? s.reason.message : s.reason);
+        failures.push(`${queries[i].key}: ${msg}`);
       }
-    }
+    });
+    if (failures.length > 0) graphError = failures.join(" ;; ");
   }
 
   // 指标筛选：引用表相关（USES_TABLE 命中）∪ 问题实体命中（问题文本包含指标名/编码）
