@@ -14,13 +14,16 @@ skills/govio/assets = ./.agents/skills/govio/assets
 
 ## Govio Skills 同步
 
-Skills 原版在 `D:/work/python/govio/skills/`（由 `package_skills.py` 打包为 `dist/govio-skills.zip`）。`.agents/skills/` 是运行时副本，尚未对外发行，不会自动更新，手动同步：
+Skills 原版在 `D:/Work/gov-io/govio/skills/`（由 `package_skills.py` 打包为 `dist/govio-skills.zip`）。`.agents/skills/` 是运行时副本，尚未对外发行，不会自动更新，手动同步（**只同步源文档，排除 `assets/` 生成物**——assets 随 `meta graph` 按环境生成，盲目覆盖会把别的环境快照盖到 live 图库上）：
 
-```bash
-cp -r "D:/work/python/govio/skills/". .agents/skills/
+```bash\# 同步：仅 skills 源文档（SKILL.md/reference 等），不动 assets/
+cd /d/Work/gov-io/govio-map
+for d in govio govio-eda govio-meta govio-observe govio-query govio-reconcile; do
+  rsync -a --exclude 'assets/' "/d/Work/gov-io/govio/skills/$d/" ".agents/skills/$d/"
+done
 
-# 校验：无输出即一致
-diff -rq "D:/work/python/govio/skills" .agents/skills
+# 校验：预期残留仅 assets/（生成物）、moli-*（非 govio 仓技能），不应有源文档差异
+diff -rq /d/Work/gov-io/govio/skills .agents/skills | rg -v "assets/|moli-"
 ```
 
 ## SQL 生成纪律（运行时约束）
@@ -76,6 +79,34 @@ pending → in_progress → done → accepted / rejected
 - 验证门槛全绿：`npm run build`、`npm run lint`、`npm run verify`（含本任务新增脚本，既有断言零回归），且 verify 全跑后 `git status --porcelain` 干净
 - 三件套落盘 + task-plan 状态置 `done` + 单次 commit（ID 前缀）
 - 未完成项如实报告，禁止虚报验证结果
+
+### Orca 编排派发 SOP（多 worker 并行执行）
+
+任务经 Orca worker（各自独立 worktree）并行执行时适用；pi 交互会话作为 coordinator。实例参考：X3/X4 派发（`docs/task-plan.json → crossCutting`）。
+
+1. **派发前准备**（主会话串行写者）：task-plan 补全任务 scope/acceptance 并置 `in_progress` + history；写八段式任务书 `docs/tasks/<outputDir>/DISPATCH.md`（自包含，含最终输出格式）；计划+任务书单次 commit（`chore(plan): ...`）
+2. **worktree 隔离**：每个 worker `--worktree new-top-level --repo id:<repoId> --name <短名>`（重派时复用既有 worktree），保证单写者纪律不跨分支破坏
+3. **环境准备**：`.agents/`（skills）被 gitignore，fresh worktree 不含 → 任务书第一步必须是 `cp -r <主仓>/.agents ./`（约 350K）
+4. **派发**：`orca orchestration worker-start --spec-file docs/tasks/<ID>/DISPATCH.md --worktree ... --agent <agent> --json`；独立 worker 全部启动后结束回合等 Orca 唤醒，**禁止轮询**
+5. **任务书送达确认**：`--task` 复用/重派的 dispatch 可能不带 spec（agent 启动后不开工）→ `orca orchestration send --to dispatch:<id> --type dispatch --body "$(cat docs/tasks/<ID>/DISPATCH.md)"` 重发正文（`$( )` 结果不二次求值，含反引号也安全）；worktree 建于任务书 commit 之前时正文即唯一事实源，附 `git show main:...` 对照路径。注意：send/wake 送达会**打断 worker 当前回合**（`Operation aborted`），续做指令须要求 worker 先完成任务再处理后续消息
+6. **并行模式的写权变通**：worker **不改** task-plan.json（多分支同改必冲突），主会话验收时统一记账（done/accepted + history + updatedAt）；其余完成定义不变
+7. **失败恢复**：启动/模型通道错误（订阅失效等）→ 停下问用户（换 agent/换模型/续订），禁止静默换 agent；用户明确要求重派后 `task-update --id <task_id> --status ready --run <run_id>` → `worker-start --task <task_id> --run <run_id> --worktree <placement> --agent <agent>`（复用原 spec；`--retry-of` 须指向 latest settled dispatch，常不适用）；重派前 `git -C <worktree> log/status` 确认无残留半成品
+8. **验收合入**：`worker_done` 必须是 **orca 信号**而非终端文本——若 worker 只把汇报写在终端就收尾（Task 未结），令其补发 `orca orchestration send --type worker_done --outcome succeeded --task-id ... --dispatch-id ...`，收到信号才按「验收协议」独立复跑 + 抽查；功能/大改动按 PR 门禁合入
+
+### 合入 main 纪律（PR 门禁）
+
+按变更性质分两类：
+
+| 变更类型 | 合入方式 |
+|---|---|
+| **bugfix**（小范围缺陷修复，不改交互/不加功能） | 可直接 commit 到 `main` 并 push（单次 commit，ID 前缀） |
+| **界面交互优化、新功能、大改动**（含 P2/P3 任务、X 项里的功能/体验类，如 T2.x、X3、X9 这类） | 必须走 **GitHub PR**：任务分支 → PR → （评审/CI）→ `Merge pull request #N` → 清理分支。**后续任务默认全部经 PR** |
+
+- **PR 由用户合并**：主会话创建 PR 后停下等用户合并，**不得自行 merge**（用户指令 2026-11-04）；并行 PR 间若有冲突，主会话先行 rebase/消解再交付用户
+- PR 合并后主会话做验收（独立复跑验证 + 抽查）→ `accepted` 置位 + 单独 commit
+- 判不准是 bugfix 还是功能时，**按 PR 处理**（宁重勿漏）
+- 验收 commit（`chore(plan): accept ...`）与 task-plan 更新属文档记账，可直接 push `main`，不受 PR 门禁约束
+- 实例参考：PR 合并惯例见 `docs/task-plan.json → pullRequests`（#12-#17）；X7/X9 走本地 merge 是历史例外，已过 PR 的 #12-#17 是标准形态
 
 ### 主会话：验收协议
 

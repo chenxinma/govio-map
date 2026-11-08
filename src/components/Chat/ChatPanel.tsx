@@ -1,11 +1,37 @@
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useRef, useEffect, useCallback, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { History, Trash2, Loader2, Maximize2, Minimize2 } from "lucide-react";
 import { useChatContext } from "../../hooks/useChatContext";
+import type { ChatMessage as ChatMessageType } from "../../hooks/useChat";
 import { useCanvasStore } from "../../store/canvas-store";
-import ChatMessage from "./ChatMessage";
+import ChatMessage, { ProcessedGroup } from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import PermissionCard from "./PermissionCard";
+
+/**
+ * 消息列表：连续的已折叠过程消息（folded）合并为一个「已处理」组渲染，
+ * 其余消息逐条渲染。
+ */
+function MessageRows({ messages }: { messages: ChatMessageType[] }) {
+  const rows: ReactNode[] = [];
+  let run: ChatMessageType[] = [];
+  const flush = () => {
+    if (run.length > 0) {
+      rows.push(<ProcessedGroup key={`processed-${run[0].id}`} messages={run} />);
+      run = [];
+    }
+  };
+  for (const msg of messages) {
+    if (msg.role === "assistant" && msg.folded) {
+      run.push(msg);
+    } else {
+      flush();
+      rows.push(<ChatMessage key={msg.id} message={msg} />);
+    }
+  }
+  flush();
+  return <>{rows}</>;
+}
 
 interface ChatPanelProps {
   width: number;
@@ -162,9 +188,7 @@ export default function ChatPanel({ width }: ChatPanelProps) {
             <p className="text-text-dim text-sm">输入消息开始对话</p>
           </div>
         )}
-        {messages.map((msg) => (
-          <ChatMessage key={msg.id} message={msg} />
-        ))}
+        <MessageRows messages={messages} />
         {pendingPermission && (
           <PermissionCard
             pending={pendingPermission}

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-01T10:23:03+08:00",
+  "updatedAt": "2026-11-07T00:40:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -18,14 +18,14 @@
       "verification.md"
     ],
     "statusProtocol": "子任务开始时将自己的 status 置为 in_progress 并追加 history；完成实现与验证后置为 done；主 session 验收后置为 accepted 或 rejected。任何状态变更必须同步追加 history 条目并刷新顶层 updatedAt。",
-    "commitProtocol": "每个任务完成后在任务分支上独立 commit，message 前缀为任务 ID（如 T1.1:）。"
+    "commitProtocol": "每个任务完成后在任务分支上独立 commit，message 前缀为任务 ID（如 T1.1:）。合入 main 纪律：bugfix 可直接 push main；界面交互优化/新功能/大改动必须走 GitHub PR（任务分支 → PR → Merge pull request #N → 清理分支），后续任务默认全部经 PR；判不准时按 PR 处理。详见 AGENTS.md「合入 main 纪律（PR 门禁）」。"
   },
   "phases": [
     {
       "id": "P1",
       "name": "可信分析",
       "northStar": "可复现率 ≥95%（交付画布中任意 DataFrame 节点可一键复跑且结果一致）",
-      "status": "done",
+      "status": "accepted",
       "branch": "feature/phase1-trusted-analysis",
       "tasks": [
         {
@@ -206,7 +206,7 @@
       "id": "P2",
       "name": "语义层集成",
       "northStar": "口径命中率 ≥90%",
-      "status": "in_progress",
+      "status": "accepted",
       "branch": "feature/phase2-semantic-layer（基于 feature/phase1-trusted-analysis a62a9cf）",
       "tasks": [
         {
@@ -250,7 +250,7 @@
           "id": "T2.1",
           "title": "图谱定义自动注入 Prompt",
           "kr": "KR1",
-          "status": "pending",
+          "status": "accepted",
           "dependsOn": [
             "P1.accepted",
             "T2.0"
@@ -263,13 +263,26 @@
             "口径命中率测量脚本：抽样比对生成 SQL 的表引用与注入的 qualifiedName",
             "注入失败（图谱不可达/无相关实体）时降级为现状行为且不阻断会话"
           ],
-          "history": []
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-11-05T20:12:35+08:00",
+              "by": "main-session",
+              "note": "P1 记账补齐（4 子任务均 accepted + 审查循环终审 OK）后合规解锁；第二批编排：与 X2 并行 Orca 执行（文件切割：X2 动协议类型层，T2.1 动 makePrompt 注入层）；PR 由用户合并"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-11-05T22:40:33+08:00",
+              "by": "main-session",
+              "note": "PR #20 合并(39b4040)。验收：主会话独立复跑 build/lint/verify 全绿（脚本 460→507 含 verify:prompt-injection 47/47、集成 38→40）；抽查 makePrompt 异步注入未动 WSMessage、buildInjectionContext 永不 throw 降级、injection.jsonl 留痕；合并态 main 复验全绿"
+            }
+          ]
         },
         {
           "id": "T2.2",
           "title": "口径溯源与语义血缘",
           "kr": "KR2",
-          "status": "pending",
+          "status": "accepted",
           "dependsOn": [
             "T2.1"
           ],
@@ -279,13 +292,32 @@
             "边类型可视化区分",
             "节点属性含语义引用列表"
           ],
-          "history": []
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-11-06T19:49:25+08:00",
+              "by": "main-session",
+              "note": "T2.1/X2 已合并（PR #20/#21），依赖满足；派发 pi subagent 执行（单 worker，本地 task/T2.2-semantic-lineage 分支，PR 由用户合并）"
+            },
+            {
+              "status": "done",
+              "at": "2026-11-06T20:13:22+08:00",
+              "by": "worker",
+              "note": "口径溯源与语义血缘落地：semanticRefs 归因链路、Edge.data.lineageKind 边分类与画布/导出可视化区分；verify:semantic-lineage 45/45，build/lint/verify 全绿零回归；交付物三件套齐（design/CHANGES/verification）"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-11-06T22:25:00+08:00",
+              "by": "main-session",
+              "note": "PR #23 合并(6634ed1) + 图例修复 b40b477（因网络中断未入 PR，按 bugfix 直接补 main）。验收：合并态独立复跑 build/lint/verify 全绿（verify:semantic-lineage 45/45，vitest 59，既有断言零回归）；抽查归因链路 semantic-context（sessionId 键、缺失省略键、finally 清除）、边分类（交集建 -sem 语义边、旧边回退 data）、导出 lineageKind 区分，均与 design.md 一致"
+            }
+          ]
         },
         {
           "id": "T2.3",
           "title": "口径冲突检测",
           "kr": "KR3",
-          "status": "pending",
+          "status": "accepted",
           "dependsOn": [
             "T2.1"
           ],
@@ -295,13 +327,32 @@
             "冲突检测有 CLI 命令支撑",
             "SQL 节点黄色警示态"
           ],
-          "history": []
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-11-06T23:05:00+08:00",
+              "by": "main-session",
+              "note": "T2.2 accepted 后并行派发 pi subagent 双 worker（worktree 隔离；跨 govio/govio-map 两仓；并行模式 worker 不改 task-plan，主会话统一记账）"
+            },
+            {
+              "status": "done",
+              "at": "2026-11-07T00:10:00+08:00",
+              "by": "main-session",
+              "note": "worker 完成（并行模式主会话代记）。预验收通过：govio pytest 401 passed（新增 36/36，4 failed 为 clean-base 预存在）+ ruff 绿；map build/lint/verify 全绿（verify:caliber-conflict 43/43，既有零回归）；抽查 caliber.py 宁可 unknown 内核、caliber-check.ts 降级省略键、SQLQueryNode conflict 黄色警示 #F59B23、verify-semantic-lineage 注入 stub 不弱化断言，均属实。待 PR 合并后置 accepted"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-11-07T00:40:00+08:00",
+              "by": "main-session",
+              "note": "PR #25 合并(5c5fc09) + govio PR #14(70d42e1)。合并态复验：map build/lint/verify 全绿（verify:caliber-conflict 43/43）、govio pytest 426 passed/ruff 绿；E2E 真实图库三态实测通过（经 BUGFIX-caliber-cypher 修复 stub 未覆盖的集成缺陷后成立）；skills 已同步运行时副本"
+            }
+          ]
         },
         {
           "id": "T2.4",
           "title": "元数据增量导入与校验报告",
           "kr": "KR4",
-          "status": "pending",
+          "status": "accepted",
           "dependsOn": [],
           "outputDir": "docs/tasks/T2.4-meta-incremental-import/",
           "scope": "govio-meta 导入支持增量更新与校验报告。",
@@ -309,7 +360,26 @@
             "重复导入幂等",
             "校验报告输出到任务目录"
           ],
-          "history": []
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-11-06T23:05:00+08:00",
+              "by": "main-session",
+              "note": "T2.2 accepted 后并行派发 pi subagent 双 worker（worktree 隔离；跨 govio/govio-map 两仓；并行模式 worker 不改 task-plan，主会话统一记账）"
+            },
+            {
+              "status": "done",
+              "at": "2026-11-06T23:55:00+08:00",
+              "by": "main-session",
+              "note": "worker 完成（并行模式主会话代记）。预验收通过：govio pytest 386 passed（+21 新增含幂等用例，4 failed 为 clean-base 预存在、两 worker 独立确认）+ ruff 绿；map build/lint/verify 全绿代码零改动；抽查 import_report 分类/三项校验/--report 契约与幂等测试断言属实；round2 报告 added=0/updated=0 实证幂等。待 PR 合并后置 accepted"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-11-07T00:40:00+08:00",
+              "by": "main-session",
+              "note": "PR #24 合并(12a0018) + govio PR #13(ed09109)。合并态复验：map build/lint/verify 全绿代码零改动、govio pytest 426 passed（幂等用例在内）/ruff 绿；round1/round2 报告证据随 PR 落任务目录，幂等实证成立；skills 已同步运行时副本"
+            }
+          ]
         }
       ]
     },
@@ -409,26 +479,101 @@
     {
       "id": "X2",
       "title": "WS 协议契约化（版本化 schema + 双端类型生成）",
-      "status": "pending",
+      "status": "accepted",
       "dependsOn": [],
       "outputDir": "docs/tasks/X2-ws-protocol-schema/",
-      "history": []
+      "history": [
+        {
+          "status": "in_progress",
+          "at": "2026-11-05T20:12:26+08:00",
+          "by": "main-session",
+          "note": "第二批编排：与 T2.1 并行 Orca 执行（文件切割：X2 动协议类型层，T2.1 动 makePrompt 注入层）；PR 由用户合并"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-05T22:40:33+08:00",
+          "by": "main-session",
+          "note": "PR #21 合并(cf2206e)。验收：主会话独立复跑 build/lint/verify 全绿（脚本 460 零回归、集成 38→59 含契约 19 用例）；抽查 PROTOCOL_VERSION/$id 注册表、消息全集漂移防护、拒绝路径逐字节等价、旧 WSMessage/WSEvent 已删；ws-handler.ts 冲突由主会话 rebase 消解（makePrompt=T2.1 异步体+X2 类型签名），合并态 main 复验全绿"
+        }
+      ],
+      "scope": "为 /ws 通道消息定义版本化契约：以 typebox（已在依赖，先例 server/observe-load-schema.ts）定义全量消息 schema（含协议版本字段与兼容策略），导出双端共享 TypeScript 类型（单一来源，生成脚本或共享模块，方案写 design.md），替换 server/ws-handler.ts:12 内联 WSMessage 与 src/hooks/useChat.ts 的松散类型（机械改造、不改语义）；配套契约测试（复用 X4 vitest 基建，纳入 verify 聚合）：合法消息收发匹配 schema、非法/未知消息拒绝路径；同步更新 docs/specs/07-websocket-protocol.md。",
+      "acceptance": [
+        "版本化 schema 落地（含 version 字段与兼容策略说明），双端类型单一来源",
+        "server/ws-handler.ts 内联 WSMessage 与 src/hooks/useChat.ts 松散类型均替换为契约类型，无重复定义",
+        "契约测试纳入 verify 聚合（合法收发 + 非法/未知消息拒绝路径）",
+        "npm run build/lint/verify 全绿（含 X4 集成 38 用例零回归），跑后 git status --porcelain 干净",
+        "docs/specs/07-websocket-protocol.md 同步 + 三件套交付物齐全"
+      ]
     },
     {
       "id": "X3",
       "title": "前端 bundle 拆分（plotly 懒加载）",
-      "status": "pending",
+      "status": "accepted",
       "dependsOn": [],
       "outputDir": "docs/tasks/X3-bundle-splitting/",
-      "history": []
+      "history": [
+        {
+          "status": "in_progress",
+          "at": "2026-11-04T21:31:45+08:00",
+          "by": "main-session",
+          "note": "计划编制：选定与 X4 作为本轮 Orca 并行执行任务（价值×独立性），补全 scope/acceptance，派发 Orca worker（独立 worktree）执行"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-04T22:51:03+08:00",
+          "by": "orca-worker:ctx_d64d182ddc91",
+          "note": "worker_done 汇报：commit 9502bc0，主 chunk 6,071,629→1,424,488 bytes(↓76.5%)，plotly 拆独立 chunk 按需加载；build/lint/verify(460 断言) 全绿；三件套齐全"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-04T22:51:03+08:00",
+          "by": "main-session",
+          "note": "PR #18 合并(merge 5aa5205)。验收：主会话独立复跑 build/lint/verify 全绿(460 断言失败 0，跑后 git status 干净)；抽查 use-plotly.ts 动态 import+模块缓存、ChartNode/ChartModal 懒加载与 hasError 降级、build 产物主 chunk 仅剩 import() 引用"
+        }
+      ],
+      "scope": "分析 vite build 产物，将 plotly.js-dist-min 改为懒加载（动态 import，chart 节点渲染时才加载），主 bundle 体积有可量化下降；保持 chart 节点/ChartModal 渲染行为与现有 UI 不回归。涉及文件：src/components/Nodes/ChartNode.tsx、ChartModal.tsx、src/utils/export-report.ts、vite.config.ts。注意 src/types/plotly.d.ts 为类型声明不打包。若拆分后仍有明显大依赖，可顺带记录分析结论到 design.md 遗留问题，但不扩大改造范围。",
+      "acceptance": [
+        "plotly 相关代码从主 chunk 移出，仅渲染 chart 节点时加载（build 产物 chunk 清单可断言主 chunk 不含 plotly）",
+        "chart 节点与 ChartModal 渲染功能不回归（记录手动冒烟或自动化断言）",
+        "verification.md 含拆分前后 bundle 体积对比数据（主 chunk / 总产物大小）",
+        "npm run build / lint / verify 全绿，verify 全跑后 git status --porcelain 干净",
+        "docs/tasks/X3-bundle-splitting/ 下 design.md、CHANGES.md、verification.md 三件套齐全"
+      ]
     },
     {
       "id": "X4",
       "title": "核心链路集成测试基建",
-      "status": "pending",
+      "status": "accepted",
       "dependsOn": [],
       "outputDir": "docs/tasks/X4-test-infra/",
-      "history": []
+      "history": [
+        {
+          "status": "in_progress",
+          "at": "2026-11-04T21:31:45+08:00",
+          "by": "main-session",
+          "note": "计划编制：选定与 X4 作为本轮 Orca 并行执行任务（价值×独立性），补全 scope/acceptance，派发 Orca worker（独立 worktree）执行"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-04T23:26:30+08:00",
+          "by": "orca-worker:ctx_890cdf9894cd",
+          "note": "worker_done 汇报：commit 1191f53，vitest 5 + 4 条链路 38 用例（ws-handler 权限流 10/govio-canvas 事件转换 10/canvas-store 11/sidecar 往返 7），接入 verify 聚合；零业务代码改动；三件套齐全"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-04T23:26:30+08:00",
+          "by": "main-session",
+          "note": "PR #19 合并(merge c89a4ed)。验收：主会话独立复跑 build/lint/verify 全绿——既有 6 脚本断言零回归(92/71/119/126/39/13)、38 用例全过、跑后 git status 干净；抽查 ws-handler 权限决策流用例、BUGFIX-load-parse 回归与注入防护用例、verify 链末节接线真实有效"
+        }
+      ],
+      "scope": "建立核心链路集成测试基建（vitest 或等价方案 + mock/fixture），不依赖真实 govio-cli 与真实 LLM。覆盖核心链路关键路径：① ws-handler 消息处理与权限流（permission-manager allow/deny/edit 决策分支）；② govio-canvas 扩展工具结果/事件 → GovioNodeCreateEvent 转换；③ canvas-store 节点创建/自动边/positionNewNode 布局；④ canvas sidecar（.canvas.json）持久化往返。测试接入 npm run verify 聚合（如新增 verify:integration 或独立 npm run test:integration 并纳入 verify），既有断言零回归。",
+      "acceptance": [
+        "测试框架与 npm script 落地，一键可运行",
+        "至少覆盖上述 4 条核心链路的关键路径，含失败/边界用例",
+        "npm run verify 纳入集成测试，既有断言零回归且断言数变化与新增用例吻合",
+        "npm run build / lint / verify 全绿，verify 全跑后 git status --porcelain 干净",
+        "docs/tasks/X4-test-infra/ 下 design.md、CHANGES.md、verification.md 三件套齐全"
+      ]
     },
     {
       "id": "X5",
@@ -497,11 +642,30 @@
     {
       "id": "X7",
       "title": "启动时 cwd 规范大小写（Windows 会话恢复静默失败修复）",
-      "status": "pending",
+      "status": "accepted",
       "dependsOn": [],
       "note": "截图任务中发现的真 bug：会话头 cwd 记为 D:/Work/...（大写 W，Electron/历史启动路径），dev server process.cwd() 为 D:/work/...（磁盘规范小写），pi findMostRecentSession 的 cwd 过滤为大小写敏感字符串比较 → 全部历史会话落选 → 后端静默创建空会话（画布空白无报错）。修复方向：backend 启动时（agentSetup 前）在 win32 上用 fs.realpathSync.native 等取磁盘规范大小写并 process.chdir，或传入与历史会话一致的 cwd；补回归断言（构造大小写不同的伪会话头验证 continueRecent 命中）。",
       "outputDir": "docs/tasks/X7-cwd-case-normalization/",
-      "history": []
+      "history": [
+        {
+          "status": "in_progress",
+          "at": "2026-11-03T12:47:09.221Z",
+          "by": "worker",
+          "note": "X7 开工：实现 cwd 规范大小写 + 回归断言"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-03T12:59:24.302Z",
+          "by": "worker",
+          "note": "实现 server/cwd-normalize.ts + agent.ts 三处接入 + verify:cwd 13 项断言；build/lint/verify 全绿，既有断言 92/71/119/126/39 零回归"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-03T22:31:44+08:00",
+          "by": "main-session",
+          "note": "用户确认验收通过。独立复跑 build ✓ / lint 0 / verify 全绿（manifest 92 / rerun 71 / audit 119 / export 126 / source-table 39 / cwd 13）；抽查 cwd-normalize.ts（realpathSync.native + 幂等 chdir）与 agent.ts 三处接入（agentSetup/getOrCreateSession/openSessionFile）实现正确。"
+        }
+      ]
     },
     {
       "id": "X8",
@@ -528,7 +692,7 @@
     {
       "id": "X9",
       "title": "对话展示改版：assistant 去气泡化 + tool 调用可展开查看命令",
-      "status": "pending",
+      "status": "accepted",
       "dependsOn": [],
       "note": "用户需求 2026-11-01：agent 回复内容多，气泡占位且一次 agent_start→agent_end 的分段输出被拆成多个气泡。① 用户消息保留气泡；② assistant 回复保持现有分段输出（thinking/工具行/markdown 正文逐段），但不再用气泡卡片包裹（无边框背景、宽度放开）；③ tool 调用行（至少 bash）可展开查看具体命令（args）与执行结果摘要。实现面：useChat ToolCall 增 args（tool_start/input）；session-history buildRounds 的 toolCall block 带 arguments（历史回放同样可展开）；ws-handler tool_start 转发 args；ChatMessage ToolPill→可展开 ToolRow（bash 显命令，其它工具显 args JSON）；specs/03-chat.md 同步。验证：build/lint/verify 全绿（前端视图变更不影响既有断言），人工冒烟：流式与历史回放下 assistant 分段无气泡、bash 行可展开见命令、导出会话 JSON 不回归。",
       "outputDir": "docs/tasks/X9-chat-display/",
@@ -538,6 +702,24 @@
           "at": "2026-11-01T10:23:03+08:00",
           "by": "main-session",
           "note": "用户提出需求，已调研 useChat/ChatMessage/session-history 实现面，排入任务"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-03T12:43:55+08:00",
+          "by": "worker",
+          "note": "X9 worker 开工（对话展示改版）"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-03T12:48:17+08:00",
+          "by": "worker",
+          "note": "实现完成：ws-handler 转发 args、session-history 回放 args、ChatMessage 去气泡+ToolRow 展开、specs 同步；build/lint/verify 全绿（447 断言零回归），三件套落盘"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-03T22:31:44+08:00",
+          "by": "main-session",
+          "note": "用户确认验收通过。抽查 ChatMessage.tsx（assistant 去气泡 w-full、ToolRow 可展开 bash 命令/args JSON ≤20 行）、ws-handler 转发 args、session-history buildRounds 回放 args、export-session 含 tools；verify 全绿无回归。"
         }
       ]
     }
@@ -557,6 +739,10 @@
     "phase2-supplement": "https://github.com/chenxinma/govio-map/pull/15",
     "status": "all-merged",
     "fix-df-columns": "https://github.com/chenxinma/govio-map/pull/16",
-    "sql-discipline-move": "https://github.com/chenxinma/govio-map/pull/17"
+    "sql-discipline-move": "https://github.com/chenxinma/govio-map/pull/17",
+    "x3-bundle-split": "https://github.com/chenxinma/govio-map/pull/18",
+    "x4-test-infra": "https://github.com/chenxinma/govio-map/pull/19",
+    "t21-graph-prompt": "https://github.com/chenxinma/govio-map/pull/20",
+    "x2-ws-protocol": "https://github.com/chenxinma/govio-map/pull/21"
   }
 }

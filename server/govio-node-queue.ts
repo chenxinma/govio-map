@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
 import type { AnalysisManifest } from "../src/types/manifest.js";
-import type { DatasourceType } from "../src/types/index.js";
+import type { CaliberCheck, DatasourceType, SemanticRef } from "../src/types/index.js";
 
 export type GovioNodeType = "sqlQuery" | "dataFrame" | "report" | "sourceTable" | "chart";
 
@@ -42,6 +42,12 @@ export interface GovioNodeCreateEvent {
   // 分析留痕（Phase 1 KR1）：dataFrame / sqlQuery 节点由服务端事件流填充，
   // 前端原样写入 node.data.manifest 并随 canvas sidecar 持久化。
   manifest?: AnalysisManifest;
+  // 语义引用（T2.2 口径溯源）：sqlQuery 节点由 message_end 归因填充（来源：
+  // makePrompt 注入的图谱实体）；无注入时不写键（旧节点形状不变）。
+  semanticRefs?: SemanticRef[];
+  // 口径冲突检测结果（T2.3）：sqlQuery 节点由 message_end 经 `govio-cli sql caliber`
+  // 比对后补挂到已入队事件；CLI 缺失/超时/报错/非 JSON 不写键（旧节点形状不变）。
+  caliberCheck?: CaliberCheck;
   // edge sources — referencedNodes from the user's prompt
   referencedNodes?: Array<{ nodeId: string; label: string }>;
 }

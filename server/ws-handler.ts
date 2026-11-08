@@ -2,31 +2,14 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
 import { getOrCreateSession, resetSession, openSessionFile, runGovioCli } from "./agent.js";
 import { listSessions, deleteSession, saveCanvas, loadCanvas, buildTranscript, assertValidSessionPath } from "./session-history.js";
+import { buildInjectionContext, composePrompt, buildTraceEntry, recordInjectionTrace } from "./prompt-injection.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
-import { permissionManager, type PermissionDecision } from "./permission-manager.js";
+import { setSessionSemanticRefs, clearSessionSemanticRefs, toSemanticRefs } from "./semantic-context.js";
+import { permissionManager } from "./permission-manager.js";
 import { isAgentConfigNeeded, completeAgentSetup } from "./backend.js";
 import { readModelsConfig, writeModelsConfig, createDefaultModelsConfig, maskModelsConfig } from "./models-config.js";
 import { isAllowedUpgrade } from "./security.js";
-import type { ModelsConfig } from "../src/types/models-config.js";
-
-interface WSMessage {
-  type: "prompt" | "steer" | "followUp" | "abort" | "observe_list" | "observe_info" | "clear" | "tool_permission_response" | "permission_accept_all" | "get_models_config" | "save_models_config" | "set_model" | "session_list" | "session_open" | "session_messages" | "session_delete" | "canvas_save";
-  content?: string;
-  referencedNodes?: Array<{ nodeId: string; label: string; type: string; data?: string }>;
-  requestId?: string;
-  clientMsgId?: string;
-  decision?: PermissionDecision;
-  editedCommand?: string;
-  reason?: string;
-  config?: ModelsConfig;
-  apiKey?: string;
-  provider?: string;
-  modelId?: string;
-  path?: string;
-  beforeEntryId?: string;
-  nodes?: unknown[];
-  edges?: unknown[];
-}
+import { parseWSClientMessage, type WSClientMessage, type WSClientMessageOf, type WSServerMessage } from "../src/types/ws-protocol.js";
 
 type SessionInstance = Awaited<ReturnType<typeof getOrCreateSession>>;
 
@@ -65,47 +48,49 @@ export function setupWebSocket(server: import("http").Server) {
         switch (event.type) {
           case "agent_start":
             console.log("[ws] Agent session started");
-            ws.send(JSON.stringify({ type: "agent_start" }));
+            sendMsg(ws, { type: "agent_start" });
             break;
           case "message_update":
             if (event.assistantMessageEvent.type === "text_delta") {
-              ws.send(JSON.stringify({ type: "text_delta", content: event.assistantMessageEvent.delta }));
+              sendMsg(ws, { type: "text_delta", content: event.assistantMessageEvent.delta });
             } else if (event.assistantMessageEvent.type === "thinking_delta") {
-              ws.send(JSON.stringify({ type: "thinking_delta", content: event.assistantMessageEvent.delta }));
+              sendMsg(ws, { type: "thinking_delta", content: event.assistantMessageEvent.delta });
             }
             break;
           case "tool_execution_start":
-            ws.send(JSON.stringify({ type: "tool_start", toolName: event.toolName, toolCallId: event.toolCallId }));
+            // args 原样随事件体 JSON 序列化（不嵌套字符串，避免转义问题），
+            // 前端 ToolRow 展开可见具体命令（bash 为 command，其它为 args JSON）。
+            sendMsg(ws, { type: "tool_start", toolName: event.toolName, toolCallId: event.toolCallId, args: event.args });
             break;
           case "tool_execution_end":
             console.log(`[ws] Tool execution end: ${event.toolName} success=${!event.isError}`);
             console.debug(`[ws] Tool execution result (${event.toolName}):`, event.result);
-            ws.send(JSON.stringify({ type: "tool_end", toolName: event.toolName, toolCallId: event.toolCallId, success: !event.isError }));
+            sendMsg(ws, { type: "tool_end", toolName: event.toolName, toolCallId: event.toolCallId, success: !event.isError });
             emitFlushed(flushGovioNodes());
             break;
           case "message_start":
             if (event.message.role === "assistant") {
-              ws.send(JSON.stringify({ type: "message_start" }));
+              sendMsg(ws, { type: "message_start" });
             }
             break;
           case "message_end":
             if (event.message.role === "assistant") {
-              ws.send(JSON.stringify({ type: "message_end" }));
+              sendMsg(ws, { type: "message_end" });
               emitFlushed(flushGovioNodes());
             }
             break;
           case "agent_end":
             console.log("[ws] Agent session ended");
-            ws.send(JSON.stringify({ type: "agent_end" }));
+            sendMsg(ws, { type: "agent_end" });
             break;
           case "queue_update":
             // Steering / follow-up queue changed (a message was queued or
             // delivered). Lets the frontend show pending steering bubbles.
-            ws.send(JSON.stringify({
+            sendMsg(ws, {
               type: "queue_update",
               pendingSteering: event.steering.length,
               pendingFollowUp: event.followUp.length,
-            }));
+            });
             break;
         }
       } catch (err) {
@@ -116,11 +101,11 @@ export function setupWebSocket(server: import("http").Server) {
     const unsubPermission = permissionManager.onRequest((req) => {
       try {
         if (ws.readyState !== WebSocket.OPEN) return;
-        ws.send(JSON.stringify({
+        sendMsg(ws, {
           type: "tool_permission_request",
           requestId: req.requestId,
           command: req.command,
-        }));
+        });
       } catch (err) {
         console.error("[ws] Permission push error:", err);
       }
@@ -137,16 +122,16 @@ export function setupWebSocket(server: import("http").Server) {
       const config = await readModelsConfig();
       // Never ship real API keys to the frontend; masked placeholders are
       // merged back from disk on save (see models-config.ts).
-      ws.send(JSON.stringify({ type: "models_config", config: maskModelsConfig(config) }));
+      sendMsg(ws, { type: "models_config", config: maskModelsConfig(config) });
     } catch (err) {
-      ws.send(JSON.stringify({
+      sendMsg(ws, {
         type: "error",
         message: `Failed to read models config: ${err instanceof Error ? err.message : String(err)}`,
-      }));
+      });
     }
   }
 
-  async function handleSaveModelsConfig(ws: WebSocket, msg: WSMessage): Promise<void> {
+  async function handleSaveModelsConfig(ws: WebSocket, msg: WSClientMessageOf<"save_models_config">): Promise<void> {
     try {
       if (msg.apiKey) {
         // First-time setup path: frontend only supplies an API key.
@@ -154,30 +139,30 @@ export function setupWebSocket(server: import("http").Server) {
       } else if (msg.config) {
         await writeModelsConfig(msg.config);
       } else {
-        ws.send(JSON.stringify({ type: "error", message: "save_models_config requires apiKey or config" }));
+        sendMsg(ws, { type: "error", message: "save_models_config requires apiKey or config" });
         return;
       }
 
-      ws.send(JSON.stringify({ type: "config_saved" }));
+      sendMsg(ws, { type: "config_saved" });
     } catch (err) {
-      ws.send(JSON.stringify({
+      sendMsg(ws, {
         type: "error",
         message: `Failed to save models config: ${err instanceof Error ? err.message : String(err)}`,
-      }));
+      });
     }
   }
 
   function pushSessionState(ws: WebSocket, session: SessionInstance) {
-    ws.send(JSON.stringify({ type: "session_ready", sessionId: session.sessionId }));
+    sendMsg(ws, { type: "session_ready", sessionId: session.sessionId });
     try {
       const file = session.sessionManager.getSessionFile();
       if (!file) return;
       const canvas = loadCanvas(file);
       if (canvas) {
-        ws.send(JSON.stringify({ type: "canvas_restore", nodes: canvas.nodes, edges: canvas.edges }));
+        sendMsg(ws, { type: "canvas_restore", nodes: canvas.nodes, edges: canvas.edges });
       }
       const page = buildTranscript(session.sessionManager.getBranch());
-      ws.send(JSON.stringify({ type: "session_messages_result", ...page, replace: true }));
+      sendMsg(ws, { type: "session_messages_result", ...page, replace: true });
     } catch (err) {
       console.error("[ws] pushSessionState error:", err);
     }
@@ -196,7 +181,7 @@ export function setupWebSocket(server: import("http").Server) {
   }
 
   function handleNormalMessage(
-    msg: WSMessage,
+    msg: WSClientMessage,
     ws: WebSocket,
     ctx: { session: SessionInstance; unsubscribe: () => void }
   ) {
@@ -206,12 +191,23 @@ export function setupWebSocket(server: import("http").Server) {
       case "prompt":
         if (msg.content) {
           setCurrentReferencedNodes(msg.referencedNodes);
-          const prompt = makePrompt(msg);
-          if (session.isStreaming) {
-            session.steer(prompt).finally(clearCurrentReferencedNodes);
-          } else {
-            session.prompt(prompt).finally(clearCurrentReferencedNodes);
-          }
+          // 注入（表限定名 + 图谱实体）需异步查图谱；makePrompt 内部永不 throw，
+          // 图谱失败降级为现状行为（不阻断会话）。流式判定推迟到派发时刻。
+          void (async () => {
+            const prompt = await makePrompt(msg, session);
+            if (session.isStreaming) {
+              await session.steer(prompt);
+            } else {
+              await session.prompt(prompt);
+            }
+          })()
+            .catch((err) => {
+              console.error("[ws] prompt dispatch failed:", err);
+            })
+            .finally(() => {
+              clearCurrentReferencedNodes();
+              clearSessionSemanticRefs(session.sessionId);
+            });
         }
         break;
       case "steer":
@@ -224,19 +220,19 @@ export function setupWebSocket(server: import("http").Server) {
           session
             .steer(msg.content)
             .then((disposition) => {
-              ws.send(JSON.stringify({
+              sendMsg(ws, {
                 type: "steer_queued",
                 clientMsgId,
                 disposition,
                 pendingSteering: session.getSteeringMessages().length,
                 pendingFollowUp: session.getFollowUpMessages().length,
-              }));
+              });
             })
             .catch((err) => {
-              ws.send(JSON.stringify({
+              sendMsg(ws, {
                 type: "error",
                 message: `steer failed: ${err instanceof Error ? err.message : String(err)}`,
-              }));
+              });
             });
         }
         break;
@@ -246,19 +242,19 @@ export function setupWebSocket(server: import("http").Server) {
           session
             .followUp(msg.content)
             .then((disposition) => {
-              ws.send(JSON.stringify({
+              sendMsg(ws, {
                 type: "followUp_queued",
                 clientMsgId,
                 disposition,
                 pendingSteering: session.getSteeringMessages().length,
                 pendingFollowUp: session.getFollowUpMessages().length,
-              }));
+              });
             })
             .catch((err) => {
-              ws.send(JSON.stringify({
+              sendMsg(ws, {
                 type: "error",
                 message: `followUp failed: ${err instanceof Error ? err.message : String(err)}`,
-              }));
+              });
             });
         }
         break;
@@ -266,24 +262,24 @@ export function setupWebSocket(server: import("http").Server) {
         const cleared = session.clearQueue();
         session.abort();
         permissionManager.denyPending("用户中止");
-        ws.send(JSON.stringify({
+        sendMsg(ws, {
           type: "queue_cleared",
           clearedSteering: cleared.steering.length,
           clearedFollowUp: cleared.followUp.length,
-        }));
+        });
         break;
       }
       case "observe_list": {
         runGovioCli("observe list")
           .then((output) => {
             const dataframes = JSON.parse(output);
-            ws.send(JSON.stringify({ type: "observe_list_result", dataframes }));
+            sendMsg(ws, { type: "observe_list_result", dataframes });
           })
           .catch((listErr) => {
-            ws.send(JSON.stringify({
+            sendMsg(ws, {
               type: "error",
               message: `observe list failed: ${listErr instanceof Error ? listErr.message : String(listErr)}`,
-            }));
+            });
           });
         break;
       }
@@ -291,36 +287,36 @@ export function setupWebSocket(server: import("http").Server) {
         runGovioCli("observe info", true)
           .then((output) => {
             const info = JSON.parse(output);
-            ws.send(JSON.stringify({ type: "observe_info_result", info }));
+            sendMsg(ws, { type: "observe_info_result", info });
           })
           .catch((infoErr) => {
-            ws.send(JSON.stringify({
+            sendMsg(ws, {
               type: "error",
               message: `observe info failed: ${infoErr instanceof Error ? infoErr.message : String(infoErr)}`,
-            }));
+            });
           });
         break;
       }
       case "set_model": {
         const { provider, modelId } = msg;
         if (!provider || !modelId) {
-          ws.send(JSON.stringify({ type: "error", message: "set_model requires provider and modelId" }));
+          sendMsg(ws, { type: "error", message: "set_model requires provider and modelId" });
           break;
         }
         const model = ctx.session.modelRuntime.getModel(provider, modelId);
         if (!model) {
-          ws.send(JSON.stringify({ type: "error", message: `Model not found: ${provider}/${modelId}` }));
+          sendMsg(ws, { type: "error", message: `Model not found: ${provider}/${modelId}` });
           break;
         }
         ctx.session.setModel(model)
           .then(() => {
-            ws.send(JSON.stringify({ type: "model_set", provider, modelId }));
+            sendMsg(ws, { type: "model_set", provider, modelId });
           })
           .catch((modelErr) => {
-            ws.send(JSON.stringify({
+            sendMsg(ws, {
               type: "error",
               message: `set_model failed: ${modelErr instanceof Error ? modelErr.message : String(modelErr)}`,
-            }));
+            });
           });
         break;
       }
@@ -337,13 +333,13 @@ export function setupWebSocket(server: import("http").Server) {
       }
       case "session_list": {
         listSessions()
-          .then((sessions) => ws.send(JSON.stringify({ type: "session_list_result", sessions })))
-          .catch((err) => ws.send(JSON.stringify({ type: "error", message: `session_list failed: ${err}` })));
+          .then((sessions) => sendMsg(ws, { type: "session_list_result", sessions }))
+          .catch((err) => sendMsg(ws, { type: "error", message: `session_list failed: ${err}` }));
         break;
       }
       case "session_open": {
         if (!msg.path) {
-          ws.send(JSON.stringify({ type: "error", message: "session_open requires path" }));
+          sendMsg(ws, { type: "error", message: "session_open requires path" });
           break;
         }
         let targetPath: string;
@@ -352,7 +348,7 @@ export function setupWebSocket(server: import("http").Server) {
           // session files inside the session directory.
           targetPath = assertValidSessionPath(msg.path);
         } catch (err) {
-          ws.send(JSON.stringify({ type: "error", message: `session_open failed: ${err}` }));
+          sendMsg(ws, { type: "error", message: `session_open failed: ${err}` });
           break;
         }
         if (ctx.session.sessionManager.getSessionFile() === targetPath) {
@@ -369,7 +365,7 @@ export function setupWebSocket(server: import("http").Server) {
             pushSessionState(ws, newSession);
           })
           .catch((err) => {
-            ws.send(JSON.stringify({ type: "error", message: `session_open failed: ${err}` }));
+            sendMsg(ws, { type: "error", message: `session_open failed: ${err}` });
             // Fall back to a fresh session so the chat stays usable.
             getOrCreateSession().then((newSession) => {
               ctx.session = newSession;
@@ -382,27 +378,27 @@ export function setupWebSocket(server: import("http").Server) {
       case "session_messages": {
         const file = ctx.session.sessionManager.getSessionFile();
         if (!file) {
-          ws.send(JSON.stringify({ type: "session_messages_result", messages: [], hasMore: false, oldestEntryId: null, replace: false }));
+          sendMsg(ws, { type: "session_messages_result", messages: [], hasMore: false, oldestEntryId: null, replace: false });
           break;
         }
         const page = buildTranscript(ctx.session.sessionManager.getBranch(), { beforeEntryId: msg.beforeEntryId });
-        ws.send(JSON.stringify({ type: "session_messages_result", ...page, replace: false }));
+        sendMsg(ws, { type: "session_messages_result", ...page, replace: false });
         break;
       }
       case "session_delete": {
         if (!msg.path) {
-          ws.send(JSON.stringify({ type: "error", message: "session_delete requires path" }));
+          sendMsg(ws, { type: "error", message: "session_delete requires path" });
           break;
         }
         if (msg.path === ctx.session.sessionManager.getSessionFile()) {
-          ws.send(JSON.stringify({ type: "error", message: "cannot delete the active session" }));
+          sendMsg(ws, { type: "error", message: "cannot delete the active session" });
           break;
         }
         try {
           deleteSession(msg.path);
-          ws.send(JSON.stringify({ type: "session_deleted", path: msg.path }));
+          sendMsg(ws, { type: "session_deleted", path: msg.path });
         } catch (err) {
-          ws.send(JSON.stringify({ type: "error", message: `session_delete failed: ${err}` }));
+          sendMsg(ws, { type: "error", message: `session_delete failed: ${err}` });
         }
         break;
       }
@@ -446,17 +442,24 @@ export function setupWebSocket(server: import("http").Server) {
         });
         break;
       }
+      default:
+        assertNever(msg);
     }
   }
 
   wss.on("connection", async (ws: WebSocket) => {
     try {
       if (isAgentConfigNeeded()) {
-        ws.send(JSON.stringify({ type: "config_required" }));
+        sendMsg(ws, { type: "config_required" });
 
         ws.on("message", async (data: Buffer) => {
           try {
-            const msg: WSMessage = JSON.parse(data.toString());
+            const parsed = parseWSClientMessage(data.toString());
+            if (!parsed.ok) {
+              sendMsg(ws, { type: "error", message: parsed.error });
+              return;
+            }
+            const msg = parsed.message;
             switch (msg.type) {
               case "get_models_config":
                 await sendModelsConfig(ws);
@@ -471,10 +474,14 @@ export function setupWebSocket(server: import("http").Server) {
                 ws.removeAllListeners("message");
                 ws.on("message", (data: Buffer) => {
                   try {
-                    const msg: WSMessage = JSON.parse(data.toString());
-                    handleNormalMessage(msg, ws, ctx);
+                    const parsed = parseWSClientMessage(data.toString());
+                    if (!parsed.ok) {
+                      sendMsg(ws, { type: "error", message: parsed.error });
+                      return;
+                    }
+                    handleNormalMessage(parsed.message, ws, ctx);
                   } catch (err) {
-                    ws.send(JSON.stringify({ type: "error", message: String(err) }));
+                    sendMsg(ws, { type: "error", message: String(err) });
                   }
                 });
                 ws.on("close", () => {
@@ -484,7 +491,7 @@ export function setupWebSocket(server: import("http").Server) {
               }
             }
           } catch (err) {
-            ws.send(JSON.stringify({ type: "error", message: String(err) }));
+            sendMsg(ws, { type: "error", message: String(err) });
           }
         });
         return;
@@ -498,10 +505,14 @@ export function setupWebSocket(server: import("http").Server) {
 
       ws.on("message", (data: Buffer) => {
         try {
-          const msg: WSMessage = JSON.parse(data.toString());
-          handleNormalMessage(msg, ws, ctx);
+          const parsed = parseWSClientMessage(data.toString());
+          if (!parsed.ok) {
+            sendMsg(ws, { type: "error", message: parsed.error });
+            return;
+          }
+          handleNormalMessage(parsed.message, ws, ctx);
         } catch (err) {
-          ws.send(JSON.stringify({ type: "error", message: String(err) }));
+          sendMsg(ws, { type: "error", message: String(err) });
         }
       });
 
@@ -509,7 +520,7 @@ export function setupWebSocket(server: import("http").Server) {
         unsubscribe();
       });
     } catch (err) {
-      ws.send(JSON.stringify({ type: "error", message: `Session init failed: ${err}` }));
+      sendMsg(ws, { type: "error", message: `Session init failed: ${err}` });
       ws.close();
     }
   });
@@ -517,17 +528,39 @@ export function setupWebSocket(server: import("http").Server) {
   return wss;
 }
 
-function makePrompt(msg: WSMessage): string {
-  let prompt = "";
-  if (msg.referencedNodes && msg.referencedNodes.length > 0) {
-    // Serialize each ref as proper JSON so quotes/newlines in labels or node
-    // data cannot break the REF:[...] envelope or inject extra structure.
-    const entries = msg.referencedNodes.map((ref) =>
-      JSON.stringify({ [ref.label ?? ""]: ref.data ?? "" }),
+/**
+ * /ws 出站消息统一出口：编译期对齐 WSServerMessage 契约（X2）。
+ * JSON.stringify 输出与改造前逐字节一致；/canvas 通道不走本出口。
+ */
+function sendMsg(ws: WebSocket, msg: WSServerMessage): void {
+  ws.send(JSON.stringify(msg));
+}
+
+/** 编译期穷尽校验：WSClientMessage 新增消息类型必须在 handleNormalMessage 落 case，否则构建失败 */
+function assertNever(x: never): never {
+  throw new Error(`unexpected client message: ${JSON.stringify(x)}`);
+}
+
+async function makePrompt(msg: WSClientMessageOf<"prompt">, session: SessionInstance): Promise<string> {
+  const sessionFile = session.sessionManager.getSessionFile() ?? null;
+  // ① 表事实：消息内 ref.data + canvas sidecar 节点数据（含 T2.0 标注字段）合并
+  // ② 图谱实体：govio-cli query，失败降级（graphStatus=degraded）
+  const ctx = await buildInjectionContext({
+    content: msg.content ?? "",
+    referencedNodes: msg.referencedNodes,
+    canvasNodes: sessionFile ? loadCanvas(sessionFile)?.nodes : undefined,
+  });
+  const prompt = composePrompt({ content: msg.content ?? "", referencedNodes: msg.referencedNodes }, ctx);
+  // T2.2 语义引用归因：本轮注入的图谱实体暂存为「本会话最近一次注入上下文」，
+  // message_end 建 sqlQuery 节点时取来写入 semanticRefs（空则不写键）。
+  setSessionSemanticRefs(session.sessionId, toSemanticRefs(ctx.graphEntities));
+  // 注入留痕：被注入节点 + 图谱实体 ID 列表随会话 sidecar 持久化（append-only）
+  if (sessionFile && (ctx.tables.length > 0 || ctx.graphEntities.length > 0)) {
+    recordInjectionTrace(
+      sessionFile,
+      buildTraceEntry(ctx, { sessionId: session.sessionId, sessionFile, content: msg.content ?? "" }),
     );
-    prompt += `REF:[${entries.join(", ")}]\n`;
   }
-  prompt += msg.content;
   console.debug("[ws] prompt: " + prompt);
   return prompt;
 }

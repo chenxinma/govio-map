@@ -1,10 +1,10 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { BarChart3, Maximize2, Quote, Trash2 } from 'lucide-react';
-import Plotly from 'plotly.js-dist-min';
 import type { ChartNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
 import ChartModal from './ChartModal';
+import { loadPlotly, type PlotlyModule } from './use-plotly';
 
 function ChartNode({ data, id }: NodeProps) {
   const nodeData = data as unknown as ChartNodeData;
@@ -18,13 +18,22 @@ function ChartNode({ data, id }: NodeProps) {
     const el = plotRef.current;
     if (!el) return;
     setHasError(false);
-    Plotly.react(el, nodeData.config.data, nodeData.config.layout ?? {}, { responsive: true, displayModeBar: false })
+    let cancelled = false;
+    let plotly: PlotlyModule | null = null;
+    loadPlotly()
+      .then((P) => {
+        if (cancelled) return;
+        plotly = P;
+        return P.react(el, nodeData.config.data, nodeData.config.layout ?? {}, { responsive: true, displayModeBar: false });
+      })
       .catch((err: unknown) => {
+        if (cancelled) return;
         console.error('[ChartNode] chart render failed:', err);
         setHasError(true);
       });
     return () => {
-      Plotly.purge(el);
+      cancelled = true;
+      if (plotly) plotly.purge(el);
     };
   }, [nodeData.config]);
 

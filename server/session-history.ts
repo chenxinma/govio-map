@@ -2,6 +2,7 @@ import { SessionManager, type SessionEntry, type SessionMessageEntry, type Sessi
 import { existsSync, unlinkSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve as resolvePath, sep } from "node:path";
 import { deletePermissionAudit } from "./permission-audit.js";
+import { deleteInjectionTrace } from "./prompt-injection.js";
 
 export function getSessionDir(): string {
   return resolvePath(process.cwd(), ".govio", "sessions");
@@ -10,6 +11,8 @@ export function getSessionDir(): string {
 export interface DisplayToolCall {
   toolName: string;
   success?: boolean;
+  /** 工具入参（pi transcript toolCall block 的 arguments），供前端 ToolRow 展开查看 */
+  args?: unknown;
 }
 
 export interface DisplayMessage {
@@ -64,8 +67,9 @@ export function deleteSession(path: string): void {
   if (existsSync(resolved)) unlinkSync(resolved);
   const canvas = canvasPathFor(resolved);
   if (existsSync(canvas)) unlinkSync(canvas);
-  // 权限审计 sidecar 与会话同生命周期：会话删了，确认记录一并删。
+  // 权限审计 / 注入留痕 sidecar 与会话同生命周期：会话删了，记录一并删。
   deletePermissionAudit(resolved);
+  deleteInjectionTrace(resolved);
 }
 
 // ---- canvas sidecar ----
@@ -93,19 +97,32 @@ export function loadCanvas(sessionFile: string): { nodes: unknown[]; edges: unkn
 
 // ---- transcript ----
 
-/** Parse the `REF:[{"label": "data"},...]\n` prefix produced by makePrompt(). */
+/**
+ * Parse the `REF:[{"label": "data"},...]\n` prefix produced by makePrompt(),
+ * plus the optional `CTX:<json>\n` 语义上下文注入行（T2.1，随消息留痕但不上屏）。
+ */
 function parseRefPrefix(text: string): { content: string; referencedNodes: DisplayMessage["referencedNodes"] } {
-  const match = /^REF:\[([\s\S]*?)\]\n/.exec(text);
-  if (!match) return { content: text, referencedNodes: undefined };
-  // Original data values may contain unescaped quotes, so only labels are recovered.
-  const refs: NonNullable<DisplayMessage["referencedNodes"]> = [];
-  const re = /\{"([^"]*)":/g;
-  let m: RegExpExecArray | null;
-  let i = 0;
-  while ((m = re.exec(match[1])) !== null) {
-    refs.push({ nodeId: `ref-${i++}`, label: m[1], type: "", data: null });
+  let rest = text;
+  let referencedNodes: DisplayMessage["referencedNodes"] = undefined;
+  const match = /^REF:\[([\s\S]*?)\]\n/.exec(rest);
+  if (match) {
+    // Original data values may contain unescaped quotes, so only labels are recovered.
+    const refs: NonNullable<DisplayMessage["referencedNodes"]> = [];
+    const re = /\{"([^"]*)":/g;
+    let m: RegExpExecArray | null;
+    let i = 0;
+    while ((m = re.exec(match[1])) !== null) {
+      refs.push({ nodeId: `ref-${i++}`, label: m[1], type: "", data: null });
+    }
+    if (refs.length > 0) referencedNodes = refs;
+    rest = rest.slice(match[0].length);
   }
-  return { content: text.slice(match[0].length), referencedNodes: refs.length > 0 ? refs : undefined };
+  // CTX 注入行为单行 JSON（不含换行）；无 REF 时（问题实体命中注入）也可能出现在开头。
+  if (rest.startsWith("CTX:")) {
+    const nl = rest.indexOf("\n");
+    rest = nl >= 0 ? rest.slice(nl + 1) : "";
+  }
+  return { content: rest, referencedNodes };
 }
 
 interface Round {
@@ -142,12 +159,17 @@ function buildRounds(entries: SessionEntry[]): Round[] {
       let text = "";
       let thinking = "";
       const tools: DisplayToolCall[] = [];
-      for (const b of (m.content ?? []) as Array<{ type: string; text?: string; thinking?: string; id?: string; name?: string }>) {
+      for (const b of (m.content ?? []) as Array<{ type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: unknown; args?: unknown; input?: unknown }>) {
         if (b.type === "text") text += b.text ?? "";
         else if (b.type === "thinking") thinking += b.thinking ?? "";
         else if (b.type === "toolCall" && b.id && b.name) {
           toolIndex.set(b.id, { tools, idx: tools.length });
-          tools.push({ toolName: b.name });
+          const call: DisplayToolCall = { toolName: b.name };
+          // pi transcript 结构为 {type:"toolCall", id, name, arguments}；
+          // 兼容 args/input 变体，取不到留空（前端降级为无参数信息）。
+          const args = b.arguments ?? b.args ?? b.input;
+          if (args !== undefined) call.args = args;
+          tools.push(call);
         }
       }
       if (!text && !thinking && tools.length === 0) continue;
@@ -200,7 +222,7 @@ if (process.env.NODE_ENV !== "production") {
   const entries: SessionEntry[] = [];
   for (let i = 0; i < 12; i++) {
     entries.push(entry(`u${i}`, { role: "user", content: `question ${i}` }));
-    entries.push(entry(`a${i}`, { role: "assistant", content: [{ type: "text", text: `answer ${i}` }, { type: "toolCall", id: `t${i}`, name: "bash" }] }));
+    entries.push(entry(`a${i}`, { role: "assistant", content: [{ type: "text", text: `answer ${i}` }, { type: "toolCall", id: `t${i}`, name: "bash", arguments: { command: `echo ${i}` } }] }));
     entries.push(entry(`r${i}`, { role: "toolResult", toolCallId: `t${i}`, isError: false }));
   }
   const page1 = buildTranscript(entries, { rounds: 10 });
@@ -208,9 +230,16 @@ if (process.env.NODE_ENV !== "production") {
   assert(page1.hasMore, "page1 hasMore");
   assert(page1.messages[0].content === "question 2", "page1 starts at round 2");
   assert(page1.messages[1].tools?.[0].success === true, "tool success backfilled");
+  assert((page1.messages[1].tools?.[0].args as { command?: string })?.command === "echo 2", "tool args parsed");
   const page2 = buildTranscript(entries, { rounds: 10, beforeEntryId: page1.oldestEntryId });
   assert(page2.messages.length === 4 && !page2.hasMore, "page2 holds rounds 0-1");
   const ref = buildTranscript([entry("x", { role: "user", content: 'REF:[{"tbl_a": "data"}, {"tbl_b": "d2"}]\nreal question' })]);
   assert(ref.messages[0].content === "real question", "REF prefix stripped");
   assert(ref.messages[0].referencedNodes?.length === 2, "REF labels parsed");
+  const ctx1 = buildTranscript([entry("y", { role: "user", content: 'REF:[{"tbl_a": "data"}]\nCTX:{"tables":[]}\nreal question' })]);
+  assert(ctx1.messages[0].content === "real question", "CTX prefix stripped after REF");
+  assert(ctx1.messages[0].referencedNodes?.length === 1, "REF labels parsed with CTX");
+  const ctx2 = buildTranscript([entry("z", { role: "user", content: 'CTX:{"tables":[]}\nplain question' })]);
+  assert(ctx2.messages[0].content === "plain question", "CTX-only prefix stripped");
+  assert(ctx2.messages[0].referencedNodes === undefined, "CTX-only has no refs");
 }

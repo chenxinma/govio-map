@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import Plotly from 'plotly.js-dist-min';
 import type { ChartConfig } from '../../types';
+import { loadPlotly, type PlotlyModule } from './use-plotly';
 
 interface Props {
   config: ChartConfig;
@@ -18,13 +18,22 @@ export default function ChartModal({ config, title, onClose }: Props) {
     const el = plotRef.current;
     if (!el) return;
     setHasError(false);
-    Plotly.react(el, config.data, { ...config.layout, autosize: true }, { responsive: true, displayModeBar: 'hover' })
+    let cancelled = false;
+    let plotly: PlotlyModule | null = null;
+    loadPlotly()
+      .then((P) => {
+        if (cancelled) return;
+        plotly = P;
+        return P.react(el, config.data, { ...config.layout, autosize: true }, { responsive: true, displayModeBar: 'hover' });
+      })
       .catch((err: unknown) => {
+        if (cancelled) return;
         console.error('[ChartModal] chart render failed:', err);
         setHasError(true);
       });
     return () => {
-      Plotly.purge(el);
+      cancelled = true;
+      if (plotly) plotly.purge(el);
     };
   }, [config]);
 

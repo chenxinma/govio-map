@@ -6,6 +6,49 @@
 - `/ws` - 聊天交互（Agent 会话）
 - `/canvas` - 画布节点事件推送
 
+## 协议契约（X2）
+
+`/ws` 通道消息以 **typebox schema 契约**为单一事实源：`src/types/ws-protocol.ts`。
+双端 TypeScript 类型均由此派生（`Static<>`），服务端入站经 `parseWSClientMessage`
+运行时把关，出站经 `WSServerMessage` 编译期对齐；本文其余章节的示例均为说明性摘录，
+完整消息全集以契约文件为准。
+
+### 版本化
+
+- `PROTOCOL_VERSION = 1`；每条消息 schema 携带 `$id: "govio-ws/v1/<type>"` 与 `version` 字段
+  （schema 元数据层）。
+- **version 不上线**：消息字段与改造前逐字节等价，v1 的版本语义由前后端同仓同构建的
+  「部署对」隐式携带。未来跨版本协商的演进路径是新增 hello/握手消息，而非逐条加字段。
+
+### 消息全集
+
+- 客户端 → 服务端（17 类）：`prompt`、`steer`、`followUp`、`abort`、`observe_list`、
+  `observe_info`、`clear`、`tool_permission_response`、`permission_accept_all`、
+  `get_models_config`、`save_models_config`、`set_model`、`session_list`、`session_open`、
+  `session_messages`、`session_delete`、`canvas_save`
+- 服务端 → 客户端（25 类）：`session_ready`、`canvas_restore`、`session_messages_result`、
+  `session_list_result`、`session_deleted`、`agent_start`、`agent_end`、`message_start`、
+  `message_end`、`text_delta`、`thinking_delta`、`tool_start`、`tool_end`、`queue_update`、
+  `steer_queued`、`followUp_queued`、`queue_cleared`、`tool_permission_request`、
+  `observe_list_result`、`observe_info_result`、`models_config`、`config_saved`、
+  `config_required`、`model_set`、`error`
+
+开放载荷（`args` / `nodes` / `edges` / `dataframes` / `info`）在契约中松绑为 unknown/宽松
+对象，形状由消费端自校验。
+
+### 兼容策略（旧客户端 / 新消息的容忍规则）
+
+1. **服务端 → 客户端**：客户端对未知 `type` 的服务端消息忽略不崩（switch 无 default）；
+   新增服务端消息类型对旧客户端零破坏。
+2. **客户端 → 服务端**：未知 `type` 与形状非法（字段类型/字面量不符）的入站消息被拒绝并回
+   `error`（`unknown message type: <type>` / `invalid message: <type> ...`），连接不因此断开。
+3. **附加字段容忍**：两端 schema 均允许额外属性；新版本在既有消息上加字段不被旧端拒绝；
+   `type` 是唯一判别字段。
+4. **字段必需性**与契约化前保持一致（业务级必填仍由 handler guard 拦截并保留原文案，如
+   `session_open requires path`）；schema 负责形状合法（类型/字面量）。
+
+契约测试见 `tests/integration/ws-protocol.test.ts`（纳入 `npm run verify`）。
+
 ## 连接生命周期
 
 ### /ws 连接

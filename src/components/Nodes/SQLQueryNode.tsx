@@ -1,8 +1,9 @@
 import { memo, useState, useCallback, useRef, useEffect } from 'react';
 import { Handle, Position, type NodeProps, type Edge } from '@xyflow/react';
-import { Maximize2, Quote, Trash2, ScrollText } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Maximize2, Quote, Trash2, ScrollText } from 'lucide-react';
 import type { SQLQueryNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
+import { caliberNodeAppearance, CALIBER_ASPECT_LABELS } from '../../utils/caliber';
 import SQLModal from './SQLModal';
 import ManifestDetails from './ManifestDetails';
 
@@ -46,7 +47,12 @@ function SQLNode({ data, id }: NodeProps) {
   const [editValue, setEditValue] = useState(nodeData.sql);
   const [showModal, setShowModal] = useState(false);
   const [showManifest, setShowManifest] = useState(false);
+  const [showCaliber, setShowCaliber] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // T2.3 口径冲突检测：仅 conflict 亮黄色警示（consistent/unknown 不打扰）
+  const caliber = caliberNodeAppearance(nodeData.caliberCheck);
+  const caliberDifferences = nodeData.caliberCheck?.differences ?? [];
 
   // Auto-resize textarea
   useEffect(() => {
@@ -93,9 +99,24 @@ function SQLNode({ data, id }: NodeProps) {
   const hasMore = nodeData.sql.split('\n').length > 8;
 
   return (
-    <div className="w-[300px] rounded-lg border border-border-default bg-bg-card overflow-hidden">
-      <div className="border-l-[3px] border-l-node-sql px-4 py-3">
-        <span className="text-sm font-medium text-text-primary">{nodeData.title}</span>
+    <div
+      className="w-[300px] rounded-lg border border-border-default bg-bg-card overflow-hidden"
+      style={caliber.showWarning ? { borderColor: caliber.warningColor } : undefined}
+    >
+      <div className="border-l-[3px] border-l-node-sql px-4 py-3 flex items-center gap-2">
+        <span className="text-sm font-medium text-text-primary truncate">{nodeData.title}</span>
+        {caliber.showWarning && caliber.badgeLabel && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowCaliber((v) => !v); }}
+            title="口径与图谱指标定义存在冲突，点击查看差异说明"
+            className="ml-auto flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border shrink-0"
+            style={{ color: caliber.warningColor, borderColor: caliber.warningColor, backgroundColor: `${caliber.warningColor}1a` }}
+          >
+            <AlertTriangle size={11} />
+            <span>{caliber.badgeLabel}</span>
+            <ChevronDown size={11} className={showCaliber ? 'rotate-180 transition-transform' : 'transition-transform'} />
+          </button>
+        )}
       </div>
 
       <div className="border-t border-border-subtle px-4 py-3">
@@ -142,6 +163,27 @@ function SQLNode({ data, id }: NodeProps) {
       {showManifest && nodeData.manifest && (
         <div className="border-t border-border-subtle px-4 py-2">
           <ManifestDetails manifest={nodeData.manifest} />
+        </div>
+      )}
+
+      {showCaliber && caliberDifferences.length > 0 && (
+        <div className="border-t border-border-subtle px-4 py-2">
+          <div className="text-[10px] font-mono uppercase tracking-[1.2px] text-text-muted mb-1.5">口径差异</div>
+          {caliberDifferences.map((d, i) => (
+            <div key={`${d.metricCode ?? ''}-${d.aspect}-${i}`} className="mb-2 last:mb-0">
+              <div className="text-[11px] font-medium" style={{ color: caliber.warningColor }}>
+                {d.metricCode ? `${d.metricCode} · ` : ''}
+                {CALIBER_ASPECT_LABELS[d.aspect] ?? d.aspect}
+              </div>
+              <div className="text-[10px] text-text-secondary leading-relaxed">
+                <span className="text-text-muted">期望：</span>{d.expected}
+              </div>
+              <div className="text-[10px] text-text-secondary leading-relaxed">
+                <span className="text-text-muted">实际：</span>{d.found}
+              </div>
+              {d.detail && <div className="text-[10px] text-text-dim leading-relaxed">{d.detail}</div>}
+            </div>
+          ))}
         </div>
       )}
 
