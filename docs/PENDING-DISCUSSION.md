@@ -28,3 +28,37 @@
   4. **unknown 可见性**：UI 完全不显示 unknown（`src/utils/caliber.ts` 设计取舍）——是否给一个更轻的提示（如节点角标小圆点）待定
 - **状态**：⏸ 待讨论（暂不列入任务清单）
 - **待定**：1+3 是否一起做（1 是功能、3 是调判定口径，可能影响既有 45 项 assert）；若做 4 需与「宁可 unknown 不误报」纪律对齐；是否挂 P2 语义层还是 crossCutting
+
+### PD-2 补充（2026-11-08，govio 0.7.2 sqlparse 接入后实测）
+
+**前置事实**：govio `caliber.py` 已改用 sqlparse 分词（PR #15，0.7.2）。实测（8 档 SQL，runtime 0.7.2 已确认）：
+
+| 档 | SQL 要点 | 判定 |
+|---|---|---|
+| s1 | `SUM(price*boxes) AS sales_amount` | conflict ✓ |
+| s2/t2 | `ROUND(SUM(f.amount),2) AS revenue_amount`（**正确口径**） | **unknown**（dimension_ref 噪声） |
+| s3/t3 | 不含 amount | conflict ✓ |
+| s4 | `AVG(amount)` | conflict ✓ |
+| t1 | `AVG(amount) AS revenue_calc` | conflict ✓ |
+| t4 | `SUM(f.amount*(1-discount_pct/100)) AS revenue_calc` | **unknown ← 真缺口** |
+
+**关键判断：别名不是主要瓶颈**
+
+1. sqlparse 已能稳定取出逐项 `alias` + 该项的聚合与列（原型实测：`revenue_calc` → `SUM(price_per_box*boxes_shipped)`）。技术上「别名感知」完全可行。
+2. 但「不同别名实质相同」**不能靠别名同义词词典**（revenue→sales、calc 修饰等启发式必然误报）；可靠做法是**表达式规范化比对**：
+
+   | 表达式 | canonical | 与 `sum(amount)` 等价 |
+   |---|---|---|
+   | `ROUND(SUM(f.amount), 2)` | `sum(amount)` | ✅ |
+   | `SUM(f.amount * (1 - f.discount_pct/100))` | `sum(amount*(1-discount_pct/100))` | ❌ |
+   | `SUM(f.price_per_box*f.boxes_shipped)` | `sum(price_per_box*boxes_shipped)` | ❌ |
+
+   （规范化 = 剥外层 ROUND/CAST 展示包装 → 去表限定 → 压空白 → 小写；已原型验证）
+3. 真正的判定缺口是**聚合签名只比 `(func, distinct)`、不比参数表达式**（`_agg_signature`），所以 t4 这种「同一列被算术修饰」抓不到；sqlparse 已提供 arg 原文，补上即可。
+4. 另一个缺口是**正确口径也判 unknown**（dimension_ref 列缺失一律产存疑项），令 `consistent` 对 chocolate 这类星型模型几乎不可达，状态信号被稀释。
+
+**修订后候选方案（优先级）**
+
+1. **聚合参数表达式比对**（推荐首要）：`_agg_signature` 增加 canonical(arg) 维度；指标 formula 为单列聚合时，SQL 同名聚合参数必须等价 → t4 关闭，且天然支持「不同写法实质相同」
+2. **measure-first 判定**：measure 的期望聚合满足即忽略 dimension_ref 缺失去产项，让正确口径可达 `consistent`（消除噪声，比别名感知更影响体验）
+3. **别名归一**（可选，用于展示而非判定）：画布节点标注「输出列 revenue_calc ↔ 指标 销售额」；词典+变体标记，保守输出 unknown
