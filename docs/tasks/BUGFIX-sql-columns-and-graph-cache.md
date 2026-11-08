@@ -1,0 +1,58 @@
+# BUGFIX-sql-columns-and-graph-cache：SQL 输出列名被逗号切碎 + 图谱注入冷启动超时
+
+- **日期**：2026-11-08
+- **现象**：① sqlQuery 节点 outputColumns 出现 `amount)`、`0)`、`marketing_spend)` 等碎片；② 会话 `2026-11-08T03-09-10-797Z_01a1b921-*` 仍未获预期效果（口径检测不亮）
+
+## ① 输出列名被逗号切碎
+
+**根因**：`extractSelectColumns`（`server/extensions/govio-canvas.ts`）按 `,` 硬切 SELECT 段，
+函数内逗号（`ROUND(x, 0)`、`ROUND((a-b)/c, 4)`）把表达式切碎，尾部碎片被当作列名：
+
+```
+实测 gov-105: ["channel_name","order_year","marketing_spend)","marketing_spend","amount)",
+                "sales_amount","marketing_spend)","0)","roi_ratio","order_id)","0)",...]
+```
+
+**修复**：
+- `splitTopLevelCommas`：按括号深度切分 SELECT 项（函数内逗号不切）
+- `columnNameOf`：显式 `AS alias`（含引号/反引号/方括号）→ 隐式别名（前段以 `)` 结尾）→ 裸列（可带限定）
+- 无别名的表达式不产名字（返回 null，交由调用方回退 `tableName.*`），不再产垃圾名
+
+**验证**：`tests/integration/select-columns.test.ts` 6 用例（含 gov-105 真实坏例，断言无 `)` 结尾列名）
+
+## ② 图谱注入冷启动超时（口径检测静默跳过）
+
+**证据**（新诊断格式已生效）：留痕 08:07/08:11/08:12 三条均为
+
+```
+metrics: ... | killed=true | signal=SIGTERM ;; metricTables: ... killed=true ;; metricDims: ...
+```
+
+即 **12s 超时被杀**，三条并发全部超时 → `graphEntities` 空 → `semanticRefs` 空 → 口径检测跳过。
+实测单条 govio-cli 冷启动 2.5~4.3s（Python 启动 + 图库连接），四并发在 agent 负载下即撞阈值；
+且 CLI 无 `--output` 参数，并发调用会撞同一 `.govio/output-<ts>.json` 文件名。
+
+**修复（结构性）**：
+- `graph-query.ts` 新增结果缓存（TTL 10min，按 Cypher 文本）+ 同 Cypher in-flight 去重
+- 过期缓存 **stale-while-revalidate**：先返回旧值后台刷新，绝不阻塞 prompt
+- `prewarmGraphCache` / `prewarmInjectionGraphCache`：backend 启动后台预热三条指标查询
+  （`server/backend.ts` 调用，不阻塞启动、失败静默）
+- 失败仍重试一次；`describeExecError` 保留退出码/信号/stderr
+
+**实测**：冷启动 4330ms → 命中缓存 0ms；预热后首轮即 0ms。
+
+## 验证
+
+- `npm run build` / `npm run lint` 全绿
+- `npm run verify` 全绿：manifest 92 / rerun 71 / audit 119 / export 126 / source-table 39 /
+  semantic-lineage 45 / caliber-conflict 46 / cwd 13 / prompt-injection 58 / 集成 65
+- 新增 `tests/integration/select-columns.test.ts`（6 用例）
+
+## 遗留问题
+
+1. **旧节点不自愈**：画布 sidecar 里已固化的 `marketing_spend)` / `0)` 等列名不会自动修正，
+   需重新生成节点或清画布重录。
+2. 缓存 TTL 10min 内元数据导入不自动失效（现仅测试可 `clearGraphQueryCache`）；
+   若需「导入后即时生效」应在导入流程调用失效。
+3. 并发 `govio-cli` 的输出文件同名风险仍在 CLI 侧（无 `--output` 参数）；缓存已大幅降低频次，
+   根治需 govio-cli 支持唯一输出路径。

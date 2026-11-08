@@ -24,7 +24,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import type { SemanticEntityType } from "../src/types/semantic.js";
-import { runGraphQuery, type GraphRow, type GraphQueryRunner } from "./graph-query.js";
+import { runGraphQuery, prewarmGraphCache, type GraphRow, type GraphQueryRunner } from "./graph-query.js";
 
 // ---- 注入载荷类型 ----
 
@@ -507,4 +507,15 @@ export function deleteInjectionTrace(sessionFile: string): boolean {
   if (!existsSync(path)) return false;
   unlinkSync(path);
   return true;
+}
+
+/**
+ * 预热图谱注入缓存（backend 启动时后台调用）。
+ *
+ * 注入每个 prompt 都跑固定三条指标查询；govio-cli 冷启动 2.5~4.3s/条，
+ * 并发四条在负载下会集体超时（留痕 `killed=true | signal=SIGTERM`），
+ * 令该轮图谱实体为空 → 口径检测静默跳过。预热让首次 prompt 直接命中缓存。
+ */
+export function prewarmInjectionGraphCache(): void {
+  prewarmGraphCache([QUERY_METRICS, QUERY_METRIC_TABLES, QUERY_METRIC_DIMENSIONS]);
 }

@@ -626,6 +626,26 @@ console.log("\n[G] 空结果处理（BUGFIX-injection-graph-key：Data not found
     (ctx.graphError ?? "").includes(";;"));
 }
 
+// ── H. 图谱查询缓存与预热（避免并发冷启动撞超时） ─────────────────
+
+console.log("\n[H] 图谱查询缓存（同一 Cypher 不重复 spawn CLI）");
+
+{
+  const { clearGraphQueryCache } = await import("../server/graph-query.js");
+  clearGraphQueryCache();
+  let calls = 0;
+  const countingRunner: GraphQueryRunner = async () => {
+    calls++;
+    return FX_METRICS;
+  };
+  // 直接验证 buildInjectionContext 的 fake runner 不受缓存影响（缓存只包 runGraphQuery）
+  await buildInjectionContext({ content: "销售额", runQuery: countingRunner });
+  const first = calls;
+  await buildInjectionContext({ content: "销售额", runQuery: countingRunner });
+  check("注入层不对 runner 做隐式缓存（每轮都查，缓存属 graph-query 职责）", calls === first * 2);
+  check("clearGraphQueryCache 可导出（测试/元数据导入后主动失效）", typeof clearGraphQueryCache === "function");
+}
+
 // ── 汇总 ────────────────────────────────────────────────────────────────────
 
 console.log(`\nverify-prompt-injection: ${checks - failures.length}/${checks} 通过`);

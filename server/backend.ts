@@ -4,6 +4,7 @@ import { handleParquetApi } from "./parquet-api.js";
 import { agentSetup } from "./agent.js";
 import { ensureModelsConfig } from "./models-config.js";
 import { LOOPBACK_HOST } from "./security.js";
+import { prewarmInjectionGraphCache } from "./prompt-injection.js";
 
 let agentConfigNeeded = false;
 
@@ -54,6 +55,10 @@ export async function startBackend(port = 5174) {
   } catch (err) {
     console.error("[agent] Agent setup failed:", err);
   }
+
+  // 图谱注入缓存预热（后台、不阻塞；失败静默）：否则首次 prompt 要承担
+  // 3~4 条 govio-cli 冷启动（2.5~4.3s/条），负载下集体撞超时 → 图谱实体缺失。
+  prewarmInjectionGraphCache();
 
   return httpServer;
 }

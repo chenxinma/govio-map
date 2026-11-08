@@ -262,20 +262,61 @@ function extractAssistantText(message: { content: Array<{ type: string; text?: s
   return extractTextContent(message.content);
 }
 
-function extractSelectColumns(sql: string): string[] {
+/** 按顶层逗号切分 SELECT 项（括号内的逗号不切，如 `ROUND(x, 2)`） */
+function splitTopLevelCommas(text: string): string[] {
+  const items: string[] = [];
+  let depth = 0;
+  let buf = "";
+  for (const ch of text) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    if (ch === "," && depth === 0) {
+      items.push(buf);
+      buf = "";
+      continue;
+    }
+    buf += ch;
+  }
+  items.push(buf);
+  return items;
+}
+
+function stripIdentQuotes(ident: string): string {
+  // 去标识符引号："x" / `x` / [x]
+  return ident.replace(/^["`\x5b]|["`\x5d]$/g, "");
+}
+
+/**
+ * 单个 SELECT 项 → 输出列名。
+ *
+ * 旧实现 `trim().split(",")` 再取尾部：遇到函数内逗号就把表达式切碎，
+ * 产生 `amount)`、`0)` 这类垃圾列名（实测 gov-104/gov-105/gov-110）。
+ */
+function columnNameOf(item: string): string | null {
+  const expr = item.trim();
+  if (!expr) return null;
+  // 显式别名：`AS alias`（别名可能带引号/反引号/方括号）
+  const asMatch = expr.match(/(?:^|\s)AS\s+([A-Za-z_][A-Za-z0-9_$]*|"[^"]+"|`[^`]+`|\[[^\]]+\])\s*$/i);
+  if (asMatch) return stripIdentQuotes(asMatch[1]);
+  // 隐式别名：`SUM(x) total`（别名前的表达式以 `)` 结尾）；`price * qty` 不算
+  const implicit = expr.match(/[)\w"\]]\s+([A-Za-z_][A-Za-z0-9_$]*)\s*$/);
+  if (implicit) {
+    const aliasAt = expr.lastIndexOf(implicit[1]);
+    if (expr.slice(0, aliasAt).trim().endsWith(")")) return implicit[1];
+  }
+  // 裸列（可带表限定）
+  const bare = expr.match(/^(?:[A-Za-z_][A-Za-z0-9_$]*\s*\.\s*)*([A-Za-z_][A-Za-z0-9_$]*)$/);
+  if (bare) return bare[1];
+  // 其余（无别名的表达式、`*`、`t.*`）不产列名，交由调用方回退
+  return null;
+}
+
+export function extractSelectColumns(sql: string): string[] {
   const match = sql.match(/SELECT\s+([\s\S]+?)\s+FROM/i);
   if (!match) return [];
-  return match[1]
-    .split(",")
-    .map((col) => col.trim())
-    .map((col) => {
-      const aliasMatch = col.match(/\s+AS\s+(\S+)$/i);
-      if (aliasMatch) return aliasMatch[1];
-      const dotMatch = col.match(/\.(\S+)$/);
-      if (dotMatch) return dotMatch[1];
-      return col;
-    })
-    .filter((col) => col !== "*" && !col.includes("("));
+  return splitTopLevelCommas(match[1])
+    .map((col) => columnNameOf(col))
+    .filter((col): col is string => !!col);
 }
 
 function extractSqlCodeBlocks(text: string): Array<{ sql: string; outputColumns: string[] }> {

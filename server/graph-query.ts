@@ -54,15 +54,86 @@ export function describeExecError(error: Error, stderr: string, stdout: string):
  * 而降级的代价是整轮图谱实体缺失（semanticRefs 空 → 口径检测静默跳过）。
  * 只在失败时付出额外延迟，不改变成功路径耗时。
  */
-export const runGraphQuery: GraphQueryRunner = (cypher) =>
-  runGraphQueryOnce(cypher).catch(() => runGraphQueryOnce(cypher));
+/**
+ * 查询结果缓存（BUGFIX-injection-graph-key 后续）：
+ *
+ * 注入路径每轮 prompt 固定跑 3~4 条图谱查询，而单条 govio-cli 冷启动实测 2.5~4.3s，
+ * 并发四跑在负载下会集体撞 12s 超时阀值（留痕实证 killed=true | signal=SIGTERM），
+ * 导致整轮图谱实体缺失 → semanticRefs 空 → 口径检测静默跳过。
+ * 图谱元数据是低频变更数据，按 Cypher 文本缓存即可消掉绝大部分 sparkawn 开销。
+ */
+const GRAPH_CACHE_TTL_MS = 10 * 60_000;
+interface CacheEntry {
+  rows: GraphRow[];
+  at: number;
+}
+const cache = new Map<string, CacheEntry>();
+const inflight = new Map<string, Promise<GraphRow[]>>();
 
-function runGraphQueryOnce(cypher: string): Promise<GraphRow[]> {
+/** 清空缓存（测试/元数据导入后主动失效） */
+export function clearGraphQueryCache(): void {
+  cache.clear();
+  inflight.clear();
+}
+
+/**
+ * 预热缓存：服务启动时后台跑一遍常用查询（不阻塞启程、失败静默）。
+ * 首次 prompt 因此不再承担冷启动成本。
+ */
+export function prewarmGraphCache(cyphers: string[], timeoutMs = 30000): void {
+  for (const cypher of cyphers) {
+    if (cache.has(cypher) || inflight.has(cypher)) continue;
+    const p = runGraphQueryOnce(cypher, timeoutMs)
+      .then((rows) => {
+        cache.set(cypher, { rows, at: Date.now() });
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        inflight.delete(cypher);
+      });
+    inflight.set(cypher, p.then(() => cache.get(cypher)?.rows ?? []));
+  }
+}
+
+/**
+ * 执行一条 Cypher 查询（带缓存 + 单次重试）。
+ *
+ * - 命中新鲜缓存：直接返回（不 spawn CLI）
+ * - 命中过期缓存：先返回旧值，后台刷新（stale-while-revalidate）——绝不因刷新阻塞 prompt
+ * - 未命中：去重后执行（同 Cypher 并发只跑一次），失败重试一次（只读查询幂等）
+ */
+export const runGraphQuery: GraphQueryRunner = (cypher) => {
+  const hit = cache.get(cypher);
+  if (hit && Date.now() - hit.at < GRAPH_CACHE_TTL_MS) return Promise.resolve(hit.rows);
+  if (hit) {
+    void fetchAndCache(cypher).catch(() => undefined);
+    return Promise.resolve(hit.rows);
+  }
+  return fetchAndCache(cypher);
+};
+
+function fetchAndCache(cypher: string): Promise<GraphRow[]> {
+  const existing = inflight.get(cypher);
+  if (existing) return existing;
+  const p = runGraphQueryOnce(cypher)
+    .catch(() => runGraphQueryOnce(cypher))
+    .then((rows) => {
+      cache.set(cypher, { rows, at: Date.now() });
+      return rows;
+    })
+    .finally(() => {
+      inflight.delete(cypher);
+    });
+  inflight.set(cypher, p);
+  return p;
+}
+
+function runGraphQueryOnce(cypher: string, timeoutMs = GRAPH_QUERY_TIMEOUT_MS): Promise<GraphRow[]> {
   return new Promise((resolve, reject) => {
     execFile(
       "govio-cli",
       ["query", "-c", cypher],
-      { encoding: "utf-8", timeout: GRAPH_QUERY_TIMEOUT_MS },
+      { encoding: "utf-8", timeout: timeoutMs },
       (error, stdout, stderr) => {
         if (error) {
           if (stdout && isEmptyResultOutput(stdout)) {
