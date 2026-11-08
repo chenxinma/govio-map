@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-07T00:40:00+08:00",
+  "updatedAt": "2026-11-08T10:26:26+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -720,6 +720,22 @@
           "at": "2026-11-03T22:31:44+08:00",
           "by": "main-session",
           "note": "用户确认验收通过。抽查 ChatMessage.tsx（assistant 去气泡 w-full、ToolRow 可展开 bash 命令/args JSON ≤20 行）、ws-handler 转发 args、session-history buildRounds 回放 args、export-session 含 tools；verify 全绿无回归。"
+        }
+      ]
+    },
+    {
+      "id": "X10",
+      "title": "表间语义关系线（sourceTable 外键/图谱 rel → 语义血缘边）",
+      "status": "pending",
+      "dependsOn": [],
+      "note": "用户决定 2026-11-08（产品演示视频脚本评审时发现的功能缺口，采用方案2 语义化，本期录制暂不实现）：sourceTable 之间目前无任何画布连线——建边逻辑仅覆盖数据血缘（referencedNodes/sourceRefs）与 sqlQuery↔sqlQuery 语义血缘（src/store/canvas-store.ts:265-340）；外键信息仅字段级 references/FK 徽标（SourceTableNode.tsx:75），observe explore 外键发现只出 correlation 文字报告。实现方向（方案2）：从图谱 rel 查询（PhysicalTable 外键关系，如 chocolate_relationships.json 的 3 条 many_to_one）或字段 references，在建/恢复 sourceTable 节点时生成表间边，归入语义血缘紫虚线体系（lineageKind:\\\"semantic\\\"，样式复用 src/utils/lineage.ts，注意 T2.2 语义边现仅限 sqlQuery 节点，判定需扩展）。验收方向：星型模型（chocolate fact_sales→dim_*）3 条外键线上画布；血缘图例/导出 HTML 报告含表间语义边；既有断言零回归。录制期口径见 docs/demo/video-script-chocolate.md「功能缺口」章节。",
+      "outputDir": "docs/tasks/X10-table-semantic-edges/",
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-11-08T10:26:26+08:00",
+          "by": "main-session",
+          "note": "演示视频脚本评审发现缺口，方案2（语义化表间关系线）立项；本期录制暂不实现，待排期"
         }
       ]
     }
