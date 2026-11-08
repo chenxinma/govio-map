@@ -62,3 +62,23 @@
 1. **聚合参数表达式比对**（推荐首要）：`_agg_signature` 增加 canonical(arg) 维度；指标 formula 为单列聚合时，SQL 同名聚合参数必须等价 → t4 关闭，且天然支持「不同写法实质相同」
 2. **measure-first 判定**：measure 的期望聚合满足即忽略 dimension_ref 缺失去产项，让正确口径可达 `consistent`（消除噪声，比别名感知更影响体验）
 3. **别名归一**（可选，用于展示而非判定）：画布节点标注「输出列 revenue_calc ↔ 指标 销售额」；词典+变体标记，保守输出 unknown
+
+### PD-2 决策记录（2026-11-08）：方案 C 待讨论，演示期用干净措辞规避
+
+**已落地（方案 1+2，govio `33080fd` / map `625260e`）**
+
+1. `_canonical_expr` 表达式规范化：剥 `ROUND/CAST/::type` 展示包装、去表限定、压空白 → `ROUND(SUM(f.amount),2)` ≡ `sum(amount)`
+2. `_compare_aggregation` 增加**聚合参数表达式**比对（旧实现只比 `(func, distinct)`，`SUM(amount*(1-discount))` 漏判）
+3. `_compare_columns` 改 **measure-first**：`dimension_ref` 缺失不再产存疑项，正确口径可达 `consistent`
+4. map 侧口径检测范围收紧为「问题点名的指标」（`caliberMetrics`），与 `semanticRefs`（含同表注入的参考指标）分离
+
+**新发现的待讨论点：范围策略 C（别名归一 + 声称）**
+
+- **问题**：当前按「问句出现指标名」判定检测范围。问句把指标当**计算成分**提及时会误报——「用每箱售价乘**出货箱数**，算一下销售额」会点名 2 个指标，导致正确口径的销售额 SQL 因「计量列 boxes_shipped 未引用」被判 conflict（实测）。
+- **方案 C**：声称判定改为「表达式规范化匹配」∪「输出列别名归一匹配」：
+  - 别名归一：去 `m_` 前缀、去 `calc_/computed_/derived_` 修饰、小写/下划线归一 → `sales_amount` ≈ `m_sales_amount`
+  - 中英同义词典：`revenue/turnover/gmv → sales`、`qty/quantity → boxes` 等
+  - 命中才检测；未命中 → `unknown`（存疑不亮灯），彻底消除「成分当诉求」误报
+- **代价/风险**：同义词典是启发式，可能引入新误报（如 `net_roi` vs `m_marketing_roi`）；`calc_` 修饰剥离会改变「主动改名声明为替代算法」的语义判断
+- **演示期规避**：改用干净措辞「用每箱单价乘发货数量，算一下 2023 年各国家的销售额。」（实测只点名 `m_sales_amount`），无需等 C 落地
+- **状态**：⏸ 待讨论（C 不列入本期；演示按干净措辞录制）
