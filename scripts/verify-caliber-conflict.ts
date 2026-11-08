@@ -112,7 +112,8 @@ console.log("\n[1] buildCaliberArgs：SQL 全文单参数 + --metric 可重复")
   check("--metric 按序重复（每个指标一个）",
     args.filter((a, i) => a === "--metric" && args[i + 1] === "gmv").length === 1
     && args.filter((a, i) => a === "--metric" && args[i + 1] === "m_order").length === 1);
-  check("超时为短超时常量（~6s）", CALIBER_CLI_TIMEOUT_MS > 0 && CALIBER_CLI_TIMEOUT_MS <= 10000);
+  // 轻载实测 ~1.3s，但它在 message_end 与 agent 自身 govio-cli 并发，旧 6s 会被负载撞穿
+  check("超时留出负载余量（≥10s，≤20s）", CALIBER_CLI_TIMEOUT_MS >= 10000 && CALIBER_CLI_TIMEOUT_MS <= 20000);
 }
 
 // ── 2. 结果解析 ───────────────────────────────────────────────────────────
@@ -247,7 +248,7 @@ console.log("\n[4] message_end：semanticRefs 含 Metric → 事件带 caliberCh
   const failed = await runMessageEnd("sess-1", SQL_TEXT);
   check("CLI 失败 → 事件省略 caliberCheck 键（不阻断）",
     failed.length === 1 && !("caliberCheck" in (failed[0] as object)));
-  check("失败不重试（单次调用）", cliCalls.length === 1);
+  check("失败重试一次（只读幂等；旧实现单次静默降级导致黄灯静默缺失）", cliCalls.length === 2);
 
   cliCalls.length = 0;
   cliBehavior = () => Promise.resolve("<html>not json</html>");

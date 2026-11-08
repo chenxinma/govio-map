@@ -98,3 +98,22 @@ outputColumns 已干净（`["country","sales_amount","boxes_shipped"]`），但 
 **回归断言**（`tests/integration/ws-handler.test.ts`）：
 - `isStreaming=true` 走 steer 后引用仍保留
 - steer 之后仍保留；派发 `agent_end` 后才清空（下一轮未注入不继承旧口径）
+
+## ⑤ 补充：caliber 检测静默超时导致黄灯偶发缺失（2026-11-08 三次复测）
+
+**现象**：会话 `2026-11-08T13-18-37Z` 重试后，`gov-52` 仍是「有 6 个 semanticRefs、无 caliberCheck」。
+其 SQL 正是理想冲突形态（`SUM(price*boxes) AS sales_amount`，不含 amount）。
+
+**定位**：同 SQL + 同点名指标在本地经扩展钩子实跑 → **1323ms 返回 conflict**，证明链路正确。
+故运行时是 `runCaliberCheck` 返回了 undefined 且**静默**：
+- `CALIBER_CLI_TIMEOUT_MS` 仅 6s，而 caliber CLI 与 agent 自身的 govio-cli（observe load 等）
+  在 message_end 并发；负载下超时 → 降级 undefined → 节点无 caliberCheck（无任何日志）
+- 对比：`gov-35`（会话早期、机器空闲）成功带 check；`gov-46/48/52`（后期负载）全部缺失
+
+**修复**：
+1. 超时 6s → **12s**（与图谱查询同口径，留负载余量）
+2. 失败**重试一次**（只读幂等，仅失败路径付延迟）
+3. 失败时 `console.warn` 留底（`[caliber] 检测失败，省略 caliberCheck：metrics=… err=…`），不再无声降级
+4. `setSessionCaliberMetrics` 空数组也存（区分「明确无点名」与「本轮未注入」）；
+   `undefined` 时才回落 semanticRefs 的 Metric（兜底，避免彻底无检测）
+5. 断言更新：超时区间 10~20s；失败重试一次（cliCalls===2）；46/46

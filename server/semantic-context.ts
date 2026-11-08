@@ -44,14 +44,13 @@ export function getSessionSemanticRefs(sessionId: string): SemanticRef[] | undef
   return refsBySession.get(sessionId);
 }
 
-/** 记录本轮口径检测目标指标（问题点名）；空数组清除（无点名则不检测） */
+/** 记录本轮口径检测目标指标（问题点名）。
+ * 置空数组也**保留条目**（区别于 undefined）：undefined 表示「本轮未注入」，
+ * 调用方据此决定是否回退，不能把「明确无点名」误当成「不知道」。
+ */
 export function setSessionCaliberMetrics(sessionId: string, metrics: string[]): void {
   if (!sessionId) return;
-  if (metrics.length === 0) {
-    caliberBySession.delete(sessionId);
-    return;
-  }
-  caliberBySession.set(sessionId, metrics);
+  caliberBySession.set(sessionId, [...metrics]);
 }
 
 /** 取本会话最近一次注入中点名的指标；无则 undefined（调用方不做口径检测） */

@@ -9,8 +9,14 @@
 import type { CaliberCheck, CaliberDifference, CaliberStatus } from "../src/types/semantic.js";
 import { runGovioCliWithArgs } from "./govio-cli-exec.js";
 
-/** 短超时：口径比对是事后校验，绝不拖住 message_end 处理链 */
-export const CALIBER_CLI_TIMEOUT_MS = 6000;
+/**
+ * 口径比对 CLI 超时。
+ *
+ * 12s 而非 6s：实测单次 `sql caliber` 约 1.3s，但它在 message_end 钩子里执行，与
+ * agent 自身的 govio-cli（observe load 等）并发，负载下会迅速膨胀；旧 6s 一旦超时
+ * 就被降级为 undefined → 节点静默无 caliberCheck（实测 gov-46/48/52：有 semanticRefs 但无 check）。
+ */
+export const CALIBER_CLI_TIMEOUT_MS = 12000;
 
 /** CLI 执行器签名（与 runGovioCliWithArgs 一致），verify 脚本可注入 stub */
 export type CaliberCliRunner = (args: string[], timeoutMs?: number) => Promise<string>;
@@ -93,6 +99,9 @@ export function parseCaliberOutput(stdout: string): CaliberCheck | undefined {
 
 /**
  * 跑一次口径冲突检测。永不 throw：任何失败返回 undefined（调用方省略键）。
+ *
+ * 失败重试一次（比对是只读纯 CLI 调用，幂等）：沉默降级会让节点静默缺失黄灯，
+ * 而重试只在失败路径付出延迟。仍失败则告警留底（不再无声无息）。
  */
 export async function runCaliberCheck(
   sql: string,
@@ -100,10 +109,17 @@ export async function runCaliberCheck(
   runCli: CaliberCliRunner = runGovioCliWithArgs,
 ): Promise<CaliberCheck | undefined> {
   if (!sql || metricRefs.length === 0) return undefined;
-  try {
-    const stdout = await runCli(buildCaliberArgs(sql, metricRefs), CALIBER_CLI_TIMEOUT_MS);
-    return parseCaliberOutput(stdout);
-  } catch {
-    return undefined;
+  let lastError = "";
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const stdout = await runCli(buildCaliberArgs(sql, metricRefs), CALIBER_CLI_TIMEOUT_MS);
+      const parsed = parseCaliberOutput(stdout);
+      if (parsed) return parsed;
+      lastError = `输出不可解析（前 120 字）：${stdout.slice(0, 120)}`;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
   }
+  console.warn(`[caliber] 检测失败，省略 caliberCheck：metrics=${metricRefs.join(",")} err=${lastError}`);
+  return undefined;
 }

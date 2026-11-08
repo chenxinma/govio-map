@@ -989,8 +989,12 @@ export default function govioCanvasExtension(
     // 故补挂先于 flush 序列化完成，节点建出即带结果。
     // 范围纪律：不用 semanticRefs 里的全部 Metric（含因共享表被注入的指标，属 Context 参考），
     // 否则 SQL 没算那个指标就会被判「计量列未引用」而误报黄灯（实测：问 ROI 时 m_boxes_shipped 误报）。
-    // 降级纪律（T2.2 同款）：CLI 缺失/超时/报错/非 JSON 一律省略键、不阻断、不重试。
-    const metricRefs = getSessionCaliberMetrics(sessionContext.sessionId) ?? [];
+    // 兜底：仅当本轮**未写入**点名指标（undefined，如 steer 前的异常路径）才回落 semanticRefs，
+    // 避免彻底无检测；明确无点名（空数组）则不做检测。
+    const named = getSessionCaliberMetrics(sessionContext.sessionId);
+    const metricRefs = named ?? (semanticRefs ?? [])
+      .filter((r) => r.entityType === "Metric")
+      .map((r) => r.code ?? r.id);
     if (metricRefs.length > 0) {
       await Promise.all(
         pendingCaliber.map(async ({ nodeEvent, sql }) => {
