@@ -17,8 +17,15 @@ import { execFile } from "node:child_process";
 export type GraphRow = Record<string, unknown>;
 export type GraphQueryRunner = (cypher: string) => Promise<GraphRow[]>;
 
-/** 单条查询超时（毫秒）。注入在 prompt 组装路径上，宁可降级也不长时间阻塞会话。 */
-export const GRAPH_QUERY_TIMEOUT_MS = 6000;
+/**
+ * 单条查询超时（毫秒）。注入在 prompt 组装路径上，宁可降级也不长时间阻塞会话。
+ *
+ * 12s 而非 6s（BUGFIX-injection-graph-key）：注入会同时拉起最多 4 个 govio-cli 进程，
+ * 实测单条在轻载下已约 4.3s（DIMENSION_USED 类边查询），叠加 dev server 负载后
+ * 4 条并发集体逼近 6s 阀值，曾令会话留痕间歇性 degraded（图谱实体注入失败 →
+ * semanticRefs 空 → 口径冲突检测静默跳过）。
+ */
+export const GRAPH_QUERY_TIMEOUT_MS = 12000;
 
 /** 执行一条 Cypher 查询并返回行数组；CLI 报错/输出不可解析时 reject（调用方降级）。
  * 空结果是合法语义（未命中）：即使旧版 govio-cli 对空结果以非 0 退出码退出，也按空行处理。

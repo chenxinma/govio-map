@@ -67,7 +67,7 @@ const graphMock = vi.hoisted(() => ({
 
 vi.mock("../../server/graph-query.js", () => ({
   __esModule: true,
-  GRAPH_QUERY_TIMEOUT_MS: 6000,
+  GRAPH_QUERY_TIMEOUT_MS: 12000,
   runGraphQuery: graphMock.runGraphQuery,
 }));
 
