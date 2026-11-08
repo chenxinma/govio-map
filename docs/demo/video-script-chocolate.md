@@ -78,10 +78,10 @@
 
 **操作与台词**：
 
-1. 对话输入（自然语言）：
-   > 「chocolate 数据源里有哪些表？fact_sales 的表结构和关联关系是什么？」
+1. 对话输入（自然语言；**这句同时给后续定好节奏**——先出 SQL 节点再加载 DataFrame）：
+   > 「加载 chocolate 表结构和指标定义，后续处理先生产 SQLQuery 再加载 DataFrame」
 
-2. agent 查询知识图谱后回答，画布依次出现 **3 个 sourceTable 节点**（紫左边框）：
+2. agent 查询知识图谱后回答，画布依次出现 **4 个 sourceTable 节点**（实测 gov-31~34：fact_sales / dim_product / dim_country / dim_channel，紫左边框）：
    - 节点头标注（0.7.0 新增）：**数据源 `chocolate` · DuckDB · schema `chocolate` · 全限定名 `chocolate.chocolate.fact_sales`**——SQL 引用从此有据可依
    - 字段结构：`order_id`、`amount`、`boxes_shipped`、`discount_pct`、`price_per_box`、`marketing_spend`……
 
@@ -111,7 +111,7 @@
    > 「顺便看看澳大利亚的月度趋势。」
    ——不用等回复说完，任务自动排队执行。
 
-3. agent 生成 SQL 并执行，画布出现 **sqlQuery 节点** → **dataFrame 节点** `df_country_sales`（5 行 × 3 列）。
+3. agent 生成 SQL 并执行，画布出现 **sqlQuery 节点**（实测带 `caliberCheck=consistent`）→ **dataFrame 节点** `df_country_sales_2022_2023`（5 行 × 3 列：country_name / sales_amount / order_count）。
    打开节点详情，**Analysis Manifest 留痕**（0.7.0 核心）逐项可见：
    - SQL 全文、数据源、执行模型
    - 行列数：5 × 3、**结果校验和**（checksum）
@@ -144,10 +144,11 @@
 ### 3B 偏离口径（亮黄灯：全片高点）
 
 4. 对话输入（⚠ **措辞纪律**：只点名要的指标，不把成分指标写进问句）：
-   > 「用每箱单价乘发货数量，算一下 2023 年各国家的销售额。」
+   > 「用每箱单价乘发货数量，算一下 2023 年各国家的销售额。**只用这两列，不要引用 amount，也不要加对照列。**」
+
+   > **为何必须加后半句**（实测踩过的坑）：agent 天性会额外给一列官方口径做对照，实测会话 `13-18-37` 里它就输出了 `SUM(amount) AS sales_amount_std`——因为官方口径在 SQL 里存在，`sql caliber` 判 `consistent`，**黄灯不亮**（gov-48 实证）。必须明确禁止对照列，让 `amount` 完全不出现。
 
    > **为何这样问**：检测范围是「问题点名的指标」。若说成「用每箱售价乘**出货箱数**，算一下销售额」，问句会同时点名 `m_boxes_shipped`，正确口径的 SQL 也会因「未算箱数」被误报（实测）。用「每箱单价 / 发货数量」这类普通说法，只点名 `m_sales_amount`（实测验证）。
-
 5. agent 生成 SQL，**sqlQuery 节点亮起 ⚠ 黄色警示**（0.7.0 口径冲突检测）：
    - 差异说明：**聚合口径 + 计量列**——图谱 `m_sales_amount` 定义为 `sum(amount)`，本次用 `price_per_box × boxes_shipped` 重算，`amount` 未参与
    - 旁白强调产品态度：**宁可「存疑」亮灯，不静默放行**
@@ -281,3 +282,37 @@ dim_country ─┼─▶ SQL ──▶ df_country_sales ──▶ chart
 | 正确口径判定 | `govio-cli sql caliber --sql "SELECT ROUND(SUM(amount),2) ..." --metric m_sales_amount` | `consistent`（不误报，3A 的前提） |
 | 注入健康度 | 看最新 `.govio/sessions/*.injection.jsonl` 的 `graphStatus` | `ok`；若 `degraded` 看 `graphError`（已含退出码/信号/stderr） |
 | 服务端代码 | `npm run dev` 重启后再录 | 未重启会带旧注入超时/旧 CLI 行为 |
+
+---
+
+## 口径冲突触发条件（govio-cli 0.7.2 实测，录制必须遵守）
+
+检测范围 = **问题点名的指标**（问句里出现指标名/编码）；判定依据 = SQL 事实 vs 指标 `formula` + `measure` 列。
+
+| SQL 形态 | 判定 | 黄灯 | 备注 |
+|---|---|---|---|
+| `SUM(price_per_box*boxes_shipped) AS sales_amount`，**不含 amount** | conflict | ✅ **必中** | 计量列 amount 未引用（推荐的 3B 形态） |
+| `SUM(amount*(1-discount_pct/100)) AS sales_amount`，amount 被修饰 | conflict | ✅ | 聚合参数与 formula 不一致 |
+| `AVG(amount)` | conflict | ✅ | 聚合函数不一致 |
+| `SUM(price*boxes) AS sales_amount` **+ 另给 `SUM(amount) AS std`** | **consistent** | ❌ | **实测踩坑点**：官方口径存在即视为按口径实现 |
+| `ROUND(SUM(amount),2)` | consistent | ❌ | 正确口径本就不打扰（3A 用） |
+| 问句点名指标但 SQL 完全没算它 | conflict | ✅ | 计量列全部未引用 |
+
+**录制纪律（三B）**：措辞必须同时满足 ——
+1. 只点名目标指标（不要写「出货箱数」等指标全名，用「发货数量」）
+2. **禁止 `amount` 出现**（写「不要引用 amount」）
+3. **禁止对照列**（写「不要加对照列」）
+
+## 实测流程参照（会话 2026-11-08T13-18-37Z，可直接照抄）
+
+| 时刻 | 输入 | 画布产出 |
+|---|---|---|
+| 13:20 | 加载 chocolate 表结构和指标定义，后续处理先生产 SQLQuery 再加载 DataFrame | 4 × sourceTable（fact_sales / dim_product / dim_country / dim_channel） |
+| 13:21 | 按国家统计 2022–2023 年的销售额和订单数。 | sqlQuery（caliberCheck=consistent）+ `df_country_sales_2022_2023`（5×3） |
+| 13:21 | （流式中）顺便看看澳大利亚的月度趋势。 | sqlQuery + `df_hnmnpa`（25×3，steering 插队） |
+| 13:31 | 按渠道算营销 ROI，营销投入花得值不值？ | sqlQuery（semanticRefs 含 m_marketing_roi）+ `df_channel_roi`（3×4） |
+| 13:33 | 用每箱单价乘发货数量，算一下 2023 年各国家的销售额。（**需补禁止对照列**） | sqlQuery + `df_country_sales_2023_price_x_boxes`（5×3） |
+| 13:34 | （引用 DataFrame）画成图 | 2 × chart |
+
+**已知不稳定项（录制时留意）**：
+- `sqlQuery` 节点的 `caliberCheck` 偶发缺失（实测 gov-46/gov-48 有 `semanticRefs` 但无 check，CLI 单跑 1.3s 正常）——属运行时挂载竞态，**该节点就不会亮灯**。录制时若 3B 未亮灯：先看节点详情有无「口径差异说明」，无则**重录该句**。
