@@ -737,7 +737,7 @@ export default function govioCanvasExtension(
       datasource: Type.Optional(Type.String({ description: "数据源名（observe config.yaml 的 datasources 键，即 `observe load --datasource` 的取值，如 'chocolate'）。来源：图谱 Datasource 节点 datasource_name、数据源声明文件或用户指令；拿不到就省略，不得猜测" })),
       datasourceType: Type.Optional(Type.String({ description: "数据源类型：'duckdb' | 'postgres' | 'mysql' | 'oracle' | 'hive' | 'trino' | 'sqlalchemy-generic' | 'unknown'。来源（不得猜测，拿不到就省略）：图谱 Datasource 节点 source_type、数据源声明文件 source_type、或 observe config.yaml 该数据源 url scheme（duckdb:// → 'duckdb'；其他 SQLAlchemy URL 能判定则填对应类型，判不了填 'sqlalchemy-generic'）" })),
       schema: Type.Optional(Type.String({ description: "所属 schema，取图谱 PhysicalTable 查询结果的 `schema` 属性（如 'chocolate'）；拿不到就省略，不得猜测" })),
-      qualifiedName: Type.Optional(Type.String({ description: "SQL 中应使用的全限定表名，按 datasourceType 构造：duckdb 三段式 catalog.schema.table（文件库 catalog=库文件名，如 'chocolate.chocolate.dim_product'；裸表名报 does not exist、两段式报 Ambiguous reference）；postgres 两段式 schema.table；mysql 裸表名或 db.table。来源：图谱 PhysicalTable.full_table_name（schema.table）+ 数据源类型按上述规则构造，或查询结果直接给出；构造不出就省略，不得猜测" })),
+      qualifiedName: Type.Optional(Type.String({ description: "SQL 中应使用的全限定表名，按 datasourceType 构造：duckdb 三段式 catalog.schema.table（文件库 catalog=库文件名，如 'chocolate.chocolate.dim_product'；裸表名报 does not exist、两段式报 Ambiguous reference）；postgres 两段式 schema.table；mysql 裸表名或 db.table。来源：图谱 PhysicalTable.full_table_name（`<datasource_name>.<schema>.<table>` 三段式）+ 数据源类型按上述规则构造，或查询结果直接给出；构造不出就省略，不得猜测" })),
     }),
     execute: async (_toolCallId, params) => {
       const datasourceType = normalizeDatasourceType(params.datasourceType);

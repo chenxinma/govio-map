@@ -47,8 +47,17 @@
 ## 实证案例：chocolate（本机 DuckDB 文件库）
 
 数据源声明（observe `config.yaml`）：`chocolate: { url: duckdb://D:\Work\gov-io\govio\data\chocolate.db }`。
-图谱侧 `PhysicalTable.full_table_name = "chocolate.dim_product"`（两段式 `schema.table`，**不含 catalog**）、
-`schema = "chocolate"`（`govio-cli query` 实测）。
+
+图谱侧（**2026-11-08 起，口径已修正为三段式**）：`PhysicalTable.full_table_name = "chocolate.chocolate.dim_product"`
+（`<datasource_name>.<schema>.<table>`，与 `govio-meta` skill「命名语义」及 `qualify()` 输出一致）、
+`schema = "chocolate"`，`govio-cli query` 实测。同库另一个数据源 `sales`
+（`duckdb://D:/Work/gov-io/data/sales.duckdb`，库内 schema 为 `sales`）为 `sales.sales.customer_master` 等 5 张表。
+
+> 历史坑：2026-11-08 之前的图库用两段式 `schema.table`（`chocolate.dim_product`）作 `full_table_name`，
+> 与现行 CLI（`full_table_name = <datasource_name>.<schema>.<table>`）产出不同 node_id，而
+> `meta graph --mode update` 只 upsert 不删旧键 → 同一张表在图谱里留下两套节点（4 表 / 17 列 / 指标边各双份），
+> 按列名匹配的查询返回双份结果。**命名口径变更后必须 `meta graph --mode rebuild` 全量重建**（已执行，见
+> `docs/tasks/BUGFIX-meta-naming-duplicate.md`），仅跑 `update` 无法收敛。
 
 `observe load --datasource chocolate` 三次试错对照（2026-10-31 真实会话）：
 
@@ -58,22 +67,25 @@
 | `FROM chocolate.dim_product` | `success:false`，`Ambiguous reference` | 两段式可被解读为 `catalog.table` 或 `schema.table`，恰遇 catalog 与 schema 同名（都叫 chocolate）产生二义 |
 | `FROM chocolate.chocolate.dim_product` | `success:true`，`rows:12` | 三段式 `catalog.schema.table` 唯一定位 |
 
-结论：**DuckDB 文件库一律写三段式**。catalog 段来自 config.yaml url 的库文件名，schema 段来自图谱
-`PhysicalTable.schema`，两段拼接即 qualifiedName——全部有据可查，无需试错。
+结论：**DuckDB 文件库一律写三段式**。直接取图谱 `PhysicalTable.full_table_name`（已是三段式），或由
+config.yaml url 的库文件名（catalog）+ 图谱 `PhysicalTable.schema`（schema）+ 表名拼接——全部有据可查，无需试错。
+注意 catalog 与 schema 同名的数据源（chocolate、sales 皆如此）两段式一定二义，不存在"碰巧能用"的情况。
 
 ## agent 取值来源分层（禁止猜测）
 
 sourceTable 节点四个标注字段（`datasource/datasourceType/schema/qualifiedName`）的取值只能来自：
 
 1. **图谱查询结果**（`govio-cli query`，节点/属性名以 govio skill `assets/schema.md` 为准）：
-   - `PhysicalTable` 的 `schema`、`full_table_name`（两段式 `schema.table`）；
-   - `Datasource` 节点的 `datasource_name`、`source_type`（仅当图谱已执行 `meta` 导入时存在；本机当前图库无此节点，查询会报 Binder exception——此时跳到第 2 层）。
+   - `PhysicalTable` 的 `schema`、`full_table_name`（三段式 `<datasource_name>.<schema>.<table>`）；
+   - `Datasource` 节点的 `datasource_name`、`source_type`（`meta` / `meta import-schema` 导入后存在；本机当前图库有
+     `chocolate`(duckdb) 与 `sales`(duckdb) 两个节点，经 `OWNS` 边归属各自表）。
 2. **数据源声明/配置**：
    - 元数据侧 datasource 声明文件的 `source_type`；
    - observe `config.yaml` 的 `datasources.<name>.url` scheme（`duckdb://` → `duckdb`；其他 SQLAlchemy URL 能判定则填对应类型，判不了填 `sqlalchemy-generic`）。
 3. **省略**：以上都拿不到就省略该字段（`govio_create_source_table` 的参数全部 Optional，节点 UI 回退旧显示），**不得编造**。
 
-qualifiedName 构造规则：由第 1 层给出 `schema.table`，第 2 层给出类型与 catalog/库名，按上表拼接。
+qualifiedName 构造规则：优先直接取第 1 层的 `full_table_name`；否则由第 1 层给出 schema、第 2 层给出类型与
+catalog/库名，按上表拼接。
 构造不出（类型未知、缺 schema）就省略；agent 写 SQL 遇到 sourceTable 缺 qualifiedName 时，应先补查
 图谱与声明，而不是向 CLI 盲试表名。
 
