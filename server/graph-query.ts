@@ -20,7 +20,9 @@ export type GraphQueryRunner = (cypher: string) => Promise<GraphRow[]>;
 /** 单条查询超时（毫秒）。注入在 prompt 组装路径上，宁可降级也不长时间阻塞会话。 */
 export const GRAPH_QUERY_TIMEOUT_MS = 6000;
 
-/** 执行一条 Cypher 查询并返回行数组；CLI 报错/输出不可解析时 reject（调用方降级）。 */
+/** 执行一条 Cypher 查询并返回行数组；CLI 报错/输出不可解析时 reject（调用方降级）。
+ * 空结果是合法语义（未命中）：即使旧版 govio-cli 对空结果以非 0 退出码退出，也按空行处理。
+ */
 export const runGraphQuery: GraphQueryRunner = (cypher) =>
   new Promise((resolve, reject) => {
     execFile(
@@ -29,7 +31,11 @@ export const runGraphQuery: GraphQueryRunner = (cypher) =>
       { encoding: "utf-8", timeout: GRAPH_QUERY_TIMEOUT_MS },
       (error, stdout) => {
         if (error) {
-          reject(error);
+          if (stdout && isEmptyResultOutput(stdout)) {
+            resolve([]);
+          } else {
+            reject(error);
+          }
           return;
         }
         try {
@@ -42,15 +48,24 @@ export const runGraphQuery: GraphQueryRunner = (cypher) =>
   });
 
 /**
+ * 空结果形态：govio-cli 对无行查询打印 `Data not found.`（实测无 `[]` 行；
+ * 旧版曾以非 0 退出码退出）——空结果不得当失败降级（BUGFIX-injection-graph-key）。
+ */
+export function isEmptyResultOutput(stdout: string): boolean {
+  return /data not found/i.test(stdout);
+}
+
+/**
  * 从 govio-cli query 的 stdout 解析结果行。
  * 取首个以 `[` 开头的行（状态行以 `Result output:` 开头，不会误中）；
  * 兼容 pretty-print 多行 JSON（解析失败时把该行到结尾整体再试一次）。
- * 找不到结果行视为输出不可解析并抛错——空结果会打印 `[]`，不会走到这里。
+ * 空结果（`Data not found.`）返回空数组；其余找不到结果行的输出视为不可解析并抛错。
  */
 export function parseQueryRows(stdout: string): GraphRow[] {
   const lines = stdout.split(/\r?\n/);
   const idx = lines.findIndex((l) => l.trimStart().startsWith("["));
   if (idx < 0) {
+    if (isEmptyResultOutput(stdout)) return [];
     throw new Error(`govio-cli query 输出无结果行: ${stdout.slice(0, 200)}`);
   }
   const first = lines.slice(idx).join("\n");

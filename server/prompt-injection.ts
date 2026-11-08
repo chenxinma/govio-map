@@ -108,9 +108,29 @@ function parseDataJson(data?: string | null): Record<string, unknown> {
   }
 }
 
-/** 图谱侧 two-segment 表键（PhysicalTable.full_table_name 形态：`schema.table`） */
+/**
+ * 图谱侧表键（PhysicalTable.full_table_name / Col.full_table_name 形态）。
+ * 图谱存的是 SQL 限定名形态（ladybug 实测 duckdb 三段式 `chocolate.chocolate.fact_sales`），
+ * 与 T2.0 的 qualifiedName 同形。**禁止对已带点号的表名再拼 schema 前缀**——曾拼出
+ * `chocolate.chocolate.chocolate.fact_sales` 四段式，Col 查询恒空、图谱注入降级，
+ * semanticRefs 缺失令 T2.3 口径冲突检测静默跳过（BUGFIX-injection-graph-key）。
+ */
 export function graphTableKey(fact: TableFact): string | undefined {
-  return fact.schema && fact.tableName ? `${fact.schema}.${fact.tableName}` : undefined;
+  for (const candidate of [fact.qualifiedName, fact.tableName]) {
+    if (candidate && candidate.includes(".")) return candidate;
+  }
+  return fact.schema && fact.tableName ? `${fact.schema}.${fact.tableName}` : fact.tableName;
+}
+
+/**
+ * 表键候选双形（BUGFIX-injection-graph-key）：图谱 full_table_name 是否含 catalog 段
+ * 随导入环境不一致（2↔3 段偏差），查询/匹配时双形兼容，避免段数错位导致恒空。
+ */
+export function tableKeyCandidates(key: string): string[] {
+  const parts = key.split(".");
+  const out = [key];
+  if (parts.length >= 3) out.push(parts.slice(1).join("."));
+  return out;
 }
 
 function questionMentions(question: string, term?: string): boolean {
@@ -189,8 +209,9 @@ const QUERY_METRIC_DIMENSIONS =
   "d.granularity AS granularity, d.values_example AS values_example LIMIT 300";
 
 function queryTableColumns(fullTableName: string): string {
+  const forms = tableKeyCandidates(fullTableName).map(cypherLiteral).join(", ");
   return (
-    `MATCH (c:Col) WHERE c.full_table_name = ${cypherLiteral(fullTableName)} ` +
+    `MATCH (c:Col) WHERE c.full_table_name IN [${forms}] ` +
     "RETURN c.id AS id, c.column_name AS column_name, c.data_type AS data_type, " +
     "c.dtype AS dtype, c.precision AS precision, c.scale AS scale LIMIT 300"
   );
@@ -279,8 +300,13 @@ export async function buildInjectionContext(opts: BuildInjectionOptions): Promis
     tablesByMetric.get(metricId)!.add(ftn);
   }
   const keySet = new Set(tableKeys.map((k) => k.toLowerCase()));
+  /** 表键等价：图谱 full_table_name 与节点限定名可能相差 catalog 段（2↔3 段式），后缀匹配兜底 */
+  const sameTableKey = (a: string, b: string): boolean =>
+    a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`);
   const isReferencedMetric = (m: GraphEntity): boolean =>
-    [...(tablesByMetric.get(m.id) ?? [])].some((t) => keySet.has(t.toLowerCase()));
+    [...(tablesByMetric.get(m.id) ?? [])].some((t) =>
+      [...keySet].some((k) => sameTableKey(t.toLowerCase(), k)),
+    );
   const selectedMetrics = metrics
     .filter((m) => isReferencedMetric(m) || questionMentions(question, m.name) || questionMentions(question, m.code))
     .slice(0, MAX_METRICS);

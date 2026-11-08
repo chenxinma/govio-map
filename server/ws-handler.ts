@@ -554,8 +554,10 @@ async function makePrompt(msg: WSClientMessageOf<"prompt">, session: SessionInst
   // T2.2 语义引用归因：本轮注入的图谱实体暂存为「本会话最近一次注入上下文」，
   // message_end 建 sqlQuery 节点时取来写入 semanticRefs（空则不写键）。
   setSessionSemanticRefs(session.sessionId, toSemanticRefs(ctx.graphEntities));
-  // 注入留痕：被注入节点 + 图谱实体 ID 列表随会话 sidecar 持久化（append-only）
-  if (sessionFile && (ctx.tables.length > 0 || ctx.graphEntities.length > 0)) {
+  // 注入留痕：被注入节点 + 图谱实体 ID 列表随会话 sidecar 持久化（append-only）。
+  // degraded 也留痕：纯问题命中场（无引用节点）注入失败若不留痕会静默丢失可诊断性
+  //（BUGFIX-injection-graph-key：2026-11-08 会话中失败完全无痕）。
+  if (sessionFile && (ctx.tables.length > 0 || ctx.graphEntities.length > 0 || ctx.graphStatus === "degraded")) {
     recordInjectionTrace(
       sessionFile,
       buildTraceEntry(ctx, { sessionId: session.sessionId, sessionFile, content: msg.content ?? "" }),

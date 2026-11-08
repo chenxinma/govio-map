@@ -32,7 +32,7 @@ import {
   type InjectionContext,
   type TableFact,
 } from "../server/prompt-injection.js";
-import type { GraphQueryRunner, GraphRow } from "../server/graph-query.js";
+import { parseQueryRows, isEmptyResultOutput, type GraphQueryRunner, type GraphRow } from "../server/graph-query.js";
 import { buildTranscript } from "../server/session-history.js";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
@@ -56,9 +56,10 @@ const FX_METRICS: GraphRow[] = [
   { id: "ME2", code: "m_boxes_shipped", name: "出货箱数", definition: "统计周期内所有订单的出货箱数合计", metric_type: "atomic", formula: "", unit: "箱" },
   { id: "ME3", code: "m_unrelated", name: "无关指标", definition: "不应被注入", metric_type: "atomic", formula: "", unit: "元" },
 ];
+// 图谱 full_table_name 实测为 SQL 限定名形态（duckdb 三段式，2026-11-08 ladybug 实证）
 const FX_METRIC_TABLES: GraphRow[] = [
-  { metric_id: "ME1", table_full_name: "chocolate.fact_sales" },
-  { metric_id: "ME2", table_full_name: "chocolate.fact_sales" },
+  { metric_id: "ME1", table_full_name: "chocolate.chocolate.fact_sales" },
+  { metric_id: "ME2", table_full_name: "chocolate.chocolate.fact_sales" },
 ];
 const FX_METRIC_DIMS: GraphRow[] = [
   { metric_id: "ME1", id: "DI1", code: "dim_time", name: "时间维度", granularity: "day", values_example: "2024-01-01" },
@@ -188,7 +189,17 @@ console.log("\n[B] 表事实解析（禁止猜测、字段可追溯）");
   );
   check("sidecar 节点数据补齐消息 data 缺失的 qualifiedName/datasourceType",
     facts.length === 1 && facts[0].qualifiedName === "chocolate.chocolate.dim_product" && facts[0].datasourceType === "duckdb" && facts[0].tableName === "dim_product");
-  check("graphTableKey 为图谱 two-segment 形态（schema.table）", graphTableKey(facts[0]) === "chocolate.dim_product");
+  check("graphTableKey 取 qualifiedName（图谱 full_table_name 形态，三段式）", graphTableKey(facts[0]) === "chocolate.chocolate.dim_product");
+}
+
+{
+  // 回归（BUGFIX-injection-graph-key）：历史节点 tableName 存的就是限定名，
+  // graphTableKey 不得再拼 schema 前缀——曾产生 chocolate.chocolate.chocolate.fact_sales 四段式
+  const facts = resolveTableFacts(
+    [{ nodeId: "n1", label: "fact_sales", type: "sourceTable", data: JSON.stringify({ full_table_name: "chocolate.chocolate.fact_sales", schema: "chocolate" }) }],
+  );
+  check("tableName 已带点号时不再拼 schema 前缀（四段式回归防护）",
+    graphTableKey(facts[0]) === "chocolate.chocolate.fact_sales");
 }
 
 {
@@ -226,8 +237,8 @@ console.log("\n[C] 图谱实体注入与降级（图谱不可达不阻断会话�
   check("无关实体不注入（ME3 未命中问题与引用表）", !ids.includes("ME3"));
   check("Cypher 纪律：全部查询以 MATCH 开头且带 LIMIT 300",
     cyphers.length === 4 && cyphers.every((c) => c.startsWith("MATCH") && c.includes("LIMIT 300")));
-  check("Col 查询按图谱 two-segment 表名精确匹配",
-    cyphers.some((c) => c.includes('c.full_table_name = "chocolate.dim_product"')));
+  check("Col 查询按表键双形匹配（三段式 + 去 catalog 段兜底）",
+    cyphers.some((c) => c.includes('c.full_table_name IN ["chocolate.chocolate.dim_product", "chocolate.dim_product"]')));
   check("graphStatus=ok", ctx.graphStatus === "ok" && ctx.graphError === undefined);
 }
 
@@ -240,6 +251,23 @@ console.log("\n[C] 图谱实体注入与降级（图谱不可达不阻断会话�
   });
   const ids = ctx.graphEntities.map((e) => e.id);
   check("引用表命中指标（USES_TABLE 边）注入：ME1+ME2", ids.includes("ME1") && ids.includes("ME2"));
+}
+
+{
+  // 表键段数容错（BUGFIX-injection-graph-key）：图谱 full_table_name 2↔3 段偏差（catalog 前缀）
+  // 不应让引用表指标失联——semanticRefs 缺失会令 T2.3 口径冲突检测静默跳过
+  const twoPartRunner: GraphQueryRunner = async (cypher) => {
+    if (cypher.includes("USES_TABLE")) return [{ metric_id: "ME1", table_full_name: "chocolate.fact_sales" }];
+    if (cypher.includes("DIMENSION_USED")) return [];
+    if (cypher.includes("MATCH (c:Col)")) return [];
+    return FX_METRICS;
+  };
+  const ctx = await buildInjectionContext({
+    content: "随便问点什么",
+    referencedNodes: [{ nodeId: "n-sales", label: "fact_sales", type: "sourceTable", data: JSON.stringify(factSales) }],
+    runQuery: twoPartRunner,
+  });
+  check("图谱表键 2↔3 段偏差仍命中引用表指标（后缀容错）", ctx.graphEntities.some((e) => e.id === "ME1"));
 }
 
 {
@@ -557,6 +585,22 @@ console.log("\n[F] 会话 transcript：CTX 注入行剥离（留痕保留在 jso
   check("CTX 行剥离后上屏内容只剩用户问题（REF+CTX）", page.messages[0].content === "真实问题");
   check("CTX-only 注入同样剥离（无 REF）", page.messages[1].content === "无引用问题" && page.messages[1].referencedNodes === undefined);
   check("REF 标签在剥离 CTX 后仍可解析", page.messages[0].referencedNodes?.length === 1 && page.messages[0].referencedNodes[0].label === "dim_product");
+}
+
+// ── G. 空结果处理（Data not found. 是合法空行，不是失败） ────────────────────
+
+console.log("\n[G] 空结果处理（BUGFIX-injection-graph-key：Data not found. 不降级）");
+
+{
+  check("parseQueryRows：Data not found. → 空数组（旧假设空结果打印 [] 有误）",
+    parseQueryRows("Data not found.\n").length === 0);
+  check("parseQueryRows：正常状态行 + 结果行解析",
+    JSON.stringify(parseQueryRows('Result output: .govio\\output.json rows: 1 columns: ["a"]\n[{"a":1}]')) === '[{"a":1}]');
+  check("parseQueryRows：无结果行且非空结果仍抛错（不可解析不静默）", (() => {
+    try { parseQueryRows("weird output"); return false; } catch { return true; }
+  })());
+  check("isEmptyResultOutput 识别空结果输出",
+    isEmptyResultOutput("Data not found.") && isEmptyResultOutput("data not found.") && !isEmptyResultOutput('[{"a":1}]'));
 }
 
 // ── 汇总 ────────────────────────────────────────────────────────────────────
