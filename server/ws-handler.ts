@@ -81,6 +81,12 @@ export function setupWebSocket(server: import("http").Server) {
             break;
           case "agent_end":
             console.log("[ws] Agent session ended");
+            // 口径引用生命周期终点：本轮 agent 运行结束（所有 message_end 已派发完）。
+            // 不能在 steer/followUp 或 prompt dispatch 的 finally 里清：
+            // - steer/followUp 属于**同一次运行**的补充指令，其后续 SQL 仍属于本轮注入上下文；
+            // - prompt/steer 入队即 resolve，finally 早于 message_end（旧 bug）。
+            // 清在此处可保证「未注入的新运行不继承上一轮口径」。
+            clearSessionSemanticRefs(s.sessionId);
             sendMsg(ws, { type: "agent_end" });
             break;
           case "queue_update":
@@ -216,8 +222,9 @@ export function setupWebSocket(server: import("http").Server) {
         break;
       case "steer":
         if (msg.content) {
-          // steer 不走注入（不调 makePrompt）→ 清掉上一轮口径引用，避免错归因给本轮产出
-          clearSessionSemanticRefs(session.sessionId);
+          // steer 属于本轮运行的补充指令（同一次注入上下文）→ **不清**口径引用，
+          // 否则本轮后续产出的 SQL 会丢 semanticRefs（实测：steer 后 5s 生成的 SQL 无口径）。
+          // 清理统一由 agent_end 负责。
           // Steering message: inject into the currently running agent so it
           // takes effect before the next LLM call (after the current tool calls
           // finish). The clientMsgId lets the frontend mark its local bubble as
@@ -244,8 +251,7 @@ export function setupWebSocket(server: import("http").Server) {
         break;
       case "followUp":
         if (msg.content) {
-          // followUp 同样不走注入 → 清掉上一轮口径引用
-          clearSessionSemanticRefs(session.sessionId);
+          // followUp 同样不注入，但属本轮补充 → 不清口径引用（统一由 agent_end 处理）
           const clientMsgId = msg.clientMsgId;
           session
             .followUp(msg.content)

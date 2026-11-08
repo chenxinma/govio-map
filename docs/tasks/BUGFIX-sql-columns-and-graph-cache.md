@@ -76,3 +76,25 @@ CTX 里能看到 `m_sales_amount` 等实体），但所有 sqlQuery 节点 `sema
 
 **回归断言**（`tests/integration/ws-handler.test.ts`）：模拟 `isStreaming=true`，
 prompt 走 steer 排队后断言 `getSessionSemanticRefs` / `getSessionCaliberMetrics` 仍非空。
+
+## ④ 补充：steer 也属于本轮运行，不得清空口径引用（2026-11-08 二次复测）
+
+**现象**：会话 `2026-11-08T08-53-51-741Z_01a1ba5d-*`：注入 `ok`（`m_sales_amount` 已注入）、
+outputColumns 已干净（`["country","sales_amount","boxes_shipped"]`），但 sqlQuery 节点仍无
+`semanticRefs`/`caliberCheck`。
+
+**证据链**：
+- 08:55:26 用户 prompt「用每箱单价乘发货数量…销售额。」→ 注入 ok、点名 `m_sales_amount`
+- 08:56:01 一条 **steer** 消息 `sales_2023_by_country_price_x_boxes sql`
+- 08:56:04~06 才生成 sqlQuery 节点（gov-132）→ 该 SQL 属于 steer 之后的同一次运行
+
+**根因**：③ 的修复把「清理」挪到了 steer/followUp 分支，但 steer 是**同一次 agent 运行**的
+补充指令，其后续产出仍应归因到本轮注入上下文；清了就丢口径。
+
+**修复**：生命周期统一到 `agent_end`（所有 message_end 已派发完）——
+`ws-handler` 的 `agent_end` 分支 `clearSessionSemanticRefs`；prompt finally、steer、followUp
+一律不清（steer/followUp 不再清）。
+
+**回归断言**（`tests/integration/ws-handler.test.ts`）：
+- `isStreaming=true` 走 steer 后引用仍保留
+- steer 之后仍保留；派发 `agent_end` 后才清空（下一轮未注入不继承旧口径）

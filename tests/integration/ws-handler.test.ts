@@ -23,7 +23,11 @@ vi.mock("../../server/agent.js", () => {
   const fakeSession = {
     sessionId: "sess-x4-mock",
     isStreaming: false,
-    subscribe: () => () => {},
+    subscribe: (cb: (e: { type: string }) => void) => {
+      // 捕获订阅者，供测试派发 agent_end 等生命周期事件
+      (globalThis as Record<string, unknown>).__wsEmit = cb;
+      return () => {};
+    },
     prompt: vi.fn(() => Promise.resolve()),
     steer: vi.fn(() => Promise.resolve("steered")),
     followUp: vi.fn(() => Promise.resolve("queued")),
@@ -430,6 +434,47 @@ describe("口径引用生命周期（流式排队不得提前清空）", () => {
     expect(getSessionCaliberMetrics("sess-x4-mock")?.length).toBeGreaterThan(0);
 
     fake.isStreaming = false;
+    ws.close();
+  });
+});
+
+describe("口径引用生命周期：agent_end 清理", () => {
+  let server: Server;
+  let port: number;
+
+  beforeAll(async () => {
+    ({ server, port } = await startServer());
+  });
+  afterAll(async () => {
+    permissionManager.clearAll();
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      setTimeout(() => resolve(), 500).unref();
+    });
+  });
+
+  it("本轮运行结束（agent_end）才清理，保证 steer 后续产出仍可归因", async () => {
+    const { getSessionSemanticRefs } = await import("../../server/semantic-context.js");
+
+    const { ws, col } = await connectWithCollector(port);
+    await col.waitFor((m) => m.type === "session_ready");
+    // 连接建立订阅后才取到本连接的订阅回调（取早了会拿到上一次已关闭连接的）
+    const emit = (globalThis as Record<string, unknown>).__wsEmit as
+      | ((e: { type: string }) => void)
+      | undefined;
+    expect(typeof emit).toBe("function");
+
+    ws.send(JSON.stringify({ type: "prompt", content: "算一下 2023 年各国家的销售额" }));
+    await vi.waitFor(() => expect(getSessionSemanticRefs("sess-x4-mock")?.length).toBeGreaterThan(0));
+
+    // steer 属于同一轮运行：不清理
+    ws.send(JSON.stringify({ type: "steer", content: "换个口径再算一次" }));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(getSessionSemanticRefs("sess-x4-mock")?.length).toBeGreaterThan(0);
+
+    // agent_end：本轮结束 → 清理，下一轮未注入时不继承旧口径
+    emit?.({ type: "agent_end" });
+    await vi.waitFor(() => expect(getSessionSemanticRefs("sess-x4-mock")).toBeUndefined());
     ws.close();
   });
 });
