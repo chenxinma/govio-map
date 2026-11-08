@@ -1,6 +1,6 @@
 import { pushGovioNode, type GovioNodeCreateEvent } from "../govio-node-queue.js";
 import { runCaliberCheck, type CaliberCliRunner } from "../caliber-check.js";
-import { getSessionSemanticRefs } from "../semantic-context.js";
+import { getSessionSemanticRefs, getSessionCaliberMetrics } from "../semantic-context.js";
 import {
   isLoadFailure,
   observeColumnName,
@@ -942,14 +942,14 @@ export default function govioCanvasExtension(
       pendingCaliber.push({ nodeEvent, sql: block.sql });
     }
 
-    // T2.3 口径冲突检测：semanticRefs 含 Metric 时经 `govio-cli sql caliber` 比对，
+    // T2.3 口径冲突检测：**问题点名的指标**经 `govio-cli sql caliber` 比对，
     // 结果补挂到已入队事件的 caliberCheck 字段。pi 的 message_end 扩展钩子先于
     // WS 广播被 await（agent-session：extensions first, then public listeners），
     // 故补挂先于 flush 序列化完成，节点建出即带结果。
+    // 范围纪律：不用 semanticRefs 里的全部 Metric（含因共享表被注入的指标，属 Context 参考），
+    // 否则 SQL 没算那个指标就会被判「计量列未引用」而误报黄灯（实测：问 ROI 时 m_boxes_shipped 误报）。
     // 降级纪律（T2.2 同款）：CLI 缺失/超时/报错/非 JSON 一律省略键、不阻断、不重试。
-    const metricRefs = (semanticRefs ?? [])
-      .filter((r) => r.entityType === "Metric")
-      .map((r) => r.code ?? r.id);
+    const metricRefs = getSessionCaliberMetrics(sessionContext.sessionId) ?? [];
     if (metricRefs.length > 0) {
       await Promise.all(
         pendingCaliber.map(async ({ nodeEvent, sql }) => {

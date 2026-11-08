@@ -80,6 +80,15 @@ export interface InjectionContext {
   graphEntities: GraphEntity[];
   graphStatus: GraphStatus;
   graphError?: string;
+  /**
+   * 口径检测目标：**问题点名的指标**（code 优先，缺则 id）。
+   *
+   * 与 graphEntities 里的 Metric 不同——后者包含「因共享物理表而被注入」的指标（Context 参考用），
+   * 它们并非本次用户诉求。若全部拿去跑 `sql caliber`，只要 SQL 没算那个指标就会被判
+   * 「计量列未引用」→ 误报黄灯（实测：问 ROI 的 SQL 被 m_boxes_shipped 误报 conflict）。
+   * 故口径检测只针对用户真正点名（名称/编码命中）的指标；无点名则不检测。
+   */
+  caliberMetrics?: string[];
 }
 
 /** makePrompt 传入的消息形状（WSMessage 的 prompt 分支子集） */
@@ -314,6 +323,10 @@ export async function buildInjectionContext(opts: BuildInjectionOptions): Promis
   const selectedMetrics = metrics
     .filter((m) => isReferencedMetric(m) || questionMentions(question, m.name) || questionMentions(question, m.code))
     .slice(0, MAX_METRICS);
+  // 口径检测目标：仅「问题点名」的指标（表相关但未点名的不算诉求，拿去检测会误报）
+  const caliberMetrics = selectedMetrics
+    .filter((m) => questionMentions(question, m.name) || questionMentions(question, m.code))
+    .map((m) => m.code ?? m.id);
 
   // 维度筛选：选中指标的维度 ∪ 问题命中的维度（Dimension.values_example = 枚举码值）
   const dimByMetric = new Map<string, GraphEntity[]>();
@@ -351,6 +364,7 @@ export async function buildInjectionContext(opts: BuildInjectionOptions): Promis
     graphEntities: [...selectedMetrics, ...selectedDims, ...cols.slice(0, MAX_COLS_PER_TABLE * Math.max(tableKeys.length, 1))],
     graphStatus,
     ...(graphError !== undefined ? { graphError } : {}),
+    ...(caliberMetrics.length > 0 ? { caliberMetrics } : {}),
   };
 }
 

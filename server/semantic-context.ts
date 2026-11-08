@@ -13,6 +13,8 @@
 import type { SemanticRef } from "../src/types/semantic.js";
 
 const refsBySession = new Map<string, SemanticRef[]>();
+/** 口径检测目标指标（问题点名指标）与 semanticRefs 同生命周期，但范围更窄（T2.3 误报修复） */
+const caliberBySession = new Map<string, string[]>();
 
 /** GraphEntity → SemanticRef（code/name 缺失即省略键；空输入返回空数组） */
 export function toSemanticRefs(
@@ -42,8 +44,25 @@ export function getSessionSemanticRefs(sessionId: string): SemanticRef[] | undef
   return refsBySession.get(sessionId);
 }
 
+/** 记录本轮口径检测目标指标（问题点名）；空数组清除（无点名则不检测） */
+export function setSessionCaliberMetrics(sessionId: string, metrics: string[]): void {
+  if (!sessionId) return;
+  if (metrics.length === 0) {
+    caliberBySession.delete(sessionId);
+    return;
+  }
+  caliberBySession.set(sessionId, metrics);
+}
+
+/** 取本会话最近一次注入中点名的指标；无则 undefined（调用方不做口径检测） */
+export function getSessionCaliberMetrics(sessionId: string): string[] | undefined {
+  if (!sessionId) return undefined;
+  return caliberBySession.get(sessionId);
+}
+
 /** 本轮 prompt 结束后清除（steer/followUp 之后的 message_end 不得串到上一轮的口径） */
 export function clearSessionSemanticRefs(sessionId: string): void {
   if (!sessionId) return;
   refsBySession.delete(sessionId);
+  caliberBySession.delete(sessionId);
 }

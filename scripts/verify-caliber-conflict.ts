@@ -32,7 +32,7 @@ import {
   runCaliberCheck,
   type CaliberCliRunner,
 } from "../server/caliber-check.js";
-import { clearSessionSemanticRefs, setSessionSemanticRefs } from "../server/semantic-context.js";
+import { clearSessionSemanticRefs, getSessionSemanticRefs, setSessionCaliberMetrics, setSessionSemanticRefs } from "../server/semantic-context.js";
 import { canvasPathFor, loadCanvas, saveCanvas } from "../server/session-history.js";
 import { CALIBER_ASPECT_LABELS, caliberNodeAppearance, CALIBER_WARNING_COLOR } from "../src/utils/caliber.js";
 import type { CanvasEvent } from "../src/services/canvas-service.js";
@@ -232,6 +232,7 @@ console.log("\n[4] message_end：semanticRefs 含 Metric → 事件带 caliberCh
   cliCalls.length = 0;
   cliBehavior = () => Promise.resolve(CLI_CONFLICT);
   setSessionSemanticRefs("sess-1", REFS);
+  setSessionCaliberMetrics("sess-1", ["gmv"]);
   const events = await runMessageEnd("sess-1", SQL_TEXT);
   check("事件带 caliberCheck（深度相等）",
     JSON.stringify(events[0]?.caliberCheck) === JSON.stringify(CHECK_CONFLICT));
@@ -255,8 +256,9 @@ console.log("\n[4] message_end：semanticRefs 含 Metric → 事件带 caliberCh
 
   cliCalls.length = 0;
   setSessionSemanticRefs("sess-1", [{ entityType: "Col", id: "c1" }]);
+  setSessionCaliberMetrics("sess-1", []);
   const noMetrics = await runMessageEnd("sess-1", SQL_TEXT);
-  check("semanticRefs 无 Metric → 不调 CLI、不建键",
+  check("无点名指标 → 不调 CLI、不建键",
     cliCalls.length === 0 && !("caliberCheck" in (noMetrics[0] as object)));
 
   clearSessionSemanticRefs("sess-1");
@@ -267,10 +269,40 @@ console.log("\n[4] message_end：semanticRefs 含 Metric → 事件带 caliberCh
 
   cliBehavior = () => Promise.resolve(CLI_CONFLICT);
   setSessionSemanticRefs("sess-1", REFS);
+  setSessionCaliberMetrics("sess-1", ["gmv"]);
   const two = await runMessageEnd("sess-1", SQL_TEXT_TWO);
   check("一消息多代码块：每个 SQL 节点各带 caliberCheck",
     two.length === 2 && two.every((e) => e.caliberCheck !== undefined));
   clearSessionSemanticRefs("sess-1");
+}
+
+// ── 4b. 检测范围：仅问题点名指标（防误报）──────────────────────────
+
+console.log("\n[4b] 口径检测仅针对问题点名的指标（同表注入的其它指标不参检）");
+{
+  cliCalls.length = 0;
+  cliBehavior = () => Promise.resolve(CLI_CONFLICT);
+  // semanticRefs 含两个指标（gmv 问题点名 + boxes 仅因同表注入），caliberMetrics 只含 gmv
+  setSessionSemanticRefs("sess-2", [
+    { entityType: "Metric", id: "m1", code: "gmv", name: "销售额" },
+    { entityType: "Metric", id: "m2", code: "m_boxes_shipped", name: "出货箱数" },
+  ]);
+  setSessionCaliberMetrics("sess-2", ["gmv"]);
+  await runMessageEnd("sess-2", SQL_TEXT);
+  const metricArgs = cliCalls[0] ? cliCalls[0].filter((_a, i, arr) => arr[i - 1] === "--metric") : [];
+  check("--metric 只含点名指标（不含仅同表注入的 m_boxes_shipped）",
+    metricArgs.length === 1 && metricArgs[0] === "gmv");
+  check("semanticRefs 仍保留全部注入实体（口径溯源不受影响）",
+    (getSessionSemanticRefs("sess-2") ?? []).length === 2);
+
+  // 无点名（如「各渠道表现怎么样」）→ 不做口径检测，避免「指标没算」型误报
+  cliCalls.length = 0;
+  setSessionSemanticRefs("sess-2", [{ entityType: "Metric", id: "m2", code: "m_boxes_shipped" }]);
+  setSessionCaliberMetrics("sess-2", []);
+  const untouched = await runMessageEnd("sess-2", SQL_TEXT);
+  check("无点名指标 → 无 caliberCheck（表注入指标不引发误报）",
+    cliCalls.length === 0 && !("caliberCheck" in (untouched[0] as object)));
+  clearSessionSemanticRefs("sess-2");
 }
 
 // ── 5. 事件 -> node.data 透传（含旧事件兼容）──────────────────────────────

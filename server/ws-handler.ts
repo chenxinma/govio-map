@@ -4,7 +4,7 @@ import { getOrCreateSession, resetSession, openSessionFile, runGovioCli } from "
 import { listSessions, deleteSession, saveCanvas, loadCanvas, buildTranscript, assertValidSessionPath } from "./session-history.js";
 import { buildInjectionContext, composePrompt, buildTraceEntry, recordInjectionTrace } from "./prompt-injection.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
-import { setSessionSemanticRefs, clearSessionSemanticRefs, toSemanticRefs } from "./semantic-context.js";
+import { setSessionSemanticRefs, setSessionCaliberMetrics, clearSessionSemanticRefs, toSemanticRefs } from "./semantic-context.js";
 import { permissionManager } from "./permission-manager.js";
 import { isAgentConfigNeeded, completeAgentSetup } from "./backend.js";
 import { readModelsConfig, writeModelsConfig, createDefaultModelsConfig, maskModelsConfig } from "./models-config.js";
@@ -554,6 +554,8 @@ async function makePrompt(msg: WSClientMessageOf<"prompt">, session: SessionInst
   // T2.2 语义引用归因：本轮注入的图谱实体暂存为「本会话最近一次注入上下文」，
   // message_end 建 sqlQuery 节点时取来写入 semanticRefs（空则不写键）。
   setSessionSemanticRefs(session.sessionId, toSemanticRefs(ctx.graphEntities));
+  // T2.3 口径检测目标：仅问题点名的指标（表相关但未点名的拿去检测会误报黄灯）
+  setSessionCaliberMetrics(session.sessionId, ctx.caliberMetrics ?? []);
   // 注入留痕：被注入节点 + 图谱实体 ID 列表随会话 sidecar 持久化（append-only）。
   // degraded 也留痕：纯问题命中场（无引用节点）注入失败若不留痕会静默丢失可诊断性
   //（BUGFIX-injection-graph-key：2026-11-08 会话中失败完全无痕）。
