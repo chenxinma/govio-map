@@ -56,3 +56,23 @@ metrics: ... | killed=true | signal=SIGTERM ;; metricTables: ... killed=true ;; 
    若需「导入后即时生效」应在导入流程调用失效。
 3. 并发 `govio-cli` 的输出文件同名风险仍在 CLI 侧（无 `--output` 参数）；缓存已大幅降低频次，
    根治需 govio-cli 支持唯一输出路径。
+
+---
+
+## ③ 补充：流式排队导致口径引用被提前清空（2026-11-08 复测发现）
+
+**现象**：新会话 `2026-11-08T08-34-00-306Z_01a1ba4b-*` 注入已 `graphStatus=ok`（缓存修复生效，
+CTX 里能看到 `m_sales_amount` 等实体），但所有 sqlQuery 节点 `semanticRefs` 为空、
+`caliberCheck` 缺失 → 黄灯仍不出现。
+
+**根因**：`ws-handler` 的 prompt 派发链在 `.finally` 里 `clearSessionSemanticRefs`。而
+**流式中发送的消息走 `session.steer(prompt)` 排队，steer/prompt 会「入队后立即 resolve」**，
+`finally` 在 message_end 之前就执行了 → 引用被清空 → 延后触发的 `message_end` 取不到口径引用。
+非流式路径（prompt 在 agent_end 后 resolve）不受影响——所以单测/脚本全绿、真实会话恒失败。
+
+**修复**（`server/ws-handler.ts`）：
+- prompt 派发的 `finally` **只清 referencedNodes，不再清 semanticRefs/caliberMetrics**
+- 改为「下一轮 makePrompt 覆盖」+「不注入的 `steer`/`followUp` 分支显式清理」（避免错归因）
+
+**回归断言**（`tests/integration/ws-handler.test.ts`）：模拟 `isStreaming=true`，
+prompt 走 steer 排队后断言 `getSessionSemanticRefs` / `getSessionCaliberMetrics` 仍非空。

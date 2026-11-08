@@ -206,12 +206,18 @@ export function setupWebSocket(server: import("http").Server) {
             })
             .finally(() => {
               clearCurrentReferencedNodes();
-              clearSessionSemanticRefs(session.sessionId);
+              // 不在此清 semanticRefs/caliberMetrics！流式中消息走 steer 排队，
+              // session.prompt()/steer() 会**排队后立即 resolve**，message_end 还没发生；
+              // 此处清理会让延后触发的 message_end 取不到口径引用（实测：
+              // 注入 trace 有实体但 sqlQuery 节点 semanticRefs 恒为空）。
+              // 改为「下一轮 makePrompt 覆盖」，并在不注入的 steer/followUp 分支清理。
             });
         }
         break;
       case "steer":
         if (msg.content) {
+          // steer 不走注入（不调 makePrompt）→ 清掉上一轮口径引用，避免错归因给本轮产出
+          clearSessionSemanticRefs(session.sessionId);
           // Steering message: inject into the currently running agent so it
           // takes effect before the next LLM call (after the current tool calls
           // finish). The clientMsgId lets the frontend mark its local bubble as
@@ -238,6 +244,8 @@ export function setupWebSocket(server: import("http").Server) {
         break;
       case "followUp":
         if (msg.content) {
+          // followUp 同样不走注入 → 清掉上一轮口径引用
+          clearSessionSemanticRefs(session.sessionId);
           const clientMsgId = msg.clientMsgId;
           session
             .followUp(msg.content)

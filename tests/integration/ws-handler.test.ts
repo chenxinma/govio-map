@@ -393,3 +393,43 @@ describe("ws-handler 消息处理 + 权限决策流", () => {
     }
   });
 });
+
+describe("口径引用生命周期（流式排队不得提前清空）", () => {
+  let server: Server;
+  let port: number;
+
+  beforeAll(async () => {
+    ({ server, port } = await startServer());
+  });
+  afterAll(async () => {
+    permissionManager.clearAll();
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      setTimeout(() => resolve(), 500).unref();
+    });
+  });
+
+  it("流式中 prompt 走 steer 排队后，semanticRefs/caliberMetrics 仍保留（供后续 message_end 归因）", async () => {
+    const { getSessionSemanticRefs, getSessionCaliberMetrics } = await import("../../server/semantic-context.js");
+    const fake = (agentModule as unknown as {
+      __fakeSession: { isStreaming: boolean; steer: ReturnType<typeof vi.fn> };
+    }).__fakeSession;
+
+    const { ws, col } = await connectWithCollector(port);
+    await col.waitFor((m) => m.type === "session_ready");
+
+    fake.isStreaming = true; // 模拟 agent 仍在输出：prompt 走 steer 队列
+    ws.send(JSON.stringify({ type: "prompt", content: "算一下 2023 年各国家的销售额" }));
+    await vi.waitFor(() => expect(fake.steer).toHaveBeenCalled());
+
+    // 关键回归：steer 排队后 dispatch 的 finally 已执行，但引用不得被清空——
+    // 否则延后触发的 message_end 取不到口径引用，caliberCheck 永远不产出。
+    await vi.waitFor(() => {
+      expect(getSessionSemanticRefs("sess-x4-mock")?.length).toBeGreaterThan(0);
+    });
+    expect(getSessionCaliberMetrics("sess-x4-mock")?.length).toBeGreaterThan(0);
+
+    fake.isStreaming = false;
+    ws.close();
+  });
+});
