@@ -79,8 +79,8 @@ if (oldName === newName || !newName.trim()) return;   // ① 吞掉清空/纯空
 
 ## 6. 遗留问题
 
-1. **前端组件缺 DOM 级测试能力**：仓库无 jsdom/@testing-library，UI 回归只能靠一次性 CDP 脚本 + 源码契约断言。若要常态化，建议单独立项引入 `jsdom` + `@testing-library/react`，并把 vitest 环境改为按文件混合（`// @vitest-environment jsdom`）。
-2. **moli CDP 布局限制（比预想严重）**：该 headless 环境下 `position: fixed` 的 portal 覆盖层 rect 为 0×0，`document.body.innerText` 取不到覆盖层文本（`textContent` 正常）；进一步实测：即使 `Emulation.setDeviceMetricsOverride` 固定视口、把覆盖层临时改成 `position:absolute` + 显式宽高，元素 rect 仍恒为 0，inline `flex:1 1 0%` 也不被解析（`getComputedStyle().flex` 恒返回 `0 1 auto`）。结论：**moli 不能用于任何高度/间距/对齐类视觉验证**，本次仅用于「真实按键事件 → 值/焦点/节点身份/DOM 文案」这类不依赖布局的断言；视觉项必须真实浏览器目视（已因此漏掉一轮高度回归）。若要常态化 UI 视觉回归，需换用具备完整布局引擎的浏览器通道（真 Chrome / Playwright）或引入 jsdom + @testing-library（见遗留问题 1）。
+1. **前端组件缺 DOM 级测试能力**：仓库无 jsdom/@testing-library，UI 回归只能靠一次性 CDP 脚本 + 源码契约断言。若要常态化，建议单独立项引入 `jsdom` + `@testing-library/react`，并把 vitest 环境改为按文件混合（`// @vitest-environment jsdom`）。→ **已立项 `crossCutting[X12]`（前端 UI 回归测试基建）**，方案取舍与首批用例范围见该条目 note。
+2. **moli CDP 布局限制（比预想严重）**：该 headless 环境下 `position: fixed` 的 portal 覆盖层 rect 为 0×0，`document.body.innerText` 取不到覆盖层文本（`textContent` 正常）；进一步实测：即使 `Emulation.setDeviceMetricsOverride` 固定视口、把覆盖层临时改成 `position:absolute` + 显式宽高，元素 rect 仍恒为 0，inline `flex:1 1 0%` 也不被解析（`getComputedStyle().flex` 恒返回 `0 1 auto`）。结论：**moli 不能用于任何高度/间距/对齐类视觉验证**，本次仅用于「真实按键事件 → 值/焦点/节点身份/DOM 文案」这类不依赖布局的断言；视觉项必须真实浏览器目视（已因此漏掉一轮高度回归）。若要常态化 UI 视觉回归，需换用具备完整布局引擎的浏览器通道（真 Chrome / Playwright）或引入 jsdom + @testing-library（见遗留问题 1）。→ 已归入 **X12** 方案候选 B/C 的评估范围。
 3. **名称大小写敏感**：重名校验按 trim 后精确匹配（与落盘 Record 键语义一致），`OpenAI` 与 `openai` 视为两个 provider。若配置文件所在环境存在大小写不敏感合并风险，需另议口径。
 4. **名称未做字符合法性校验**：目前只 trim + 去空 + 去重。落盘为 JSON 键是安全的，但若将来名称要进文件路径 / URL / 图数据库标识，需补白名单校验（如 `^[A-Za-z0-9_-]+$`）。
 5. **保存后的 provider 顺序**：草稿顺序 = 加载时 `Object.entries` 顺序，新增追加到末尾；改名不再改变顺序（修复前重命名数字型名称可能因 JS 对象整数键规则被重排）。未提供手动排序能力。
