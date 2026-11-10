@@ -8,7 +8,7 @@
  */
 import { createServer } from "http";
 import { readFile, stat } from "fs/promises";
-import { existsSync } from "fs";
+import { existsSync, cpSync } from "fs";
 import { join, extname, normalize, sep, dirname } from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
@@ -74,10 +74,36 @@ function startStaticServer(root: string) {
     }
   });
   // Bind to loopback only: the static server and backend must not be exposed on the LAN.
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(`[serve] 端口 ${STATIC_PORT} 已被占用（若正在运行 npm run dev，请先停止它，或改用 http://localhost:5173）`);
+    } else {
+      console.error("[serve] static server error:", err);
+    }
+    process.exit(1);
+  });
   server.listen(STATIC_PORT, "127.0.0.1", () => {
     console.log(`[static] serving ${DIST_DIR} on 127.0.0.1:${STATIC_PORT}`);
   });
   return server;
+}
+
+function seedRuntimeDirs(cwd: string) {
+  // Package ships .agents/skills (govio skills) and .pi (APPEND_SYSTEM.md,
+  // default settings). Seed them into the working directory the backend uses.
+  if (normalize(PKG_ROOT) === normalize(cwd)) return; // dev: running inside the repo
+  const agents = join(PKG_ROOT, ".agents");
+  if (existsSync(agents)) {
+    // Package-owned: overwrite so skills always match the installed version.
+    cpSync(agents, join(cwd, ".agents"), { recursive: true, force: true });
+  }
+  const pi = join(PKG_ROOT, ".pi");
+  if (existsSync(pi)) {
+    // settings.json may hold user config: only fill in what's missing…
+    cpSync(pi, join(cwd, ".pi"), { recursive: true, force: false });
+    // …but APPEND_SYSTEM.md carries runtime constraints and is package-owned.
+    cpSync(join(pi, "APPEND_SYSTEM.md"), join(cwd, ".pi", "APPEND_SYSTEM.md"), { force: true });
+  }
 }
 
 async function main() {
@@ -88,6 +114,7 @@ async function main() {
 
   // Working directory holds .env, .govio/, skills, .pi, etc.
   dotenv.config({ path: join(process.cwd(), ".env") });
+  seedRuntimeDirs(process.cwd());
 
   startStaticServer(DIST_DIR);
   await startBackend(BACKEND_PORT);

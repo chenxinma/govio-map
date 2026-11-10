@@ -7,7 +7,9 @@
   },
   "files": [
     "dist",
-    "dist-server"
+    "dist-server",
+    ".agents",
+    ".pi"
   ],
   "scripts": {
     "dev": "vite",
