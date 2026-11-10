@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-10T22:10:24+08:00",
+  "updatedAt": "2026-11-10T22:21:11+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -742,7 +742,7 @@
     {
       "id": "X11",
       "title": "LLM 设置对话框 provider name 输入框每输入一个字符即失焦（无法连续输入）",
-      "status": "done",
+      "status": "accepted",
       "dependsOn": [],
       "note": "用户报告 2026-11-10：LLM 设置对话框中 provider name 输入框每输入一个字符光标就跳开，无法连续输入。主会话已定位根因（src/components/SettingsModal.tsx）：① 主因 182-187 行 providerEntries.map 以 `key={name}` 渲染 provider 卡片，而 name 正是该 input 的受控值（value={name}），onChange → updateProviderName 重命名对象键 → key 随之变化 → React 卸载旧子树并挂载全新 DOM input → 焦点与光标位置每键丢失一次。② 次生缺陷：updateProviderName（63-73）的 `if (oldName === newName || !newName.trim()) return;` 会吞掉清空输入框、以空格开头等编辑动作；重命名为已存在的 provider 名会因对象键碰撞静默覆盖丢失一个 provider；编辑期不 trim 而仅在 handleSave（137-151）trim，可能出现两条同名。修复方向：provider 编辑态引入稳定内部 id（在 modal 内把 config.providers 转成有序数组 [{uid,name,cfg}]，key={uid}，name 作为普通可编辑字段；仅在加载与 handleSave 时与 Record 结构互转）；补空名/重名校验（禁用保存并提示，而非静默 return 或覆盖）；保持新增/删除 provider 与模型行的既有行为不变。范围纪律：只改 SettingsModal（必要时 src/types/models-config.ts 增内部编辑态类型），不动 server/models-config.ts 落盘结构、apiKey mask 逻辑与 WS 协议；同类隐患（用可编辑值当 React key）已初查 DataSourcesModal.tsx:149/184 为只读徽标，无此问题。验证方向：npm run build / lint / verify 全绿且既有断言零回归 + 人工冒烟（连续输入、退格、清空、重名提示、保存后落盘 providers 键名正确、apiKey 掩码不回归）。属 bugfix，按 AGENTS.md「合入 main 纪律」可直接 commit 到 main。",
       "outputDir": "docs/tasks/X11-settings-provider-name-input/",
@@ -770,6 +770,12 @@
           "at": "2026-11-10T22:10:24+08:00",
           "by": "main-session",
           "note": "用户验收反馈：光标问题已修复，但名称输入框比其它输入框矮 → 追加修复（本次改造引入的回归）：名称 input 被包进 flex-col wrapper 后仍带 flex-1，`.flex-1{flex:1}` 即 flex:1 1 0% 的 flex-basis 作用到纵轴并覆盖 h-9 → 改为 w-full h-9（宽度由 wrapper 的 flex-1 在行方向撑开），模型行 flex-1 h-8 父级仍是 flex-row 未动；新增源码契约断言（含 w-full h-9、不含 flex-1 h-9、h-9 恰 4 处、flex-1 h-8 恰 2 处）。门槛复跑全绿：build/lint/verify（脚本断言 609 项 0 失败；vitest 82 → 83 例零回归），浏览器功能冒烟 13/13。遗留：moli headless 不做布局（rect 恒 0、不解析 flex 简写），高度/间距类视觉验证只能真实浏览器目视。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-10T22:21:11+08:00",
+          "by": "main-session",
+          "note": "用户验收通过（光标已修复 + 名称输入框高度已与其它 h-9 输入框齐平）。主会话独立复跑验收：npm run verify 退出码 0，脚本断言 609 项 0 失败（manifest 92 / rerun 71 / audit 119 / export 126 / source-table 39 / semantic-lineage 45 / caliber-conflict 46 / cwd 13 / prompt-injection 58），vitest Test Files 7 / Tests 83（基线 67 → +16 例零回归）；verify 全跑后 git status 干净。抽查关键实现：SettingsModal.tsx:149 key={draft.uid}、:160 w-full h-9（flex-col 父级不再用 flex-1）、:71/:119/:158 handler 全部按 uid 定位 + onSave(toConfig(drafts))、:51 canSaveDrafts；旧 key={name} / updateProviderName / EMPTY_PROVIDER 残留 0 处；git diff 2fb6ea6 -- server src/types package.json 为空（落盘结构/WS 协议/apiKey 掩码/依赖零改动）。浏览器 CDP 真实按键冒烟 13/13（旧代码负对照 7 项失败，复现原症状）；~/.pi/agent/models.json 未被冒烟污染。遗留见 design.md（前端无 DOM 测试基建、moli 无布局能力、名称大小写敏感与字符白名单、无手动排序）。"
         }
       ]
     }
