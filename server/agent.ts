@@ -51,23 +51,13 @@ function isOtherSubagentsCopy(resourcePath: string | undefined, projectSubagents
 /**
  * pi-subagents 子进程通过 import.meta.resolve("@earendil-works/pi-coding-agent")
  * 定位内嵌 pi 的 dist/cli.js，然后以 `process.execPath <cli.js>` 启动子 agent。
- * 在 Electron 生产环境中 process.execPath 是 electron 可执行文件，直接 spawn
- * 会拉起完整的 Electron 实例而非 Node 子进程，因此需要 ELECTRON_RUN_AS_NODE=1。
- * 该变量仅对 Electron 可执行文件有意义，对纯 Node 无副作用，且会被子进程继承，
- * 嵌套 subagent 也能正确运行。
  */
-function ensureElectronRunAsNode(): void {
-  if (process.versions.electron && !process.env.ELECTRON_RUN_AS_NODE) {
-    process.env.ELECTRON_RUN_AS_NODE = "1";
-  }
-}
-
 const PI_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
 const PI_PACKAGE_ROOT_ENV = "PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT";
 
 /**
  * pi-subagents 靠 argv[1] / 环境变量证明“本会话由哪个 Pi 持有”。嵌入式运行时下
- * argv[1] 是 node/vite/electron 入口，无法证明归属，pi-subagents 会告警并停用动态
+ * argv[1] 是 node/vite 入口，无法证明归属，pi-subagents 会告警并停用动态
  * 工具激活。这里解析内嵌 pi-coding-agent 的包根，写入官方 override 环境变量声明
  * 宿主 Pi（子 agent 进程继承该变量，归属一致，告警消除）。
  */
@@ -87,12 +77,10 @@ function declareHostPiPackageRoot(): void {
 }
 
 export async function agentSetup() {
-  // Resolve cwd at call time so the Electron main process can chdir()
-  // before the agent boots (module-level evaluation would be too early).
+  // Resolve cwd at call time (module-level evaluation would be too early).
   // X7: canonicalize on-disk casing first — Windows preserves the launch-path
   // casing in process.cwd(), but pi matches session-header cwds case-sensitively.
   const cwd = applyCanonicalCwd();
-  ensureElectronRunAsNode();
   declareHostPiPackageRoot();
 
   const projectSubagentsDir = resolvePath(cwd, "node_modules", PI_SUBAGENTS_PACKAGE_DIR);

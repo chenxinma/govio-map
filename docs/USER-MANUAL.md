@@ -37,9 +37,15 @@ npm run dev     # 启动
 > 也可以不弹窗、改用环境变量提供 API Key：在项目根目录创建 `.env` 文件，写入
 > `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `MISTRAL_API_KEY` 之一。
 
-### 2.3 桌面版
+### 2.3 npx 直接启动
 
-Govio Map 也可打包为 Windows 桌面应用（Electron 安装包），企业分发场景请联系管理员获取，使用方式与 Web 版一致。
+发布后可在任意目录通过 npx 直接运行（使用当前目录作为工作目录，`.env` / `.govio/` 等从这里读取）：
+
+```bash
+npx govio-map
+```
+
+启动后浏览器打开 **http://localhost:5173/** 即可使用，端口与 Web 版一致。
 
 ---
 

@@ -1,15 +1,22 @@
 {
   "name": "govio-map",
-  "private": true,
   "version": "0.7.0",
   "type": "module",
-  "main": "dist-electron/main.js",
+  "bin": {
+    "govio-map": "dist-server/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "dist-server"
+  ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run compile:server",
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "preview": "vite preview",
+    "serve": "node dist-server/cli.mjs",
+    "prepublishOnly": "npm run build",
     "ask": "tsx server/cli.ts",
     "verify": "npm run verify:manifest && npm run verify:rerun && npm run verify:audit && npm run verify:export && npm run verify:source-table && npm run verify:semantic-lineage && npm run verify:caliber-conflict && npm run verify:cwd && npm run verify:prompt-injection && npm run verify:integration",
     "verify:manifest": "tsx scripts/verify-manifest-roundtrip.ts",
@@ -23,8 +30,7 @@
     "verify:prompt-injection": "tsx scripts/verify-prompt-injection.ts",
     "verify:integration": "vitest run",
     "test:integration": "vitest run",
-    "compile:electron": "esbuild electron/main.ts --bundle --packages=external --platform=node --format=esm --outfile=dist-electron/main.js",
-    "build:electron": "tsc -b && vite build && npm run compile:electron && electron-builder"
+    "compile:server": "esbuild server/serve.ts --bundle --packages=external --platform=node --format=esm --outfile=dist-server/cli.mjs --banner:js=\"#!/usr/bin/env node\""
   },
   "dependencies": {
     "@codemirror/lang-sql": "^6.10.0",
@@ -54,8 +60,6 @@
     "@types/react-dom": "^19.3.0",
     "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^6.1.2",
-    "electron": "^44.5.1",
-    "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
     "eslint": "^10.12.0",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -70,28 +74,5 @@
   },
   "overrides": {
     "typescript": "~6.0.3"
-  },
-  "build": {
-    "appId": "com.govio.map",
-    "productName": "Govio Map",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "dist-electron/**/*",
-      "node_modules/**/*",
-      "package.json"
-    ],
-    "asarUnpack": [
-      "**/*.wasm",
-      "node_modules/@silvia-odwyer/photon-node/**/*",
-      "node_modules/@mariozechner/clipboard/**/*"
-    ],
-    "win": {
-      "target": [
-        "nsis"
-      ]
-    }
   }
 }

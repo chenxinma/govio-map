@@ -5,7 +5,7 @@
  * access. Without origin checks, any website the user visits could connect to
  * ws://localhost:5174 (cross-site WebSocket hijacking) and execute arbitrary
  * commands or read API keys. These helpers enforce:
- *  - loopback-only network binding (see backend.ts / electron/main.ts)
+ *  - loopback-only network binding (see backend.ts / serve.ts)
  *  - an Origin allowlist for WebSocket upgrades and CORS responses
  */
 
@@ -14,7 +14,7 @@ export const LOOPBACK_HOST = "127.0.0.1";
 
 const ALLOWED_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
-/** True when the Origin header value belongs to the local frontend (dev server or Electron static server). */
+/** True when the Origin header value belongs to the local frontend (dev server or serve.ts static server). */
 export function isAllowedOrigin(origin: string | undefined | null): boolean {
   if (!origin) return false;
   return ALLOWED_ORIGIN_RE.test(origin);

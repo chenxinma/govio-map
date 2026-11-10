@@ -24,8 +24,8 @@ export async function completeAgentSetup(): Promise<void> {
 
 /**
  * Start the standalone backend: HTTP API (/api/preview) + WebSocket (/ws, /canvas)
- * on a single port. Used by the Vite dev plugin (dev) and the Electron main
- * process (production) so both share identical backend behavior.
+ * on a single port. Used by the Vite dev plugin (dev) and server/serve.ts
+ * (npx production launch) so both share identical backend behavior.
  */
 export async function startBackend(port = 5174) {
   const httpServer = createServer(async (req, res) => {
