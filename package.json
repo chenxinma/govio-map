@@ -9,6 +9,7 @@
     "dist",
     "dist-server",
     ".agents",
+    "!.agents/skills/govio/assets",
     ".pi"
   ],
   "scripts": {
