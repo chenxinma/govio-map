@@ -1,5 +1,7 @@
 import { pushGovioNode, type GovioNodeCreateEvent } from "../govio-node-queue.js";
 import { runCaliberCheck, type CaliberCliRunner } from "../caliber-check.js";
+import { resolveTableRelations } from "../table-relations.js";
+import type { GraphQueryRunner } from "../graph-query.js";
 import { getSessionSemanticRefs, getSessionCaliberMetrics } from "../semantic-context.js";
 import {
   isLoadFailure,
@@ -707,7 +709,7 @@ function handleExploreResult(cmd: string, stdout: string): void {
 
 export default function govioCanvasExtension(
   pi: ExtensionAPI,
-  deps: { runCaliberCli?: CaliberCliRunner } = {},
+  deps: { runCaliberCli?: CaliberCliRunner; runGraphQuery?: GraphQueryRunner } = {},
 ): void {
   pi.registerTool({
     name: "govio_create_source_table",
@@ -716,7 +718,8 @@ export default function govioCanvasExtension(
       "Create a source table node on the canvas showing the column schema. Each field must carry all three parts from the govio physical-table column query result: column name (column_name), description name (name) and data type (data_type). Call this after querying a PhysicalTable's column structure via govio-cli query. " +
       "Datasource annotation (datasource/datasourceType/schema/qualifiedName) must come from authoritative sources, NEVER guessed: the graph query result (PhysicalTable `schema`/`full_table_name`; Datasource node `datasource_name`/`source_type` when present) or the datasource declaration (meta datasource file `source_type`; observe config.yaml datasources url scheme, e.g. duckdb:// means duckdb). " +
       "qualifiedName is the table reference to use inside SQL: duckdb needs three-part catalog.schema.table (e.g. chocolate.chocolate.dim_product - a bare table name fails with 'does not exist' and two parts with 'Ambiguous reference'), postgres uses schema.table, mysql uses the bare table name or db.table. " +
-      "If a value cannot be obtained from those sources, OMIT the parameter instead of inventing one.",
+      "If a value cannot be obtained from those sources, OMIT the parameter instead of inventing one. " +
+      "Inter-table relations are resolved server-side from the knowledge graph (PhysicalTable RELATES_TO) and drawn as semantic lineage edges automatically - there is no parameter for them, so do not restate foreign keys in prose.",
     parameters: Type.Object({
       tableName: Type.String({ description: "Physical table name `full_table_name`" }),
       database: Type.Optional(Type.String({ description: "Database name" })),
@@ -741,6 +744,18 @@ export default function govioCanvasExtension(
     }),
     execute: async (_toolCallId, params) => {
       const datasourceType = normalizeDatasourceType(params.datasourceType);
+      // 表间语义关系（X10）：图谱 RELATES_TO 主路径 + 字段级 references 降级。
+      // resolveTableRelations 永不 throw，失败只降级留痕，**绝不阻断节点创建**。
+      const relations = await resolveTableRelations({
+        tableName: params.tableName,
+        ...(params.qualifiedName ? { qualifiedName: params.qualifiedName } : {}),
+        ...(params.schema ? { schema: params.schema } : {}),
+        fields: params.fields,
+        ...(deps.runGraphQuery ? { runQuery: deps.runGraphQuery } : {}),
+      });
+      if (relations.status === "degraded") {
+        console.warn(`[govio-canvas] table relations degraded for ${params.tableName}: ${relations.error ?? "unknown"}`);
+      }
       pushGovioNode({
         nodeType: "sourceTable",
         title: params.tableName,
@@ -752,10 +767,21 @@ export default function govioCanvasExtension(
         ...(datasourceType ? { datasourceType } : {}),
         ...(params.schema ? { schema: params.schema } : {}),
         ...(params.qualifiedName ? { qualifiedName: params.qualifiedName } : {}),
+        // 表间关系（X10）：拿不到就不建键（不建边、不猜测）；降级原因单独留痕
+        ...(relations.relations.length > 0 ? { tableRelations: relations.relations } : {}),
+        ...(relations.source ? { tableRelationsSource: relations.source } : {}),
+        ...(relations.error !== undefined ? { tableRelationsError: relations.error } : {}),
       });
       const qualified = params.qualifiedName ? `, qualified: ${params.qualifiedName}` : "";
+      // 关系条数/来源回给 agent：表间边由前端自动连出，agent 无需再用文字复述外键关系；
+      // 降级时把原因一并暴露（对话即留痕）。
+      const relationNote = relations.relations.length > 0
+        ? `, relations: ${relations.relations.length} (${relations.source})`
+        : relations.status === "degraded"
+          ? `, relations: none (degraded: ${relations.error ?? "unknown"})`
+          : ", relations: none";
       return {
-        content: [{ type: "text", text: `Created source table node: ${params.tableName} (${params.fields.length} fields${qualified})` }],
+        content: [{ type: "text", text: `Created source table node: ${params.tableName} (${params.fields.length} fields${qualified}${relationNote})` }],
         details: {},
       };
     },

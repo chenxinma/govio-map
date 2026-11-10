@@ -53,8 +53,18 @@
 4. 自动创建连线：
    - 从 `event.referencedNodes` 中的 nodeId 查找画布节点，创建 source->target 边
    - 所有节点类型均匹配 `sourceRefs.label` 到画布节点（按 title/tableName/dfName 匹配）
-5. 边样式：`smoothstep`, `animated: true`, `stroke: #1db954`, `strokeWidth: 2`
-6. 调用 `positionNewNode()` 计算位置
+   - 语义血缘边（T2.2 口径沿袭）：新 sqlQuery 的 `semanticRefs` 与既有 sqlQuery 节点的
+     `semanticRefs` 有交集（按 `entityType:id` 判等）时，旧→新连一条 `lineageKind:"semantic"` 边
+   - 表间语义血缘边（X10）：新 sourceTable 节点的 `tableRelations` 与既有 sourceTable 节点
+     **双向匹配**（①新节点关系指向既有节点 → 边 新→既有；②既有节点关系指向新节点 →
+     边 既有→新，星型模型里 dim 表可能后上画布）；匹配键由 `src/utils/table-relations.ts`
+     的 `tableSemanticEdgeCandidates()` 给出，容忍三段式/两段式/裸表名差异（点号后缀变体
+     集合，大小写归一）；同一对节点只保留一条（无向去重，①优先于②），自环与非法关系
+     元素丢弃，关系目标不在画布上则不建边也不报错
+5. 边样式：数据血缘 `smoothstep`, `animated: true`, `stroke: #1db954`, `strokeWidth: 2`；
+   语义血缘（含表间边）样式全量取 `lineageEdgeAppearance('semantic')`（紫虚线、不流动），
+   edge id 加 `-sem` 后缀防与数据血缘边冲突（两类边可并存）
+6. 调用 `positionNewNode()` 计算位置（只吃本次新建的边）
 
 ### createManualSQLNode()
 
@@ -143,6 +153,10 @@ addReference 提取的 data：
 ### hydrateSession(nodes, edges)
 
 服务端推送 `canvas_restore` 时调用。用 sidecar 快照替换当前画布状态，清空 previewPanels 和 referencedNodes，同步 ID 计数器。
+
+**不重算边**（X10 明确取舍）：表间语义边在节点落地时一次性建出并随快照持久化，恢复时原样
+使用——既避免重复建边，也尊重用户手动删边的结果（删掉的表间边不会在恢复时复活）。代价：
+本功能上线前的历史会话（节点无 `tableRelations`）恢复后仍无表间边，需重新落地表节点才补齐。
 
 ## ID 生成 (mock-ai.ts)
 

@@ -56,9 +56,18 @@ const nodeTypes: NodeTypes = {
 | datasourceType? | DatasourceType | 数据源类型（duckdb/postgres/mysql/oracle/hive/trino/sqlalchemy-generic/unknown），决定 SQL 表引用段式，T2.0 |
 | schema? | string | 所属 schema（取图谱 PhysicalTable.schema），T2.0 |
 | qualifiedName? | string | SQL 中应使用的全限定表名（duckdb 三段式 catalog.schema.table 等），T2.0 |
+| tableRelations? | TableRelation[] | 表间语义关系（X10）：本表的出向关系，元素为 `{targetTable, relationshipType, description?, sourceColumns?, targetColumns?}`；`relationshipType` 取图谱原值（如 `many_to_one`），字段降级路径为 `foreign_key` |
+| tableRelationsSource? | 'graph' \| 'fields' | 关系来源留痕（X10）：图谱 `RELATES_TO` / 字段级 `references` 降级；仅在 tableRelations 非空时写键 |
+| tableRelationsError? | string | 图谱查询降级原因（X10）：仅图谱失败/超时/无可用表键时写键（即使降级路径拿到了关系） |
 
 四个 T2.0 字段全部可选：取值来源分层（图谱 → 数据源声明/config.yaml → 省略，禁止猜测）与各类型 SQL
 引用规则见 `docs/specs/11-datasource-schema-conventions.md`；旧节点无这些字段，UI 回退旧显示。
+
+三个 X10 字段同样全部可选，由服务端 `server/table-relations.ts` 在 `govio_create_source_table`
+执行时解析（agent 不传、也不得口头复述外键）：图谱不可用时降级到字段级 `references`，两者都
+拿不到就**不建键、不建边**。前端据 `tableRelations` 在 sourceTable 之间连紫虚线语义血缘边
+（`Edge.data.lineageKind = "semantic"`，样式唯一来源 `src/utils/lineage.ts`），匹配容忍三段式/
+两段式/裸表名差异（`src/utils/table-relations.ts` 的后缀变体集合），建边规则见 `docs/specs/05-store.md`。
 
 ### SQLQueryNodeData
 
