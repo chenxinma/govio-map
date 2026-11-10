@@ -78,7 +78,7 @@ async function main() {
     }
   });
 
-  await session.prompt(message);
+  await session.prompt(message!);
 }
 
 main().catch((err) => {

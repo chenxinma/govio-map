@@ -34,8 +34,8 @@ export function canonicalizeCwd(cwd: string, platform: NodeJS.Platform = process
 /**
  * 把进程工作目录切到磁盘规范形式并返回规范后的 `process.cwd()`。幂等。
  *
- * 必须在调用时执行（而非模块初始化）：Electron 主进程可能先行 `chdir()`，
- * 见 `agentSetup()` 顶部注释；`getOrCreateSession()`/`openSessionFile()` 里
+ * 必须在调用时执行（而非模块初始化），见 `agentSetup()` 顶部注释；
+ * `getOrCreateSession()`/`openSessionFile()` 里
  * 传给 `SessionManager.continueRecent/create/open` 的 cwd 也经由此处取值，
  * 保证与历史会话头一致。
  */
