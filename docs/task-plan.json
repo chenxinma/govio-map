@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-10T20:38:48+08:00",
+  "updatedAt": "2026-11-10T21:58:01+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -742,7 +742,7 @@
     {
       "id": "X11",
       "title": "LLM 设置对话框 provider name 输入框每输入一个字符即失焦（无法连续输入）",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "note": "用户报告 2026-11-10：LLM 设置对话框中 provider name 输入框每输入一个字符光标就跳开，无法连续输入。主会话已定位根因（src/components/SettingsModal.tsx）：① 主因 182-187 行 providerEntries.map 以 `key={name}` 渲染 provider 卡片，而 name 正是该 input 的受控值（value={name}），onChange → updateProviderName 重命名对象键 → key 随之变化 → React 卸载旧子树并挂载全新 DOM input → 焦点与光标位置每键丢失一次。② 次生缺陷：updateProviderName（63-73）的 `if (oldName === newName || !newName.trim()) return;` 会吞掉清空输入框、以空格开头等编辑动作；重命名为已存在的 provider 名会因对象键碰撞静默覆盖丢失一个 provider；编辑期不 trim 而仅在 handleSave（137-151）trim，可能出现两条同名。修复方向：provider 编辑态引入稳定内部 id（在 modal 内把 config.providers 转成有序数组 [{uid,name,cfg}]，key={uid}，name 作为普通可编辑字段；仅在加载与 handleSave 时与 Record 结构互转）；补空名/重名校验（禁用保存并提示，而非静默 return 或覆盖）；保持新增/删除 provider 与模型行的既有行为不变。范围纪律：只改 SettingsModal（必要时 src/types/models-config.ts 增内部编辑态类型），不动 server/models-config.ts 落盘结构、apiKey mask 逻辑与 WS 协议；同类隐患（用可编辑值当 React key）已初查 DataSourcesModal.tsx:149/184 为只读徽标，无此问题。验证方向：npm run build / lint / verify 全绿且既有断言零回归 + 人工冒烟（连续输入、退格、清空、重名提示、保存后落盘 providers 键名正确、apiKey 掩码不回归）。属 bugfix，按 AGENTS.md「合入 main 纪律」可直接 commit 到 main。",
       "outputDir": "docs/tasks/X11-settings-provider-name-input/",
@@ -752,6 +752,18 @@
           "at": "2026-11-10T20:38:09+08:00",
           "by": "main-session",
           "note": "用户报告 provider name 输入框光标跳走；主会话定位根因为 key={name} 随受控值变化导致每次输入重挂载 input，并记录 updateProviderName 空名/重名次生缺陷，立项 X11 待修"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-10T21:29:00+08:00",
+          "by": "main-session",
+          "note": "主会话亲自执行 hotfix（bugfix 类，直接 main）：抽出 src/utils/provider-drafts.ts 编辑态纯逻辑，SettingsModal 改用稳定 uid 作 React key"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-10T21:58:01+08:00",
+          "by": "main-session",
+          "note": "实现+验证完成：key={name}→key={draft.uid}（主因）、删除 !newName.trim() early-return、空名/重名就地提示+禁用保存、toConfig 落盘语义与修复前一致。门槛全绿：build/lint/verify（脚本断言 609 项 0 失败；vitest 6 文件 67 例 → 7 文件 82 例，+15 例零回归）。浏览器 CDP 真实按键冒烟：旧代码负对照 12 项失败 7 项（复现「只进第一个字符+每键重挂载失焦」），修复后 13 项全绿；未点保存，~/.pi/agent/models.json 未变动。三件套 + smoke-browser-cdp.mjs 落盘 docs/tasks/X11-settings-provider-name-input/"
         }
       ]
     }
