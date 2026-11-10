@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-10T22:30:47+08:00",
+  "updatedAt": "2026-11-10T23:07:31+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -726,7 +726,7 @@
     {
       "id": "X10",
       "title": "表间语义关系线（sourceTable 外键/图谱 rel → 语义血缘边）",
-      "status": "pending",
+      "status": "in_progress",
       "dependsOn": [],
       "note": "用户决定 2026-11-08（产品演示视频脚本评审时发现的功能缺口，采用方案2 语义化，本期录制暂不实现）：sourceTable 之间目前无任何画布连线——建边逻辑仅覆盖数据血缘（referencedNodes/sourceRefs）与 sqlQuery↔sqlQuery 语义血缘（src/store/canvas-store.ts:265-340）；外键信息仅字段级 references/FK 徽标（SourceTableNode.tsx:75），observe explore 外键发现只出 correlation 文字报告。实现方向（方案2）：从图谱 rel 查询（PhysicalTable 外键关系，如 chocolate_relationships.json 的 3 条 many_to_one）或字段 references，在建/恢复 sourceTable 节点时生成表间边，归入语义血缘紫虚线体系（lineageKind:\\\"semantic\\\"，样式复用 src/utils/lineage.ts，注意 T2.2 语义边现仅限 sqlQuery 节点，判定需扩展）。验收方向：星型模型（chocolate fact_sales→dim_*）3 条外键线上画布；血缘图例/导出 HTML 报告含表间语义边；既有断言零回归。录制期口径见 docs/demo/video-script-chocolate.md「功能缺口」章节。",
       "outputDir": "docs/tasks/X10-table-semantic-edges/",
@@ -736,7 +736,31 @@
           "at": "2026-11-08T10:26:26+08:00",
           "by": "main-session",
           "note": "演示视频脚本评审发现缺口，方案2（语义化表间关系线）立项；本期录制暂不实现，待排期"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-10T23:07:31+08:00",
+          "by": "main-session",
+          "note": "派发准备（主会话为唯一串行写者）：补全 scope/acceptance 并置 in_progress；八段式任务书 docs/tasks/X10-table-semantic-edges/DISPATCH.md。已核实实证事实：live 图谱 MATCH (a:PhysicalTable)-[r:RELATES_TO]->(b:PhysicalTable) 返回 3 条 many_to_one（fact_sales → dim_channel/dim_country/dim_product），且 r.source_columns/r.target_columns 返回字符串而非数组（JSON 源文件里是数组）；export-report.ts 与 LineageLegend.tsx 已按 lineageKind 泛化，表间语义边无需改导出；ws-protocol canvas_save/canvas_restore 载荷为 Type.Unknown()，新增节点字段无需 PROTOCOL_VERSION 变更。经 Orca 独立 worktree 派发 worker，功能类走 GitHub PR 由用户合并。"
         }
+      ],
+      "scope": [
+        "关系数据来源：优先 server 侧图谱查询 MATCH (a:PhysicalTable)-[r:RELATES_TO]->(b:PhysicalTable)（走 server/graph-query.ts runGraphQuery，复用 prompt-injection.ts 的全限定名变体匹配与 graphStatus 降级模式）；图谱不可用/无结果时回退字段级 fields[].references（TableField.isForeignKey/references）；两者都拿不到就不建边，禁止猜测",
+        "事件与类型：server/govio-node-queue.ts 的 GovioNodeCreateEvent + src/services/canvas-service.ts 的 CanvasEvent + src/types/index.ts 的 SourceTableNodeData 同步新增表间关系字段（如 tableRelations: Array<{ targetTable, relationshipType, description?, sourceColumns?, targetColumns? }>），缺失时不建键（沿用 T2.0 形状纪律）",
+        "建边：src/store/canvas-store.ts createGovioNode 内新 sourceTable 节点与既有 sourceTable 节点双向匹配（新节点关系指向既有节点、既有节点关系指向新节点），边 data.lineageKind='semantic'，样式取 lineageEdgeAppearance('semantic')，edge id 加 -sem 后缀防冲突，同一对节点去重",
+        "持久化与恢复：确认边随 canvas sidecar 落盘/恢复（server/session-history.ts hydrateSession）不重复建边、不丢边；旧会话缺表间边时是否补建，须在 design.md 明确取舍",
+        "展示与导出：核实 src/components/Canvas/LineageLegend.tsx 与 src/utils/export-report.ts 已按 lineageKind 泛化（无需改动即可正确渲染表间语义边）；若确有 gap 只做最小修复",
+        "测试：扩展 tests/integration/canvas-store.test.ts（星型模型 3 条外键边、双向匹配、去重、图谱降级不建边、与数据血缘边并存），必要时补 verify 断言",
+        "文档：docs/specs 中涉及建边与 sourceTable 节点形状的章节（01-canvas / 02-nodes / 05-store / 06-backend 按需）+ docs/demo/video-script-chocolate.md 的「功能缺口」「导演注意」「录制前检查清单」（106 / 115 / 293 行）同步",
+        "三件套落盘 docs/tasks/X10-table-semantic-edges/（design.md 含遗留问题小节、CHANGES.md、verification.md）"
+      ],
+      "acceptance": [
+        "星型模型（chocolate.chocolate.fact_sales + dim_product / dim_country / dim_channel）4 个 sourceTable 节点上画布后出现 3 条紫色虚线语义边，方向 fact→dim，图例可辨识",
+        "图谱 degraded 或无 RELATES_TO 结果时：不建边、不抛错、不阻断节点创建，降级原因有留痕",
+        "npm run build / npm run lint / npm run verify 全绿；既有基线零回归（脚本断言 609 项 0 失败、vitest 7 文件 83 例、verify 总耗时约 36s）；verify 全跑后 git status --porcelain 干净",
+        "新增用例覆盖双向匹配与去重；导出 HTML 报告与画布图例正确包含表间语义边",
+        "不改 WS 协议版本（已核实 canvas_save / canvas_restore 载荷为 Type.Unknown()，新增节点字段无需 PROTOCOL_VERSION 变更）；不动 X11 刚修复的 SettingsModal 与 provider-drafts",
+        "三件套齐全 + 走 GitHub PR（功能类，由用户合并，worker 不 push、不切分支）"
       ]
     },
     {
@@ -782,7 +806,7 @@
     {
       "id": "X12",
       "title": "前端 UI 回归测试基建（组件级交互测试 + 可选真实布局能力）",
-      "status": "pending",
+      "status": "in_progress",
       "dependsOn": [],
       "note": "动机（X11 验收暴露，证据见 docs/tasks/X11-settings-provider-name-input/design.md 遗留问题 1/2 与 verification.md §4.3/§7.3）：前端组件目前无任何自动化 UI 测试能力——vitest.config.ts 固定 environment:'node'、include 仅 tests/integration/**/*.test.ts（注释明写「不需要 DOM」），devDependencies 无 jsdom / @testing-library / playwright / happy-dom（已核查 node_modules 与 npm -g 均无）。X11 的两轮缺陷（① key={name} 使名称输入框每字符重挂载失焦；② flex-col 父级里残留 flex-1 压扁 h-9 高度）都只能靠一次性 CDP 脚本 + 源码字符串契约断言兜底，其中高度回归是**用户目视才发现**的。可用的 moli headless CDP 已实测不做布局（元素 rect 恒 0、不解析 flex 简写、getComputedStyle().flex 恒返回 '0 1 auto'，Emulation.setDeviceMetricsOverride + 改 position:absolute 均无效），无法承担视觉验证。方案候选（需在 design.md 做取舍与依赖/耗时预算）：A. jsdom + @testing-library/react + @testing-library/user-event，vitest 按文件切环境（文件头 // @vitest-environment jsdom 或 projects 配置），新增 verify:ui 挂进 npm run verify——成本低、进门禁快，可覆盖交互/焦点/受控值/条件渲染/a11y，但 jsdom 同样不做布局，测不了高度/间距/对齐；B. Playwright（真 Chrome）E2E 或组件测试——能真布局、可断言 computed 尺寸与截图比对，但依赖重（浏览器二进制）、需编排 dev server、显著拉长 verify 耗时；C. vitest browser mode（vitest 5 browser provider，走 playwright/webdriverio）——用真实浏览器跑 vitest 用例，介于 A/B 之间；D. 仅加静态约束（ESLint 规则禁止「可编辑值当 React key」、class 冲突检查）——最便宜但覆盖面窄。建议路线：先落 A（把高频交互回归纳入门槛），再评估 C 或 B 只对少数关键组件补布局断言，D 作为 A 的补充而非替代。实现范围：测试基建 + 首批用例（SettingsModal：连续输入不失焦/光标位置、空名与重名就地提示、保存禁用、增删 provider 与模型行、Esc 与遮罩关闭；至少 1 个画布节点组件如 SourceTableNode 或 DataFrameNode 的渲染与「引用」按钮），不改任何业务行为。验收方向：新增 npm run verify:ui 并并入 npm run verify 全绿；既有 609 项脚本断言与 83 例 vitest 零回归；verify 总耗时增量有上限（建议 ≤60s，需在 verification.md 记录实测）；三件套齐全并给出 A/B/C 取舍结论。门禁：会动 package.json 依赖与 verify 脚本，按 AGENTS.md「判不准按 PR 处理」→ 走 GitHub PR，由用户合并。",
       "outputDir": "docs/tasks/X12-ui-test-infra/",
@@ -792,7 +816,27 @@
           "at": "2026-11-10T22:30:47+08:00",
           "by": "main-session",
           "note": "X11 验收后立项：前端无 UI 自动化测试基建，导致失焦与高度两轮缺陷只能靠人工目视兜底，且 moli headless 无布局能力不可用于视觉验证。无前置依赖，可与 X10 / P3 并行排期。"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-10T23:07:31+08:00",
+          "by": "main-session",
+          "note": "派发准备：补全 scope/acceptance 并置 in_progress；八段式任务书 docs/tasks/X12-ui-test-infra/DISPATCH.md。已核实实证事实：devDependencies 无任何 DOM 测试库（无 jsdom/@testing-library/playwright/happy-dom，node_modules 与 npm -g 均无）；vitest.config.ts environment=node 且 include 仅 tests/integration/**/*.test.ts；tests/ 不在任何 tsconfig include 内（tsc -b 不检查测试文件）；npm run verify 全链基线实测 36s（脚本断言 609 项 + vitest 7 文件 83 例）；moli headless CDP 不做布局，不能承担视觉验证。经 Orca 独立 worktree 派发 worker，涉依赖与 verify 脚本变更走 GitHub PR 由用户合并。"
         }
+      ],
+      "scope": [
+        "选型取舍：在 A（jsdom + @testing-library/react + @testing-library/user-event，vitest 按文件切环境）/ B（Playwright 真浏览器 E2E 或组件测试）/ C（vitest browser mode）/ D（仅静态约束，如 ESLint 禁止「可编辑值当 React key」）之间做决策，design.md 给出依赖体积、verify 耗时增量、可测范围（尤其「能否测布局/高度」）三维对比；建议默认 A（必要时 + D 补充），选 B/C 须先给出耗时与依赖影响评估",
+        "基建落地：仅新增 devDependencies；vitest 配置支持 node 与 DOM 环境混合（projects 或文件头 // @vitest-environment 注释），既有 tests/integration/**/*.test.ts 必须照旧全部跑在 node 环境；测试文件当前不在任何 tsconfig include 内（tsc -b 不检查 tests/），是否新增 tsconfig.tests.json 纳入类型检查须在 design.md 说明取舍",
+        "首批用例（≥12 例）：SettingsModal —— 连续输入不失焦与光标位置、空名/重名就地提示、保存按钮禁用、增删 provider 与模型行、Esc 与遮罩关闭、onSave 收到的落盘形状；至少 1 个画布节点组件（SourceTableNode 或 DataFrameNode）—— 字段渲染、FK 徽标、「引用」按钮回调",
+        "门槛接入：新增 npm run verify:ui（或等价脚本）并挂进 npm run verify 聚合链；verify 总耗时增量 ≤ 60s（当前基线实测 36s），前后耗时写入 verification.md",
+        "三件套落盘 docs/tasks/X12-ui-test-infra/（design.md 含选型对比与遗留问题小节、CHANGES.md、verification.md）"
+      ],
+      "acceptance": [
+        "npm run build / npm run lint / npm run verify 全绿；既有 609 项脚本断言与 83 例 vitest 零回归；新增 UI 用例 ≥12 例且全通过",
+        "verify 总耗时增量实测 ≤60s，verification.md 记录前后耗时与命令",
+        "反向验证（必须实测并贴输出）：把 src/components/SettingsModal.tsx 的 key={draft.uid} 临时改回 key={name} 时至少 1 例失败；把名称 input 的 w-full h-9 改回 flex-1 h-9 时，若选型具备布局能力（B/C）至少 1 例失败，若选 A（jsdom 无布局）须在 design.md 明说该类视觉回归仍无法自动捕获并给出补偿手段（如保留源码契约断言）；两次反向验证后必须还原代码，git diff 为空",
+        "仅动 devDependencies，不引入运行时依赖；不改任何业务行为；eslint 全绿（含 react-refresh/only-export-components 规则）",
+        "package.json 与 verify 脚本变更 → 走 GitHub PR（由用户合并，worker 不 push、不切分支）；三件套齐全"
       ]
     }
   ],
