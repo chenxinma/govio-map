@@ -56,7 +56,8 @@ if (oldName === newName || !newName.trim()) return;   // ① 吞掉清空/纯空
 3. 名称输入框 `value={draft.name}`，onChange 只改草稿字段，不触碰 key
 4. 校验前置到编辑期：空名/重名在**卡片内输入框下方**红字提示 + 输入框红边（`border-error/60`），**页脚**再显示首条问题文案；`保存` 按钮禁用
 5. `handleSave` 收敛为 `onSave(toConfig(drafts))`
-6. 顺带修掉共享引用：修复前多个新增 provider 复用同一个 `EMPTY_PROVIDER.models` 数组实例，现在每条草稿深拷贝
+6. 名称行新增 wrapper `<div className="flex-1 flex flex-col gap-1">` 承载错误文案：宽度由 wrapper 的 `flex-1`（行方向）撑开，input 自身用 **`w-full h-9`**——父级是 `flex-col`，若给 input 留 `flex-1`，`flex:1 1 0%` 的 `flex-basis` 会作用到纵轴并覆盖 `h-9`，把输入框压扁（首轮实现即犯此错，用户验收时反馈「比其它输入框矮」，已修，见 `verification.md` §7）
+7. 顺带修掉共享引用：修复前多个新增 provider 复用同一个 `EMPTY_PROVIDER.models` 数组实例，现在每条草稿深拷贝
 
 **落盘兼容性**：`toConfig` 保持修复前 `handleSave` 的全部语义（名称 trim、丢弃空名条目、过滤空模型 id、模型全空时回填 `[{ id: "" }]`、保留模型显示名 `name`），`server/models-config.ts`、apiKey 掩码与 WS 协议**一行未动**。
 
@@ -79,7 +80,7 @@ if (oldName === newName || !newName.trim()) return;   // ① 吞掉清空/纯空
 ## 6. 遗留问题
 
 1. **前端组件缺 DOM 级测试能力**：仓库无 jsdom/@testing-library，UI 回归只能靠一次性 CDP 脚本 + 源码契约断言。若要常态化，建议单独立项引入 `jsdom` + `@testing-library/react`，并把 vitest 环境改为按文件混合（`// @vitest-environment jsdom`）。
-2. **moli CDP 布局限制**：该 headless 环境下 `position: fixed` 的 portal 覆盖层 rect 为 0×0，`document.body.innerText` 取不到覆盖层文本（`textContent` 正常）。冒烟脚本因此以 `textContent` + DOM 查询断言文案；真实浏览器不受影响（用户可目视确认红字提示与布局）。
+2. **moli CDP 布局限制（比预想严重）**：该 headless 环境下 `position: fixed` 的 portal 覆盖层 rect 为 0×0，`document.body.innerText` 取不到覆盖层文本（`textContent` 正常）；进一步实测：即使 `Emulation.setDeviceMetricsOverride` 固定视口、把覆盖层临时改成 `position:absolute` + 显式宽高，元素 rect 仍恒为 0，inline `flex:1 1 0%` 也不被解析（`getComputedStyle().flex` 恒返回 `0 1 auto`）。结论：**moli 不能用于任何高度/间距/对齐类视觉验证**，本次仅用于「真实按键事件 → 值/焦点/节点身份/DOM 文案」这类不依赖布局的断言；视觉项必须真实浏览器目视（已因此漏掉一轮高度回归）。若要常态化 UI 视觉回归，需换用具备完整布局引擎的浏览器通道（真 Chrome / Playwright）或引入 jsdom + @testing-library（见遗留问题 1）。
 3. **名称大小写敏感**：重名校验按 trim 后精确匹配（与落盘 Record 键语义一致），`OpenAI` 与 `openai` 视为两个 provider。若配置文件所在环境存在大小写不敏感合并风险，需另议口径。
 4. **名称未做字符合法性校验**：目前只 trim + 去空 + 去重。落盘为 JSON 键是安全的，但若将来名称要进文件路径 / URL / 图数据库标识，需补白名单校验（如 `^[A-Za-z0-9_-]+$`）。
 5. **保存后的 provider 顺序**：草稿顺序 = 加载时 `Object.entries` 顺序，新增追加到末尾；改名不再改变顺序（修复前重命名数字型名称可能因 JS 对象整数键规则被重排）。未提供手动排序能力。

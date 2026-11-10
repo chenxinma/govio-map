@@ -8,9 +8,9 @@ bugfix：LLM 设置对话框 provider name 输入框每输入一个字符即失�
  docs/tasks/X11-settings-provider-name-input/verification.md         | 新增（验证命令与关键输出）
  docs/tasks/X11-settings-provider-name-input/smoke-browser-cdp.mjs   | 新增（真实浏览器 CDP 冒烟脚本，可复跑）
  docs/task-plan.json                                                 | X11 条目状态推进 + history + updatedAt
- src/components/SettingsModal.tsx                                    | 178 insertions(+), 199 deletions(-)（整体改造）
+ src/components/SettingsModal.tsx                                    | 180 insertions(+), 199 deletions(-)（整体改造 + 高度回归修正）
  src/utils/provider-drafts.ts                                        | 新增 143 行（纯逻辑，可 node 环境单测）
- tests/integration/settings-provider-drafts.test.ts                  | 新增 207 行 / 15 个 it
+ tests/integration/settings-provider-drafts.test.ts                  | 新增 217 行 / 16 个 it
 ```
 
 ## 1. `src/utils/provider-drafts.ts`（新增）
@@ -37,11 +37,12 @@ provider 编辑态纯逻辑模块，与 React/DOM 解耦：
 | 错误提示 | 输入框下方新增 `issue && <span className="text-xs text-error">`；命中 issue 时输入框加 `border-error/60`；页脚新增首条问题文案（`flex items-center justify-between` 布局，按钮组包进 `flex gap-2 flex-shrink-0`） |
 | handlers | `updateProvider/updateProviderName/addProvider/removeProvider/updateModel/addModel/removeModel` 全部改为按 `uid` 定位的草稿数组不可变更新；`updateProviderName` 的 `!newName.trim()` early-return 删除（清空不再被吞） |
 | 名称行布局 | `flex items-center` → `flex items-start`，名称 input 包进 `flex-1 flex flex-col gap-1`（容纳错误文案），删除按钮加 `mt-1` 保持与 h-9 输入框对齐 |
+| **高度回归修正**（用户验收反馈） | 名称 input 的 `flex-1 h-9` → **`w-full h-9`**：包进 `flex-col` wrapper 后 `flex-1`（`.flex-1{flex:1}` = `1 1 0%`）的 flex-basis 会作用到纵轴、覆盖 `h-9`，导致输入框比同为 `h-9` 的 Base URL / API 类型 / API Key 矮。宽度改由 wrapper 的 `flex-1`（行方向）撑开，并在 JSX 里留注释警示。模型行 `flex-1 h-8` 父级仍为 `flex-row`，用法正确，未动 |
 | 校验/保存 | `canSave = canSaveDrafts(drafts)`（useMemo 计算 issues + issueByUid）；`handleSave` 收敛为 `onSave(toConfig(drafts))` |
 | 样式常量 | 6 处重复的长 class 串抽为模块级 `INPUT_CLASS`，各 input 用模板串拼接（尺寸/布局类保留在原位）。已验证 Tailwind v4 仍能扫到全部类名（含新引入的 `border-error/60`），产物 CSS 断言见 `verification.md` §3 |
 | 未变 | Escape 关闭、点击遮罩关闭、加载中骨架分支、header 结构、模型行 `key={idx}`、所有色值/间距 class、`onSave` 契约与调用方 `Header.tsx` |
 
-## 3. `tests/integration/settings-provider-drafts.test.ts`（新增，15 个 it / 5 个 describe）
+## 3. `tests/integration/settings-provider-drafts.test.ts`（新增，16 个 it / 5 个 describe）
 
 node 环境纯逻辑回归测试：
 
@@ -49,7 +50,7 @@ node 环境纯逻辑回归测试：
 - **toDrafts**：顺序保留 + 深拷贝（改草稿不污染入参）；`null`/`undefined`/空 providers 回落默认 deepseek；新建草稿 models 数组不共享引用
 - **toConfig 落盘语义**：trim 名称/过滤空模型 id/保留显示名；丢空名条目 + 模型全空回填占位；`toConfig(toDrafts(cfg))` 幂等；重名草稿被 `canSaveDrafts` 拦下（不静默丢条目）
 - **校验与保存可用性**：空名 / trim 后重名（两条 issue）/ 干净配置无 issue；缺 baseUrl、缺 api、缺模型 id、空数组均不可保存；`suggestProviderName` 跳过已占用名
-- **SettingsModal 源码契约**（DOM 行为在 node 环境无法直测，静态兜底）：源码含 `key={draft.uid}`，不含 `key={name}` / `key={draft.name}` / `key={provider`；名称输入框受控于 `draft.name` 且 onChange 只调 `updateName(draft.uid, ...)`
+- **SettingsModal 源码契约**（DOM 行为在 node 环境无法直测，静态兜底）：源码含 `key={draft.uid}`，不含 `key={name}` / `key={draft.name}` / `key={provider`；名称输入框受控于 `draft.name` 且 onChange 只调 `updateName(draft.uid, ...)`；**高度一致性**：含 `w-full h-9 ${INPUT_CLASS}`、不含 `flex-1 h-9`，`h-9 ${INPUT_CLASS}` 恰好 4 处（名称/Base URL/API 类型/API Key）、`flex-1 h-8 ${INPUT_CLASS}` 恰好 2 处（模型行，父级为 flex-row）
 
 ## 4. `docs/tasks/X11-settings-provider-name-input/smoke-browser-cdp.mjs`（新增）
 
@@ -57,7 +58,7 @@ node 环境纯逻辑回归测试：
 
 ## 5. `docs/task-plan.json`
 
-`crossCutting[X11]`：`pending` → `in_progress` → `done`，各步追加 history 条目；顶层 `updatedAt` 刷新。
+`crossCutting[X11]`：`pending` → `in_progress` → `done`，各步追加 history 条目（含用户验收反馈的高度回归追加修复）；顶层 `updatedAt` 刷新。
 
 ## 未改动（明确核查过）
 

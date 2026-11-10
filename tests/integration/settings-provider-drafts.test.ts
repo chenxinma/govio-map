@@ -204,4 +204,14 @@ describe("SettingsModal 源码契约（DOM 行为无法在 node 环境直测，�
     expect(src).toMatch(/value=\{draft\.name\}/);
     expect(src).toMatch(/onChange=\{\(e\) => updateName\(draft\.uid, e\.target\.value\)\}/);
   });
+
+  it("高度一致：名称框与 Base URL/API/API Key 同为 h-9，且不在 flex-col 父级里用 flex-1（会压扁高度）", () => {
+    // 回归来源：用户反馈 2026-11-10——名称框被包进 flex-col wrapper 后仍带 flex-1，
+    // flex-basis 作用到纵轴把 h-9 压扁，视觉上比其它 h-9 输入框矮
+    expect(src).toContain("w-full h-9 ${INPUT_CLASS}");
+    expect(src).not.toContain("flex-1 h-9");
+    expect(src.match(/h-9 \$\{INPUT_CLASS\}/g)).toHaveLength(4);
+    // 模型行 input 的父级是 flex-row，flex-1 h-8 仍是正确用法
+    expect(src.match(/flex-1 h-8 \$\{INPUT_CLASS\}/g)).toHaveLength(2);
+  });
 });

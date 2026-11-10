@@ -56,7 +56,7 @@ npm run verify
 | verify:caliber-conflict | 46/46 checks passed |
 | verify:cwd | 共 13 项断言，失败 0 项 |
 | verify:prompt-injection | 58/58 通过 |
-| verify:integration (vitest) | **Test Files 7 passed (7) / Tests 82 passed (82)** |
+| verify:integration (vitest) | **Test Files 7 passed (7) / Tests 83 passed (83)** |
 
 `verify` 退出码 0；脚本断言合计 **609 项，0 失败**。
 
@@ -65,14 +65,14 @@ npm run verify
 | | Test Files | Tests |
 |---|---|---|
 | 修复前（基线，`npx vitest run`） | 6 passed (6) | 67 passed (67) |
-| 修复后 | 7 passed (7) | 82 passed (82) |
-| 变化 | **+1 文件** | **+15 用例，既有 67 例全绿零回归** |
+| 修复后 | 7 passed (7) | 83 passed (83) |
+| 变化 | **+1 文件** | **+16 用例，既有 67 例全绿零回归** |
 
-新增文件：`tests/integration/settings-provider-drafts.test.ts`（15 例，覆盖 uid 与名称解耦、`toDrafts`/`toConfig` 往返与落盘语义、空名/重名校验、`canSaveDrafts`、`suggestProviderName`，外加 SettingsModal 源码契约 2 例）。
+新增文件：`tests/integration/settings-provider-drafts.test.ts`（16 例，覆盖 uid 与名称解耦、`toDrafts`/`toConfig` 往返与落盘语义、空名/重名校验、`canSaveDrafts`、`suggestProviderName`，外加 SettingsModal 源码契约 3 例：key 用 uid、名称受控、**高度类一致**）。
 
 ```bash
 npx vitest run tests/integration/settings-provider-drafts.test.ts
-# Test Files  1 passed (1) / Tests  15 passed (15) / Duration ~0.3s
+# Test Files  1 passed (1) / Tests  16 passed (16) / Duration ~0.3s
 ```
 
 verify 全跑后工作区仅剩本任务预期变更（无脚本残留物）：
@@ -141,6 +141,7 @@ PASS  Esc 关闭对话框（未保存，无配置副作用）
 ### 4.3 冒烟测试的已知限制
 
 - moli headless 布局下 `position: fixed` 的 portal 覆盖层 `getBoundingClientRect()` 为 0×0，`document.body.innerText` 取不到覆盖层文本（`textContent` 正常）→ 文案断言统一改用 `textContent` + `span.text-error` DOM 查询（`errSpans` / `dupSpans` 计数）。**红字提示与对话框布局需在真实浏览器目视确认**（见 §6 待用户确认项）。
+- 进一步实测（§7.3）：即使 `Emulation.setDeviceMetricsOverride` 固定视口、把覆盖层临时改成 `position:absolute` + 显式宽高，moli 仍**不对这些元素做布局**（rect 恒为 0，`getComputedStyle().flex` 也不解析 `flex:1` 简写，恒返回 `0 1 auto`）→ 该环境**无法用于任何高度/间距类视觉验证**，只能靠 CSS 推理 + 真实浏览器目视。
 - 冒烟全程未点击「保存」，最后以 Esc 关闭。已核查落盘配置未被改动：`~/.pi/agent/models.json` mtime 仍为 `Nov 8 13:47`（早于本次冒烟），`jq '.providers | keys'` 仍为 `["deepseek-my"]`。
 
 ## 5. 静态源码契约（防回归）
@@ -154,7 +155,55 @@ PASS  Esc 关闭对话框（未保存，无配置副作用）
 
 ## 6. 待用户确认（人工验收项）
 
-1. 真实浏览器打开 LLM 设置，provider name 连续输入/退格/粘贴，光标不跳
-2. 名称清空或改成重复名时，输入框下方与页脚出现红字提示、保存按钮置灰
-3. 对话框视觉与修复前一致（输入框高度/内边距/占位符色、删除按钮与输入框对齐；错误文案出现时删除按钮不跳动）
-4. 正常改一个 provider 名并保存 → 重新打开显示新名字、模型下拉与 apiKey 掩码不回归
+1. ~~真实浏览器打开 LLM 设置，provider name 连续输入/退格/粘贴，光标不跳~~ → **用户已确认修复（2026-11-10）**
+2. ~~名称输入框高度与其它输入框一致~~ → 用户验收时发现偏矮，已追加修复，见 §7；**需再次目视确认**
+3. 名称清空或改成重复名时，输入框下方与页脚出现红字提示、保存按钮置灰
+4. 对话框视觉与修复前一致（输入框内边距/占位符色、删除按钮与输入框对齐；错误文案出现时删除按钮不跳动）
+5. 正常改一个 provider 名并保存 → 重新打开显示新名字、模型下拉与 apiKey 掩码不回归
+
+## 7. 追加修复：名称输入框高度偏矮（用户验收反馈 2026-11-10）
+
+### 7.1 现象与根因
+
+用户反馈：光标问题已修复，但 provider name 输入框比其它输入框**矮**。
+
+根因是本次改造引入的回归：为了在名称下方放错误文案，把名称 input 包进了新的 wrapper
+`<div className="flex-1 flex flex-col gap-1">`，而 input 自身仍保留修复前的 `flex-1`：
+
+```tsx
+<div className="flex items-start justify-between gap-2">   {/* 行方向 */}
+  <div className="flex-1 flex flex-col gap-1">             {/* ← 新增：列方向 wrapper */}
+    <input className="flex-1 h-9 ..." />                    {/* ← flex-1 此时作用在纵轴 */}
+```
+
+修复前该 input 的父级是**行**方向 flex，`flex-1` 只影响宽度，高度由 `h-9` 决定；改造后父级变成
+**列**方向 flex，`flex-1`（构建产物 CSS 实测为 `.flex-1{flex:1}` → `flex: 1 1 0%`）的 `flex-basis: 0%`
+作用到纵轴，按 flex 规范**覆盖** `height: 36px` 成为主轴尺寸 → 输入框被压扁，比同为 `h-9` 的
+Base URL / API 类型 / API Key 明显矮一截。
+
+### 7.2 修复
+
+名称 input 的 `flex-1` → `w-full`（宽度改由外层 wrapper 的 `flex-1` 在行方向撑开），高度回归 `h-9`：
+
+```diff
+-                      className={`flex-1 h-9 ${INPUT_CLASS} ${
++                      className={`w-full h-9 ${INPUT_CLASS} ${
+```
+
+并在 JSX 里留注释说明「flex-col 父级里不要用 flex-1」。模型行的 `flex-1 h-8` 父级仍是行方向 flex，
+用法正确，未改动。
+
+### 7.3 验证
+
+1. **源码契约断言**（`tests/integration/settings-provider-drafts.test.ts` 新增第 16 例）：必须含
+   `w-full h-9 ${INPUT_CLASS}`；必须不含 `flex-1 h-9`；`h-9 ${INPUT_CLASS}` 恰好 4 处（名称 / Base URL /
+   API 类型 / API Key，高度同源）；`flex-1 h-8 ${INPUT_CLASS}` 恰好 2 处（模型行，父级为 flex-row）。
+2. **CSS 事实核查**：`grep -o '\.flex-1{[^}]*}' dist/assets/index-*.css` → `.flex-1{flex:1}`，
+   `grep -o '\.h-9{[^}]*}'` → `.h-9{height:calc(var(--spacing) * 9)}`，确认根因推理中的类语义无误。
+3. **门槛复跑全绿**：`npm run build` = 0、`npm run lint` = 0、`npm run verify` = 0
+   （脚本断言 609 项 0 失败；vitest **Test Files 7 / Tests 83**，即 82 → 83，+1 例，既有零回归）。
+4. **浏览器功能冒烟复跑**：`smoke-browser-cdp.mjs` 13/13 全绿（功能未因样式改动回归）。
+5. **高度无法在 moli 中量化**：尝试 `Emulation.setDeviceMetricsOverride(1440×900)` + 把 portal 覆盖层临时改为
+   `position:absolute; width:1440px; height:900px` 后测量，所有元素 rect 仍恒为 0，inline `flex:1 1 0%` 也不被解析
+   （`getComputedStyle().flex` 恒返回 `0 1 auto`）→ 该 headless 环境不具备可用布局能力，高度一致性只能由
+   上面的类名/CSS 事实推理 + **真实浏览器目视确认**（§6.2）。

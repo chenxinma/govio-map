@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-10T21:58:01+08:00",
+  "updatedAt": "2026-11-10T22:10:24+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -764,6 +764,12 @@
           "at": "2026-11-10T21:58:01+08:00",
           "by": "main-session",
           "note": "实现+验证完成：key={name}→key={draft.uid}（主因）、删除 !newName.trim() early-return、空名/重名就地提示+禁用保存、toConfig 落盘语义与修复前一致。门槛全绿：build/lint/verify（脚本断言 609 项 0 失败；vitest 6 文件 67 例 → 7 文件 82 例，+15 例零回归）。浏览器 CDP 真实按键冒烟：旧代码负对照 12 项失败 7 项（复现「只进第一个字符+每键重挂载失焦」），修复后 13 项全绿；未点保存，~/.pi/agent/models.json 未变动。三件套 + smoke-browser-cdp.mjs 落盘 docs/tasks/X11-settings-provider-name-input/"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-10T22:10:24+08:00",
+          "by": "main-session",
+          "note": "用户验收反馈：光标问题已修复，但名称输入框比其它输入框矮 → 追加修复（本次改造引入的回归）：名称 input 被包进 flex-col wrapper 后仍带 flex-1，`.flex-1{flex:1}` 即 flex:1 1 0% 的 flex-basis 作用到纵轴并覆盖 h-9 → 改为 w-full h-9（宽度由 wrapper 的 flex-1 在行方向撑开），模型行 flex-1 h-8 父级仍是 flex-row 未动；新增源码契约断言（含 w-full h-9、不含 flex-1 h-9、h-9 恰 4 处、flex-1 h-8 恰 2 处）。门槛复跑全绿：build/lint/verify（脚本断言 609 项 0 失败；vitest 82 → 83 例零回归），浏览器功能冒烟 13/13。遗留：moli headless 不做布局（rect 恒 0、不解析 flex 简写），高度/间距类视觉验证只能真实浏览器目视。"
         }
       ]
     }

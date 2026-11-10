@@ -150,12 +150,14 @@ export default function SettingsModal({ initialConfig, onSave, onClose }: Settin
                 className="border border-border-subtle rounded-lg p-4 space-y-4"
               >
                 <div className="flex items-start justify-between gap-2">
+                  {/* 宽度交给本 wrapper 的 flex-1（行方向）；名称 input 用 w-full 而非 flex-1——
+                      父级是 flex-col，flex-1 会把 flex-basis 作用到纵轴，把 h-9 高度压扁 */}
                   <div className="flex-1 flex flex-col gap-1">
                     <input
                       value={draft.name}
                       onChange={(e) => updateName(draft.uid, e.target.value)}
                       placeholder="provider name"
-                      className={`flex-1 h-9 ${INPUT_CLASS} ${
+                      className={`w-full h-9 ${INPUT_CLASS} ${
                         issue ? "border-error/60" : ""
                       }`}
                     />
