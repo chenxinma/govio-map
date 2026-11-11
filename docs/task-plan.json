@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-11T06:16:03+08:00",
+  "updatedAt": "2026-11-11T20:21:21+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -726,7 +726,7 @@
     {
       "id": "X10",
       "title": "表间语义关系线（sourceTable 外键/图谱 rel → 语义血缘边）",
-      "status": "in_progress",
+      "status": "accepted",
       "dependsOn": [],
       "note": "用户决定 2026-11-08（产品演示视频脚本评审时发现的功能缺口，采用方案2 语义化，本期录制暂不实现）：sourceTable 之间目前无任何画布连线——建边逻辑仅覆盖数据血缘（referencedNodes/sourceRefs）与 sqlQuery↔sqlQuery 语义血缘（src/store/canvas-store.ts:265-340）；外键信息仅字段级 references/FK 徽标（SourceTableNode.tsx:75），observe explore 外键发现只出 correlation 文字报告。实现方向（方案2）：从图谱 rel 查询（PhysicalTable 外键关系，如 chocolate_relationships.json 的 3 条 many_to_one）或字段 references，在建/恢复 sourceTable 节点时生成表间边，归入语义血缘紫虚线体系（lineageKind:\\\"semantic\\\"，样式复用 src/utils/lineage.ts，注意 T2.2 语义边现仅限 sqlQuery 节点，判定需扩展）。验收方向：星型模型（chocolate fact_sales→dim_*）3 条外键线上画布；血缘图例/导出 HTML 报告含表间语义边；既有断言零回归。录制期口径见 docs/demo/video-script-chocolate.md「功能缺口」章节。",
       "outputDir": "docs/tasks/X10-table-semantic-edges/",
@@ -748,6 +748,18 @@
           "at": "2026-11-11T06:16:03+08:00",
           "by": "main-session",
           "note": "重派（用户指令：改用 pi）：首个 codex dispatch ctx_07ba7922a122 停在 start_unknown / turn_start_unobserved（任务书正文已写入但 30s 内未观察到 turn 开始；worker-read 显示累计 12,395 tokens 后退回 PowerShell 提示符，提示 codex resume 01a1c604，session_not_reported），worktree 无残留半成品（git log 仅到 940c2f2、git status 干净，.agents 与 node_modules 已就绪）。处置：worker-stop 得确认结果 state=stopped / processAction=closed_agent_terminal / ptyKilled=true（非 stop_unknown）→ task-update task_4139e5dd64e1 status=ready → worker-start --task 复用既有 worktree（id:8ad406e8::…/x10-table-semantic-edges，不新建、不重跑 setup）--agent pi，新 dispatch ctx_c41d594cfda1 / terminal term_ad1f0c99，state=ready。Task 由原 --spec-file 创建，spec 正文已绑定，故未重发 dispatch 正文（避免打断已开工回合）。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-11T06:54:25+08:00",
+          "by": "orca-worker:ctx_c41d594cfda1",
+          "note": "worker_done 汇报（agent=pi，codex 首次派发未开工后经用户指令重派，一次跑通）：commit 9f9632b，16 文件 +1728/−14。新增 server/table-relations.ts（278 行：图谱 RELATES_TO 主路径 + 字段级 references 降级 + RELATIONS_QUERY_TIMEOUT_MS=8000 本地闸 + 列形状容错 parseColumnList + 自环/重复过滤 + MAX_TABLE_RELATIONS=50 + 永不 throw）、src/utils/table-relations.ts（185 行：限定名后缀变体匹配 + 双向匹配候选 + 无向 pairKey 去重 + 按 lineageKindOf 判已存在语义边故 canvas_restore 不重复建边）；GovioNodeCreateEvent / CanvasEvent / SourceTableNodeData 同步新增 tableRelations / tableRelationsSource / tableRelationsError（缺失不建键）；未改 lineage.ts 色值线型、LineageLegend、export-report、ws-protocol（PROTOCOL_VERSION 保持 1）；hydrateSession 明确不做恢复期补建（无法区分用户删掉的边与从未建过的边，取舍见 design.md §5）。vitest 7 文件/83 例 → 8 文件/120 例（table-relations 新 27 + canvas-store +10）；脚本断言 609 项逐字零回归（未新增/未改 verify 脚本）；build/lint/verify=0（verify 49.8s）。文档：specs 02/05/06 + 演示脚本场景 1（功能缺口 → 已实现连线版）。遗留 6 条，最关键两条：①变体匹配在同名表跨 catalog/schema 时可能误配（彻底解法需关系携带目标三段式全名做全等优先）②tableRelations 与降级留痕暂无 UI 出口（用户只看得到紫虚线，看不到基于哪几列/图谱描述/降级原因）。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-11T20:21:21+08:00",
+          "by": "main-session",
+          "note": "PR #29 合并（merge a300128）。验收（不转述 worker 报告）：主会话在 worker worktree 独立复跑 build=0/lint=0/verify=0，脚本断言 609 项 0 失败、vitest 8 文件/120 例、build+lint+verify 合计 72s、verify 全跑后 git status 干净。抽查实现：canvas-store 仅 +29 行且双向匹配/无向去重/样式全取 lineageEdgeAppearance('semantic') 不硬编码；server/table-relations.ts 的 Cypher 属性名严格取自 .agents/skills/govio/assets/schema.md（relationship_type/description/source_columns/target_columns），双形 IN 匹配复用 prompt-injection 的 graphTableKey/tableKeyCandidates；三个新键缺失不建键、PROTOCOL_VERSION 保持 1、export-report 与 LineageLegend 一行未动（与派发前判断一致）。另写独立 live 图谱只读探针（不复用 worker 脚本）实测：fact_sales → status=ok source=graph relations=3（三条 many_to_one 指向 dim_product/dim_country/dim_channel，description 取自图谱，sourceColumns/targetColumns 已由字符串归一为数组）；dim_product 与仅裸表名的 dim_country → ok + 0 关系；不存在的表 → ok + 0 关系、不 throw 不误降级；单表查询 ~2s（8s 闸内）。合并后在 main 上按验收协议复跑完整门槛，发现 PR #29 与 main 上 hotfix 5af8555（建边收束到 lineageEdge 工厂）的冲突解决错误：4aee3bc 合并时调用点取 main 侧、import 行取 X10 侧 → lineageEdge 未导入，build TS2304 ×4、verify 崩在 verify:semantic-lineage（后续 5 个子脚本与 vitest 未执行）。已由主会话按 5af8555 既定意图修复（import 改 lineageEdge，X10 表间语义边块改走工厂，边形状逐字段等价；lineageEdgeAppearance 在本文件已无引用故移除以免 noUnusedLocals TS6133），单独 commit d2c3790 + 留痕 docs/tasks/BUGFIX-lineage-edge-import.md。修复后合并态 main 全绿：build/lint/verify=0、脚本断言 609 项 0 失败、vitest 11 文件/143 例（X10 +37、X12 +16、PR #30 chat-fold +7）、verify:ui 2/16。遗留 6 条中「tableRelations 与降级留痕无 UI 出口」与「同名表跨 catalog/schema 误配」建议后续立项。"
         }
       ],
       "scope": [
@@ -812,7 +824,7 @@
     {
       "id": "X12",
       "title": "前端 UI 回归测试基建（组件级交互测试 + 可选真实布局能力）",
-      "status": "in_progress",
+      "status": "accepted",
       "dependsOn": [],
       "note": "动机（X11 验收暴露，证据见 docs/tasks/X11-settings-provider-name-input/design.md 遗留问题 1/2 与 verification.md §4.3/§7.3）：前端组件目前无任何自动化 UI 测试能力——vitest.config.ts 固定 environment:'node'、include 仅 tests/integration/**/*.test.ts（注释明写「不需要 DOM」），devDependencies 无 jsdom / @testing-library / playwright / happy-dom（已核查 node_modules 与 npm -g 均无）。X11 的两轮缺陷（① key={name} 使名称输入框每字符重挂载失焦；② flex-col 父级里残留 flex-1 压扁 h-9 高度）都只能靠一次性 CDP 脚本 + 源码字符串契约断言兜底，其中高度回归是**用户目视才发现**的。可用的 moli headless CDP 已实测不做布局（元素 rect 恒 0、不解析 flex 简写、getComputedStyle().flex 恒返回 '0 1 auto'，Emulation.setDeviceMetricsOverride + 改 position:absolute 均无效），无法承担视觉验证。方案候选（需在 design.md 做取舍与依赖/耗时预算）：A. jsdom + @testing-library/react + @testing-library/user-event，vitest 按文件切环境（文件头 // @vitest-environment jsdom 或 projects 配置），新增 verify:ui 挂进 npm run verify——成本低、进门禁快，可覆盖交互/焦点/受控值/条件渲染/a11y，但 jsdom 同样不做布局，测不了高度/间距/对齐；B. Playwright（真 Chrome）E2E 或组件测试——能真布局、可断言 computed 尺寸与截图比对，但依赖重（浏览器二进制）、需编排 dev server、显著拉长 verify 耗时；C. vitest browser mode（vitest 5 browser provider，走 playwright/webdriverio）——用真实浏览器跑 vitest 用例，介于 A/B 之间；D. 仅加静态约束（ESLint 规则禁止「可编辑值当 React key」、class 冲突检查）——最便宜但覆盖面窄。建议路线：先落 A（把高频交互回归纳入门槛），再评估 C 或 B 只对少数关键组件补布局断言，D 作为 A 的补充而非替代。实现范围：测试基建 + 首批用例（SettingsModal：连续输入不失焦/光标位置、空名与重名就地提示、保存禁用、增删 provider 与模型行、Esc 与遮罩关闭；至少 1 个画布节点组件如 SourceTableNode 或 DataFrameNode 的渲染与「引用」按钮），不改任何业务行为。验收方向：新增 npm run verify:ui 并并入 npm run verify 全绿；既有 609 项脚本断言与 83 例 vitest 零回归；verify 总耗时增量有上限（建议 ≤60s，需在 verification.md 记录实测）；三件套齐全并给出 A/B/C 取舍结论。门禁：会动 package.json 依赖与 verify 脚本，按 AGENTS.md「判不准按 PR 处理」→ 走 GitHub PR，由用户合并。",
       "outputDir": "docs/tasks/X12-ui-test-infra/",
@@ -828,6 +840,18 @@
           "at": "2026-11-10T23:07:31+08:00",
           "by": "main-session",
           "note": "派发准备：补全 scope/acceptance 并置 in_progress；八段式任务书 docs/tasks/X12-ui-test-infra/DISPATCH.md。已核实实证事实：devDependencies 无任何 DOM 测试库（无 jsdom/@testing-library/playwright/happy-dom，node_modules 与 npm -g 均无）；vitest.config.ts environment=node 且 include 仅 tests/integration/**/*.test.ts；tests/ 不在任何 tsconfig include 内（tsc -b 不检查测试文件）；npm run verify 全链基线实测 36s（脚本断言 609 项 + vitest 7 文件 83 例）；moli headless CDP 不做布局，不能承担视觉验证。经 Orca 独立 worktree 派发 worker，涉依赖与 verify 脚本变更走 GitHub PR 由用户合并。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-10T23:30:11+08:00",
+          "by": "orca-worker:ctx_ca12b7d0f119",
+          "note": "worker_done 汇报（agent=codex，一次跑通）：commit 854ff9c。选型 A —— jsdom ^27.2.0 + @testing-library/react ^16.3.0 + @testing-library/dom ^10.4.2 + @testing-library/user-event ^14.6.1，仅 devDependencies；vitest.config.ts 仅扩 include 至 tests/ui/**/*.test.tsx，全局 environment 仍为 node，UI 测试用文件头 // @vitest-environment jsdom 单独声明 → 既有 7 个 node 测试文件零改动；新增 16 例（SettingsModal 11 + SourceTableNode 5，后者以 vi.mock 隔离 canvas-store）；新增 verify:ui（vitest run tests/ui）并挂进 verify 聚合链末尾。vitest 7 文件/83 例 → 9 文件/99 例；verify 47.39s vs 基线 36s（+11.4s，预算 ≤60s）；build/lint/verify=0。反向验证：key={draft.uid} 改回 key={draft.name} 使连续输入用例失败；jsdom 无布局引擎，flex-1 h-9 视觉回归仍无法捕获（补偿=保留 X11 源码契约断言）。遗留 4 条：jsdom 无布局、tests/ 未纳入 tsc 类型检查、verify:integration 与 verify:ui 重复执行 UI 用例、未建视觉基线。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-11T20:21:21+08:00",
+          "by": "main-session",
+          "note": "PR #28 合并（merge 849ecf6）。验收（不转述 worker 报告）：主会话在 worker worktree 独立复跑 build=0/lint=0/verify=0，脚本断言 609 项 0 失败（92/71/119/126/39/45/46/13/58 逐项与基线一致）、vitest 9 文件/99 例、verify:ui 2 文件/16 例、verify 全跑后 git status 干净。独立复现反向验证：把 SettingsModal.tsx:149 的 key={draft.uid} 改回 key={draft.name} → tests/ui/settings-modal.test.tsx 2 例失败（含「连续输入时值累积、焦点留在同一 DOM 节点、选区推进到末尾」＝X11 缺陷①），随后完全还原、git status 为空。抽查：package.json 仅 4 个 devDeps + verify:ui 挂链、vitest.config.ts 仅扩 include、src/ 一行未动（无业务行为变更）、未碰 task-plan.json、未碰 X10 并行改动区。三件套齐全（design.md 含 A/B/C/D 三维对比与 4 条遗留问题）。合并后 main 复跑发现的 lineageEdge 导入回归与本任务无关（见 X10 accepted 条目与 docs/tasks/BUGFIX-lineage-edge-import.md）。"
         }
       ],
       "scope": [
@@ -852,9 +876,12 @@
       "#13 feature/phase1-trusted-analysis",
       "#14 feature/phase2-semantic-layer",
       "#16 fix/df-columns-fallback",
-      "#17 chore/move-sql-discipline"
+      "#17 chore/move-sql-discipline",
+      "#28 x12-ui-test-infra",
+      "#29 x10-table-semantic-edges",
+      "#30 ui/chat-process-collapsed"
     ],
-    "note": "#12-#17 全部合并入 main（14e39cf/3759971/1848b08/18ba6ab/fb237a2/3428f69）。相关功能分支（security/hardening、feature/phase1-trusted-analysis、feature/phase2-semantic-layer、fix/df-columns-fallback、chore/move-sql-discipline）已清理；docs/tech-roadmap 为已合并零提交分支，遗留未清理；docs/sync-readme-claudemd、feature/llm-config 为 2026-08 陈旧分支（含未合并提交），待用户裁决去留。",
+    "note": "#12-#17 全部合并入 main（14e39cf/3759971/1848b08/18ba6ab/fb237a2/3428f69）。相关功能分支（security/hardening、feature/phase1-trusted-analysis、feature/phase2-semantic-layer、fix/df-columns-fallback、chore/move-sql-discipline）已清理；docs/tech-roadmap 为已合并零提交分支，遗留未清理；docs/sync-readme-claudemd、feature/llm-config 为 2026-08 陈旧分支（含未合并提交），待用户裁决去留。 补充（2026-11-11）：X11 属 bugfix 直接 commit main（2fb6ea6 立项 / 8aca718 主修复 / 60b11d4 高度回归 / ebdd9cb 验收），未走 PR；X12 经 PR #28（merge 849ecf6）、X10 经 PR #29（merge a300128）合入，两者由 Orca worker 在独立 worktree 执行（X12=codex，X10=codex 首次未开工后按用户指令改 pi 重派）；#30（merge b2aa851）为用户侧 chat 折叠 UI 改动，非本计划任务。合并态 main 曾出现 lineageEdge 导入丢失（PR #29 与 hotfix 5af8555 的行级冲突解决错误，build+verify 阻断），已由 d2c3790 修复，详见 docs/tasks/BUGFIX-lineage-edge-import.md。#22-#27 未在本 map 记账。",
     "security": "https://github.com/chenxinma/govio-map/pull/12",
     "phase1": "https://github.com/chenxinma/govio-map/pull/13",
     "phase2": "https://github.com/chenxinma/govio-map/pull/14",
@@ -865,6 +892,8 @@
     "x3-bundle-split": "https://github.com/chenxinma/govio-map/pull/18",
     "x4-test-infra": "https://github.com/chenxinma/govio-map/pull/19",
     "t21-graph-prompt": "https://github.com/chenxinma/govio-map/pull/20",
-    "x2-ws-protocol": "https://github.com/chenxinma/govio-map/pull/21"
+    "x2-ws-protocol": "https://github.com/chenxinma/govio-map/pull/21",
+    "x12-ui-test-infra": "https://github.com/chenxinma/govio-map/pull/28",
+    "x10-table-semantic-edges": "https://github.com/chenxinma/govio-map/pull/29"
   }
 }
