@@ -54,12 +54,6 @@ export interface ChatMessage {
   thinking?: string;
   tools?: ToolCall[];
   /**
-   * thinking/工具区默认展开（本轮 agent 运行中跟随进度）。
-   * agent_end 时清除 → 折叠主要文本输出之前的 thinking 与 tool，突出正文。
-   * 历史消息无此标记，默认折叠。
-   */
-  processOpen?: boolean;
-  /**
    * 过程消息（无正文，仅 thinking/tool）：agent_end 后折入「已处理」组。
    * 历史加载时按同一规则标记，恢复后与运行态一致。
    */
@@ -308,10 +302,6 @@ export function useChat() {
             setIsStreaming(true);
             finalizeRef.current();
             turnFirstIdRef.current = null;
-            // 上一轮遗留的 process 展开态（如 abort 未走 agent_end）一并折叠
-            setMessages((prev) =>
-              prev.map((m) => (m.processOpen ? { ...m, processOpen: undefined } : m))
-            );
             break;
 
           case "message_start": {
@@ -324,7 +314,7 @@ export function useChat() {
               reusableThinkingId.current = null;
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === reusable ? { ...m, isStreaming: true, processOpen: true } : m
+                  m.id === reusable ? { ...m, isStreaming: true } : m
                 )
               );
             } else {
@@ -341,7 +331,6 @@ export function useChat() {
                   content: "",
                   tools: [],
                   isStreaming: true,
-                  processOpen: true,
                 },
               ]);
             }
@@ -447,8 +436,7 @@ export function useChat() {
             finalizeRef.current();
             // 一轮完成：
             // 1) 本轮没有正文的过程 message（thinking/tool）整体折入「已处理」组（folded）；
-            // 2) 正文消息内的 thinking/tool 清除 processOpen → 自动收起，突出正文；
-            // 3) 未送达的排队 steering 显性化（run 先结束了），便于用户重发。
+            // 2) 未送达的排队 steering 显性化（run 先结束了），便于用户重发。
             const turnFirst = turnFirstIdRef.current;
             turnFirstIdRef.current = null;
             setMessages((prev) => {
@@ -459,11 +447,10 @@ export function useChat() {
                   i >= startIdx &&
                   m.role === "assistant" &&
                   !(m.content && m.content.trim());
-                if (!fold && !m.isQueued && !m.processOpen) return m;
+                if (!fold && !m.isQueued) return m;
                 return {
                   ...m,
                   isQueued: undefined,
-                  processOpen: undefined,
                   ...(fold ? { folded: true } : {}),
                 };
               });

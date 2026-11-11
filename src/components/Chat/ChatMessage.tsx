@@ -32,8 +32,8 @@ function formatArgs(tool: ToolCall): string | null {
 }
 
 function ToolRow({ tool, defaultOpen }: { tool: ToolCall; defaultOpen?: boolean }) {
-  // override === null 时跟随 defaultOpen（agent 运行中展开、agent_end 自动折叠）；
-  // 用户点击后固定为手动值，不再被自动开合覆盖。
+  // 默认折叠（含 agent 运行中）；「已处理」组内由 defaultOpen 直接展开。
+  // 用户点击后固定为手动值。
   const [override, setOverride] = useState<boolean | null>(null);
   const open = override ?? !!defaultOpen;
   const isSuccess = tool.success === true;
@@ -86,8 +86,8 @@ function ToolRows({ tools, defaultOpen }: { tools: ToolCall[]; defaultOpen?: boo
 }
 
 function ThinkingSection({ content, defaultOpen }: { content: string; defaultOpen?: boolean }) {
-  // override === null 时跟随 defaultOpen（agent 运行中展开、agent_end 自动折叠）；
-  // 用户点击后固定为手动值，不再被自动开合覆盖。
+  // 默认折叠（含 agent 运行中）；「已处理」组内由 defaultOpen 直接展开。
+  // 用户点击后固定为手动值。
   const [override, setOverride] = useState<boolean | null>(null);
   const open = override ?? !!defaultOpen;
 
@@ -189,10 +189,10 @@ export default function ChatMessage({ message }: { message: ChatMessageType }) {
         ) : (
           <>
             {message.thinking && (
-              <ThinkingSection content={message.thinking} defaultOpen={!!message.processOpen} />
+              <ThinkingSection content={message.thinking} />
             )}
             {message.tools && message.tools.length > 0 && (
-              <ToolRows tools={message.tools} defaultOpen={!!message.processOpen} />
+              <ToolRows tools={message.tools} />
             )}
             {message.content ? (
               <div className="chat-markdown prose prose-invert prose-sm max-w-none">
