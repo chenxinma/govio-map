@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-10T23:07:31+08:00",
+  "updatedAt": "2026-11-11T06:16:03+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -742,6 +742,12 @@
           "at": "2026-11-10T23:07:31+08:00",
           "by": "main-session",
           "note": "派发准备（主会话为唯一串行写者）：补全 scope/acceptance 并置 in_progress；八段式任务书 docs/tasks/X10-table-semantic-edges/DISPATCH.md。已核实实证事实：live 图谱 MATCH (a:PhysicalTable)-[r:RELATES_TO]->(b:PhysicalTable) 返回 3 条 many_to_one（fact_sales → dim_channel/dim_country/dim_product），且 r.source_columns/r.target_columns 返回字符串而非数组（JSON 源文件里是数组）；export-report.ts 与 LineageLegend.tsx 已按 lineageKind 泛化，表间语义边无需改导出；ws-protocol canvas_save/canvas_restore 载荷为 Type.Unknown()，新增节点字段无需 PROTOCOL_VERSION 变更。经 Orca 独立 worktree 派发 worker，功能类走 GitHub PR 由用户合并。"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-11T06:16:03+08:00",
+          "by": "main-session",
+          "note": "重派（用户指令：改用 pi）：首个 codex dispatch ctx_07ba7922a122 停在 start_unknown / turn_start_unobserved（任务书正文已写入但 30s 内未观察到 turn 开始；worker-read 显示累计 12,395 tokens 后退回 PowerShell 提示符，提示 codex resume 01a1c604，session_not_reported），worktree 无残留半成品（git log 仅到 940c2f2、git status 干净，.agents 与 node_modules 已就绪）。处置：worker-stop 得确认结果 state=stopped / processAction=closed_agent_terminal / ptyKilled=true（非 stop_unknown）→ task-update task_4139e5dd64e1 status=ready → worker-start --task 复用既有 worktree（id:8ad406e8::…/x10-table-semantic-edges，不新建、不重跑 setup）--agent pi，新 dispatch ctx_c41d594cfda1 / terminal term_ad1f0c99，state=ready。Task 由原 --spec-file 创建，spec 正文已绑定，故未重发 dispatch 正文（避免打断已开工回合）。"
         }
       ],
       "scope": [

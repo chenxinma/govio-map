@@ -187,15 +187,11 @@ export const useCanvasStore = create<CanvasStore>()(
                   );
                 });
                 if (sourceNode && !state.edges.some((e) => e.id === `e-${sourceNode.id}-${dupDf.id}`)) {
-                  addEdges.push({
+                  addEdges.push(lineageEdge("data", {
                     id: `e-${sourceNode.id}-${dupDf.id}`,
                     source: sourceNode.id,
                     target: dupDf.id,
-                    type: "smoothstep",
-                    animated: true,
-                    style: { stroke: "#1db954", strokeWidth: 2 },
-                    data: { lineageKind: "data" },
-                  });
+                  }));
                 }
               }
               return addEdges.length > 0 ? { edges: [...state.edges, ...addEdges] } : {};
@@ -286,15 +282,11 @@ export const useCanvasStore = create<CanvasStore>()(
     if (event.referencedNodes) {
       for (const ref of event.referencedNodes) {
         if (nodes.some((n) => n.id === ref.nodeId)) {
-          newEdges.push({
+          newEdges.push(lineageEdge("data", {
             id: `e-${ref.nodeId}-${nodeId}`,
             source: ref.nodeId,
             target: nodeId,
-            type: "smoothstep",
-            animated: true,
-            style: { stroke: "#1db954", strokeWidth: 2 },
-            data: { lineageKind: "data" },
-          });
+          }));
         }
       }
     }
@@ -310,15 +302,11 @@ export const useCanvasStore = create<CanvasStore>()(
           );
         });
         if (matched && !newEdges.some((e) => e.source === matched.id)) {
-          newEdges.push({
+          newEdges.push(lineageEdge("data", {
             id: `e-${matched.id}-${nodeId}`,
             source: matched.id,
             target: nodeId,
-            type: "smoothstep",
-            animated: true,
-            style: { stroke: "#1db954", strokeWidth: 2 },
-            data: { lineageKind: "data" },
-          });
+          }));
         }
       }
     }
@@ -328,20 +316,15 @@ export const useCanvasStore = create<CanvasStore>()(
     // 同一对节点已有数据血缘边时两线并存（edge id 加 -sem 后缀防冲突）。
     if (event.nodeType === "sqlQuery" && event.semanticRefs && event.semanticRefs.length > 0) {
       const refKeys = new Set(event.semanticRefs.map((r: SemanticRef) => `${r.entityType}:${r.id}`));
-      const sem = lineageEdgeAppearance('semantic');
       for (const old of nodes) {
         const d = old.data as unknown as CanvasNodeData;
         if (d.type !== "sqlQuery" || !d.semanticRefs || d.semanticRefs.length === 0) continue;
         if (!d.semanticRefs.some((r) => refKeys.has(`${r.entityType}:${r.id}`))) continue;
-        newEdges.push({
+        newEdges.push(lineageEdge("semantic", {
           id: `e-${old.id}-${nodeId}-sem`,
           source: old.id,
           target: nodeId,
-          type: "smoothstep",
-          animated: sem.animated,
-          style: { stroke: sem.stroke, strokeWidth: sem.strokeWidth, strokeDasharray: sem.strokeDasharray },
-          data: { lineageKind: "semantic" },
-        });
+        }));
       }
     }
 

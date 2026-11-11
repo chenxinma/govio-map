@@ -404,7 +404,7 @@ export function lineageSvg(layout: LineageLayout): string {
       `viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" ` +
       `role="img" aria-label="画布血缘连线图">`,
     `<defs><marker id="govio-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">` +
-      `<path d="M0,0 L10,5 L0,10 z" fill="#1db954"/></marker>` +
+      `<path d="M0,0 L10,5 L0,10 z" fill="${lineageEdgeAppearance('data').stroke}"/></marker>` +
       `<marker id="govio-arrow-sem" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">` +
       `<path d="M0,0 L10,5 L0,10 z" fill="${lineageEdgeAppearance('semantic').stroke}"/></marker></defs>`,
   ];
