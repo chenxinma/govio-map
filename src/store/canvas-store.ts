@@ -3,7 +3,8 @@ import { persist } from 'zustand/middleware';
 import type { Node, Edge, Connection, OnNodesChange, OnEdgesChange } from '@xyflow/react';
 import { addEdge, applyNodeChanges, applyEdgeChanges, Position } from '@xyflow/react';
 import type { CanvasNodeData, DataFrameNodeData, ReferencedNode, RerunRecord, SemanticRef } from '../types';
-import { lineageEdge } from '../utils/lineage';
+import { lineageEdgeAppearance } from '../utils/lineage';
+import { tableSemanticEdgeCandidates } from '../utils/table-relations';
 import { MOCK_TABLES } from '../data/mock-tables';
 import { nextId, syncCountersFromNodes } from '../services/mock-ai';
 import { getLayoutedElements, positionNewNode } from '../utils/layout';
@@ -250,6 +251,11 @@ export const useCanvasStore = create<CanvasStore>()(
             ...(event.datasourceType ? { datasourceType: event.datasourceType } : {}),
             ...(event.schema ? { schema: event.schema } : {}),
             ...(event.qualifiedName ? { qualifiedName: event.qualifiedName } : {}),
+            // 表间语义关系（X10）：服务端从图谱 RELATES_TO 解析（降级路径为字段级
+            // references），拿不到就不建键——不建边、不猜测，旧节点形状与 UI 回退不变
+            ...(event.tableRelations && event.tableRelations.length > 0 ? { tableRelations: event.tableRelations } : {}),
+            ...(event.tableRelationsSource ? { tableRelationsSource: event.tableRelationsSource } : {}),
+            ...(event.tableRelationsError ? { tableRelationsError: event.tableRelationsError } : {}),
           },
         };
         break;
@@ -319,6 +325,29 @@ export const useCanvasStore = create<CanvasStore>()(
           source: old.id,
           target: nodeId,
         }));
+      }
+    }
+
+    // 表间语义血缘边（X10）：新 sourceTable 节点的 tableRelations 与既有 sourceTable 节点
+    // 双向匹配（新→既有、既有→新，星型模型里 dim 表可能后上画布）；匹配键容忍
+    // 三段式/两段式/裸表名差异（src/utils/table-relations.ts 的后缀变体集合）。
+    // 样式与 sqlQuery 语义边同源（lineageEdgeAppearance('semantic')），id 加 -sem 后缀，
+    // 同一对节点只保留一条（与数据血缘边可并存）。
+    if (event.nodeType === "sourceTable") {
+      const candidates = tableSemanticEdgeCandidates(nodes, { id: nodeId, data: newNode.data }, edges);
+      if (candidates.length > 0) {
+        const sem = lineageEdgeAppearance('semantic');
+        for (const { sourceId, targetId } of candidates) {
+          newEdges.push({
+            id: `e-${sourceId}-${targetId}-sem`,
+            source: sourceId,
+            target: targetId,
+            type: "smoothstep",
+            animated: sem.animated,
+            style: { stroke: sem.stroke, strokeWidth: sem.strokeWidth, strokeDasharray: sem.strokeDasharray },
+            data: { lineageKind: "semantic" },
+          });
+        }
       }
     }
 

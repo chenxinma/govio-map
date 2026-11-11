@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
 import type { AnalysisManifest } from "../src/types/manifest.js";
-import type { CaliberCheck, DatasourceType, SemanticRef } from "../src/types/index.js";
+import type { CaliberCheck, DatasourceType, SemanticRef, TableRelation, TableRelationsSource } from "../src/types/index.js";
 
 export type GovioNodeType = "sqlQuery" | "dataFrame" | "report" | "sourceTable" | "chart";
 
@@ -31,6 +31,13 @@ export interface GovioNodeCreateEvent {
   datasourceType?: DatasourceType;
   schema?: string;
   qualifiedName?: string;
+  // sourceTable 表间语义关系（X10）：govio_create_source_table 执行时由 server/table-relations.ts
+  // 解析（主路径图谱 RELATES_TO，降级路径字段级 references），前端据此在 sourceTable 之间建
+  // lineageKind:"semantic" 边。三者均可缺失，缺失时不写键（旧节点形状不变）；字段语义与
+  // 来源分层见 src/types/index.ts 的 SourceTableNodeData。
+  tableRelations?: TableRelation[];
+  tableRelationsSource?: TableRelationsSource;
+  tableRelationsError?: string;
   // chart (Plotly figure: data = traces, layout optional; type = chart type
   // label for the node header, set by resolveChartConfig)
   config?: {

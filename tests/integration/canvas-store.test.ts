@@ -10,6 +10,8 @@
  *  - referencedNodes（prompt 引用）→ 自动边；sourceRefs（label 匹配 title/tableName/dfName）→ 自动边
  *  - positionNewNode 布局：空画布 (100,100)；同类型节点纵向排列；连接节点在源右侧
  *  - dataFrame 去重：同 dfName 不重复建节点（Manifest 缺失时回填）
+ *  - 表间语义血缘边（X10）：星型模型 3 条 fact→dim 边、双向匹配两种上画布顺序、
+ *    同一对节点去重、与数据血缘边并存、限定名变体匹配、关系缺失/目标不在画布/自环不建边
  *  - 失败/边界：未知 nodeType 静默忽略；引用不存在的节点不建边
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -23,6 +25,7 @@ vi.stubGlobal("localStorage", {
 });
 
 import { useCanvasStore } from "../../src/store/canvas-store.js";
+import { lineageEdgeAppearance } from "../../src/utils/lineage.js";
 import type { CanvasEvent } from "../../src/services/canvas-service.js";
 
 const baseEvent = (over: Partial<CanvasEvent> & { nodeType: CanvasEvent["nodeType"] }): CanvasEvent => ({
@@ -185,5 +188,220 @@ describe("canvas-store：createGovioNode 节点创建 / 自动边 / 布局", () 
     const nodes = useCanvasStore.getState().nodes;
     const positions = nodes.map((n) => `${n.position.x},${n.position.y}`);
     expect(new Set(positions).size).toBe(nodes.length);
+  });
+});
+
+// ── X10：表间语义血缘边（sourceTable ↔ sourceTable）──────────────────────────
+//
+// 星型模型（chocolate fact_sales → dim_product / dim_country / dim_channel）为基准：
+// 关系挂在 fact 节点的 tableRelations 上，dim 节点自身无出向关系；两种上画布顺序
+// （先 fact 后 dim / 先 dim 后 fact）都必须连出 3 条紫虚线语义边。
+
+const STAR_QUALIFIED = {
+  fact: "chocolate.chocolate.fact_sales",
+  product: "chocolate.chocolate.dim_product",
+  country: "chocolate.chocolate.dim_country",
+  channel: "chocolate.chocolate.dim_channel",
+};
+
+/** fact_sales 的 3 条图谱关系（RELATES_TO 原值形态：三段式目标 + many_to_one） */
+const FACT_RELATIONS = [
+  { targetTable: STAR_QUALIFIED.product, relationshipType: "many_to_one", description: "事实表产品外键", sourceColumns: ["product_id"], targetColumns: ["product_id"] },
+  { targetTable: STAR_QUALIFIED.country, relationshipType: "many_to_one", sourceColumns: ["country_id"], targetColumns: ["country_id"] },
+  { targetTable: STAR_QUALIFIED.channel, relationshipType: "many_to_one", sourceColumns: ["channel_id"], targetColumns: ["channel_id"] },
+];
+
+type DimName = "dim_product" | "dim_country" | "dim_channel";
+
+const dimEvent = (name: DimName, qualified?: string): CanvasEvent =>
+  baseEvent({
+    nodeType: "sourceTable",
+    title: name,
+    tableName: name,
+    database: "chocolate",
+    fields: [{ name: `${name}_id`, type: "BIGINT", nullable: false }],
+    ...(qualified ? { schema: "chocolate", qualifiedName: qualified } : {}),
+  });
+
+const factEvent = (extra: Partial<CanvasEvent> = {}): CanvasEvent =>
+  baseEvent({
+    nodeType: "sourceTable",
+    title: "fact_sales",
+    tableName: "fact_sales",
+    database: "chocolate",
+    schema: "chocolate",
+    qualifiedName: STAR_QUALIFIED.fact,
+    fields: [{ name: "order_id", type: "BIGINT", nullable: false }],
+    tableRelations: FACT_RELATIONS,
+    tableRelationsSource: "graph",
+    ...extra,
+  });
+
+describe("canvas-store：表间语义血缘边（X10）", () => {
+  beforeEach(() => {
+    useCanvasStore.getState().clearCanvas();
+  });
+
+  /** 语义边外观断言：样式唯一来源是 src/utils/lineage.ts，store 不得硬编码色值/线型 */
+  const expectSemanticAppearance = (edge: { type?: string; animated?: boolean; style?: unknown; data?: unknown }) => {
+    const ap = lineageEdgeAppearance("semantic");
+    expect(edge.type).toBe("smoothstep");
+    expect(edge.animated).toBe(ap.animated);
+    expect(edge.style).toEqual({ stroke: ap.stroke, strokeWidth: ap.strokeWidth, strokeDasharray: ap.strokeDasharray });
+    expect((edge.data as Record<string, unknown>).lineageKind).toBe("semantic");
+  };
+
+  it("星型模型（先 fact 后 dim）：3 条 fact→dim 语义边，id 带 -sem 后缀", () => {
+    const st = useCanvasStore.getState();
+    st.createGovioNode(factEvent());
+    const factId = useCanvasStore.getState().nodes[0].id;
+    st.createGovioNode(dimEvent("dim_product", STAR_QUALIFIED.product));
+    st.createGovioNode(dimEvent("dim_country", STAR_QUALIFIED.country));
+    st.createGovioNode(dimEvent("dim_channel", STAR_QUALIFIED.channel));
+
+    const { nodes, edges } = useCanvasStore.getState();
+    expect(nodes).toHaveLength(4);
+    expect(edges).toHaveLength(3);
+    for (const e of edges) {
+      expectSemanticAppearance(e);
+      expect(e.source).toBe(factId);
+      expect(e.target).not.toBe(factId);
+      expect(e.id).toBe(`e-${e.source}-${e.target}-sem`);
+    }
+    // 三个 dim 各一条（无重复、无遗漏）
+    expect(new Set(edges.map((e) => e.target)).size).toBe(3);
+  });
+
+  it("星型模型（先 dim 后 fact）：双向匹配另一侧同样连出 3 条 fact→dim 边", () => {
+    const st = useCanvasStore.getState();
+    st.createGovioNode(dimEvent("dim_product", STAR_QUALIFIED.product));
+    st.createGovioNode(dimEvent("dim_country", STAR_QUALIFIED.country));
+    st.createGovioNode(dimEvent("dim_channel", STAR_QUALIFIED.channel));
+    // dim 之间无关系 → 此时不建边
+    expect(useCanvasStore.getState().edges).toHaveLength(0);
+    st.createGovioNode(factEvent());
+    const factId = useCanvasStore.getState().nodes[3].id;
+
+    const { edges } = useCanvasStore.getState();
+    expect(edges).toHaveLength(3);
+    expect(edges.every((e) => e.source === factId)).toBe(true);
+    expect(new Set(edges.map((e) => e.target)).size).toBe(3);
+    edges.forEach(expectSemanticAppearance);
+  });
+
+  it("去重：两表互相声明关系（a→b 与 b→a）时同一对节点只保留一条语义边", () => {
+    const st = useCanvasStore.getState();
+    // 先落 dim_product，且它反向声明指向 fact_sales
+    st.createGovioNode(dimEvent("dim_product", STAR_QUALIFIED.product));
+    const dimId = useCanvasStore.getState().nodes[0].id;
+    st.updateNodeData(dimId, {
+      tableRelations: [{ targetTable: STAR_QUALIFIED.fact, relationshipType: "one_to_many" }],
+    } as never);
+    // 再落 fact_sales（关系指向 dim_product）：①新→既有与②既有→新同时命中同一对节点
+    st.createGovioNode(factEvent());
+    const factId = useCanvasStore.getState().nodes[1].id;
+
+    const { edges } = useCanvasStore.getState();
+    expect(edges).toHaveLength(1);
+    // ① 优先于 ②：方向为 fact → dim（关系语义 more-accurate 的一侧先产出）
+    expect(edges[0].source).toBe(factId);
+    expect(edges[0].target).toBe(dimId);
+  });
+
+  it("并存：同一对 sourceTable 已有数据血缘边时，语义边共存且 id 不冲突", () => {
+    const st = useCanvasStore.getState();
+    st.createGovioNode(dimEvent("dim_product", STAR_QUALIFIED.product));
+    const dimId = useCanvasStore.getState().nodes[0].id;
+    // 新 fact 节点经 referencedNodes 建数据血缘边（dim → fact），同时关系指向 dim（fact → dim）
+    st.createGovioNode(factEvent({ referencedNodes: [{ nodeId: dimId, label: "dim_product" }] }));
+    const factId = useCanvasStore.getState().nodes[1].id;
+
+    const { edges } = useCanvasStore.getState();
+    expect(edges).toHaveLength(2);
+    const data = edges.find((e) => (e.data as Record<string, unknown>).lineageKind === "data");
+    const sem = edges.find((e) => (e.data as Record<string, unknown>).lineageKind === "semantic");
+    expect(data?.id).toBe(`e-${dimId}-${factId}`);
+    expect(sem?.id).toBe(`e-${factId}-${dimId}-sem`);
+    expect(new Set(edges.map((e) => e.id)).size).toBe(2);
+  });
+
+  it("变体匹配：新节点只有裸 tableName（无 qualifiedName）也能对上三段式关系目标", () => {
+    const st = useCanvasStore.getState();
+    st.createGovioNode(factEvent());
+    const factId = useCanvasStore.getState().nodes[0].id;
+    st.createGovioNode(dimEvent("dim_product"));
+    const { edges } = useCanvasStore.getState();
+    expect(edges).toHaveLength(1);
+    expect(edges[0].source).toBe(factId);
+  });
+
+  it("边界：tableRelations 缺失 → 不建边且不写 node.data 键（旧节点形状不变）", () => {
+    const st = useCanvasStore.getState();
+    st.createGovioNode(factEvent({ tableRelations: undefined, tableRelationsSource: undefined }));
+    st.createGovioNode(dimEvent("dim_product", STAR_QUALIFIED.product));
+    const { nodes, edges } = useCanvasStore.getState();
+    expect(edges).toHaveLength(0);
+    for (const n of nodes) {
+      expect(Object.keys(n.data as Record<string, unknown>)).not.toContain("tableRelations");
+      expect(Object.keys(n.data as Record<string, unknown>)).not.toContain("tableRelationsSource");
+    }
+  });
+
+  it("边界：关系目标不在画布上 → 不建边、不报错、关系原样留在节点上", () => {
+    useCanvasStore.getState().createGovioNode(factEvent());
+    const { nodes, edges } = useCanvasStore.getState();
+    expect(nodes).toHaveLength(1);
+    expect(edges).toHaveLength(0);
+    expect((nodes[0].data as Record<string, unknown>).tableRelations).toHaveLength(3);
+  });
+
+  it("边界：自环关系与形状非法的关系元素被忽略", () => {
+    const st = useCanvasStore.getState();
+    st.createGovioNode(factEvent({
+      tableRelations: [
+        { targetTable: STAR_QUALIFIED.fact, relationshipType: "many_to_one" }, // 自环
+        { targetTable: "", relationshipType: "many_to_one" },                  // 空目标
+        { relationshipType: "many_to_one" },                                   // 缺 targetTable
+        null,                                                                  // 非法元素
+        "bogus",                                                               // 非法元素
+      ] as never,
+    }));
+    st.createGovioNode(dimEvent("dim_product", STAR_QUALIFIED.product));
+    expect(useCanvasStore.getState().edges).toHaveLength(0);
+  });
+
+  it("边界：hydrateSession 恢复的边不被重复追加，新表照常补边", () => {
+    const st = useCanvasStore.getState();
+    st.createGovioNode(factEvent());
+    st.createGovioNode(dimEvent("dim_product", STAR_QUALIFIED.product));
+    const before = useCanvasStore.getState().edges;
+    expect(before).toHaveLength(1);
+    // 模拟 canvas_restore：原样恢复节点与边后再落地 dim_country（既有 fact 关系指向它）
+    const { nodes, edges } = useCanvasStore.getState();
+    st.hydrateSession(nodes, edges);
+    st.createGovioNode(dimEvent("dim_country", STAR_QUALIFIED.country));
+    const after = useCanvasStore.getState().edges;
+    expect(after).toHaveLength(2);
+    expect(after[0]).toEqual(before[0]);
+  });
+
+  it("降级路径：字段级 foreign_key 关系同样建边，tableRelationsError 透传留痕", () => {
+    const st = useCanvasStore.getState();
+    st.createGovioNode(baseEvent({
+      nodeType: "sourceTable",
+      title: "fact_sales",
+      tableName: "fact_sales",
+      qualifiedName: STAR_QUALIFIED.fact,
+      fields: [{ name: "product_id", type: "BIGINT", nullable: false, isForeignKey: true, references: { table: "dim_product", field: "product_id" } }],
+      tableRelations: [{ targetTable: "dim_product", relationshipType: "foreign_key", sourceColumns: ["product_id"], targetColumns: ["product_id"] }],
+      tableRelationsSource: "fields",
+      tableRelationsError: "spawn govio-cli ENOENT",
+    } as Partial<CanvasEvent> as CanvasEvent));
+    st.createGovioNode(dimEvent("dim_product", STAR_QUALIFIED.product));
+    const { nodes, edges } = useCanvasStore.getState();
+    expect(edges).toHaveLength(1); // 裸表名 references 也能对上三段式节点
+    const fact = nodes[0].data as Record<string, unknown>;
+    expect(fact.tableRelationsSource).toBe("fields");
+    expect(fact.tableRelationsError).toBe("spawn govio-cli ENOENT");
   });
 });

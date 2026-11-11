@@ -16,6 +16,7 @@
 | `server/analysis-manifest.ts` | Analysis Manifest 构建与校验和计算（Phase 1 KR1） |
 | `server/dataframe-rerun.ts` | DataFrame 一键复跑与漂移判定（Phase 1 KR2） |
 | `server/govio-cli-exec.ts` | 数组参数方式调用 govio-cli（SQL 全文不经 shell 拆分） |
+| `server/table-relations.ts` | sourceTable 表间语义关系获取（图谱 RELATES_TO 主路径 + 字段级 references 降级，X10） |
 | `server/extensions/govio-canvas.ts` | Agent 扩展（工具注册 + 事件拦截 + treemap 解析） |
 | `server/parquet-api.ts` | HTTP API（parquet 预览 / SQL 执行 / DataFrame 复跑） |
 | `server/permission-manager.ts` | observe load 权限审批（确认门）+ 决策 ID / 审计写入（Phase 1 KR3） |
@@ -126,6 +127,9 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 | config | chart | Plotly figure {type, data[], layout?} |
 | sourceDf | chart | 数据源 DataFrame 名称 |
 | manifest | dataFrame/sqlQuery | 分析留痕 Analysis Manifest（类型见 `src/types/manifest.ts`，服务端填充后写入 `node.data.manifest`） |
+| tableRelations | sourceTable | 表间语义关系（X10）：`Array<{targetTable, relationshipType, description?, sourceColumns?, targetColumns?}>`，由 `server/table-relations.ts` 解析（图谱 RELATES_TO 主路径 / 字段级 references 降级），前端据此建表间语义血缘边；拿不到不写键 |
+| tableRelationsSource | sourceTable | 关系来源留痕（X10）：`graph` / `fields`，仅在 tableRelations 非空时写键 |
+| tableRelationsError | sourceTable | 图谱查询降级原因（X10）：仅 status=degraded 时写键，随 canvas sidecar 持久化以供审计 |
 | referencedNodes | 全部 | 引用节点（自动附加） |
 
 ## govio-canvas.ts - Agent 扩展
@@ -137,8 +141,14 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 | tableName | string | 是 | 物理表名 |
 | database | string | 否 | 数据库名 |
 | fields | Array<{name, type, description?, references?}> | 是 | 字段定义：`name`=物理列名(column_name)、`type`=数据类型(data_type)、`description`=描述名称(name)，三者均取自 govio 物理表字段结构查询结果，节点上同时展示 |
+| datasource / datasourceType / schema / qualifiedName | string | 否 | 数据源标注（T2.0）：取值来源分层（图谱 → 数据源声明/config.yaml → 省略），规则见 `docs/specs/11-datasource-schema-conventions.md` |
 
 执行后调用 `pushGovioNode({nodeType: "sourceTable", ...})`。
+
+**表间关系无参数**（X10）：`execute` 内先 `await resolveTableRelations({tableName, qualifiedName, schema, fields, runQuery: deps.runGraphQuery})`——
+图谱 `(:PhysicalTable)-[:RELATES_TO]->(:PhysicalTable)` 为主路径（表键双形匹配、列形状容错字符串/数组），
+图谱不可用/超时/无结果时降级为字段级 `fields[].references`。该函数**永不 throw**，降级只写
+`tableRelationsError` 留痕并 `console.warn`，绝不阻断节点创建；工具回执附 `relations: N (graph|fields)`。
 
 ### 注册工具: govio_show_chart
 

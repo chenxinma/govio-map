@@ -42,6 +42,38 @@ export interface TableField {
 export type NodeType = 'sourceTable' | 'sqlQuery' | 'dataFrame' | 'report' | 'chart';
 
 /**
+ * 表间语义关系（X10）：sourceTable 节点的**出向**关系，用于在画布上建表间语义血缘边
+ * （`Edge.data.lineageKind = "semantic"`，紫虚线，样式取自 `src/utils/lineage.ts`）。
+ *
+ * 取值来源分层（禁止猜测，见 `server/table-relations.ts`）：
+ * 1. 图谱 `(:PhysicalTable)-[:RELATES_TO]->(:PhysicalTable)`（主路径）——`targetTable` 为
+ *    `b.full_table_name` 原值（duckdb 三段式），`relationshipType` 为 `r.relationship_type`
+ *    原值（如 `many_to_one`），**不做本地枚举收窄**（避免与 CLI/图谱侧漂移）；
+ * 2. 字段级 `fields[].references`（降级路径）——`relationshipType` 固定 `foreign_key`。
+ *
+ * 列形状容错：图谱 `r.source_columns` / `r.target_columns` 实测返回**字符串**
+ * （`"channel_id"`），而导入源文件里是数组——两者都解析为 `string[]`。
+ */
+export interface TableRelation {
+  /** 目标表名（图谱原值或字段 references 原值）；建边时按限定名变体匹配画布节点 */
+  targetTable: string;
+  /** 关系类型原值（如 `many_to_one`；字段降级路径为 `foreign_key`） */
+  relationshipType: string;
+  /** 关系说明（图谱 `r.description`），缺失省略键 */
+  description?: string;
+  /** 源表列（图谱 `r.source_columns`），缺失/空省略键 */
+  sourceColumns?: string[];
+  /** 目标表列（图谱 `r.target_columns`），缺失/空省略键 */
+  targetColumns?: string[];
+}
+
+/**
+ * 表间关系来源留痕（X10）：`graph` = 图谱 RELATES_TO；`fields` = 字段级 references 降级。
+ * 仅在 `tableRelations` 非空时写键（无关系不建键，旧节点形状不变）。
+ */
+export type TableRelationsSource = 'graph' | 'fields';
+
+/**
  * sourceTable 节点允许的数据源类型（T2.0）。
  * 前六个对应 CLI 元数据层 DatasourceDef.source_type 枚举（govio/metadata/datasource.py）；
  * `sqlalchemy-generic` 表示 observe 侧走 SQLAlchemy 连接但类型无法进一步判定；
@@ -95,6 +127,23 @@ export interface SourceTableNodeData {
    * 旧节点为 undefined，UI 不渲染全限定名行。
    */
   qualifiedName?: string;
+  /**
+   * 表间语义关系（X10，可选）：本表的出向关系（图谱 `RELATES_TO` 主路径，图谱不可用/无结果时
+   * 回退字段级 `fields[].references`）。`canvas-store` 据此在 sourceTable 之间建
+   * `lineageKind:"semantic"` 边（双向匹配：新节点关系指向既有节点，或既有节点关系指向新节点）。
+   * 两条来源都拿不到就省略键——不建边、不猜测；旧节点为 undefined。
+   */
+  tableRelations?: TableRelation[];
+  /**
+   * 表间关系来源留痕（X10，可选）：仅在 `tableRelations` 非空时写键。
+   * `graph` = 图谱 RELATES_TO；`fields` = 字段级 references 降级。
+   */
+  tableRelationsSource?: TableRelationsSource;
+  /**
+   * 图谱查询降级原因（X10，可选）：`runGraphQuery` 失败/超时时写键（即使降级路径拿到了关系），
+   * 随 canvas sidecar 持久化以供审计；图谱正常（含返回空结果）时省略键。
+   */
+  tableRelationsError?: string;
   [key: string]: unknown;
 }
 

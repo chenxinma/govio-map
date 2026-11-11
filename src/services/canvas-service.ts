@@ -1,4 +1,4 @@
-import type { AnalysisManifest, CaliberCheck, DatasourceType, SemanticRef } from '../types';
+import type { AnalysisManifest, CaliberCheck, DatasourceType, SemanticRef, TableRelation, TableRelationsSource } from '../types';
 
 export interface CanvasEvent {
   type: "govio_node_create";
@@ -23,6 +23,15 @@ export interface CanvasEvent {
   datasourceType?: DatasourceType;
   schema?: string;
   qualifiedName?: string;
+  /**
+   * sourceTable 表间语义关系（X10）：服务端 GovioNodeCreateEvent 的手工镜像（形状纪律沿用
+   * T2.0：拿不到就不建键）。canvas-store 据此在 sourceTable 之间建语义血缘边。
+   */
+  tableRelations?: TableRelation[];
+  /** 关系来源留痕：graph = 图谱 RELATES_TO；fields = 字段级 references 降级 */
+  tableRelationsSource?: TableRelationsSource;
+  /** 图谱查询降级原因（仅 degraded 时写键） */
+  tableRelationsError?: string;
   referencedNodes?: Array<{ nodeId: string; label: string }>;
   // chart (Plotly figure)
   config?: {

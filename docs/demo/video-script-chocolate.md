@@ -103,16 +103,16 @@
    - 节点头标注（0.7.0 新增）：**数据源 `chocolate` · DuckDB · schema `chocolate` · 全限定名 `chocolate.chocolate.fact_sales`**——SQL 引用从此有据可依
    - 字段结构：`order_id`、`amount`、`boxes_shipped`、`discount_pct`、`price_per_box`、`marketing_spend`……
 
-3. **关联关系以 agent 文字回答 + 字段标注呈现**（⚠ 表间关系连线未实现，见文末「功能缺口」）：回答中列出 3 条多对一外键：fact_sales.product_id → dim_product、fact_sales.country_id → dim_country、fact_sales.channel_id → dim_channel。
+3. **表间关系自动连边呈现**（X10 已实现）：4 个 sourceTable 节点落地后，画布自动连出 **3 条紫色虚线语义血缘边**（fact_sales → dim_product / dim_country / dim_channel，关系类型 `many_to_one`，来自图谱 `RELATES_TO`）；左上角血缘图例可辨识「语义血缘」线型，字段级 FK 徒标依旧保留。
 
 **旁白**：
-> 「先认识数据。表节点带着完整的出身证明——数据源、类型、全限定表名，外键关系也在回答里说清楚了，SQL 引用再也不用猜。」
+> 「先认识数据。表节点带着完整的出身证明——数据源、类型、全限定表名；表与表之间的外键关系直接从知识图谱读出来，自动连成紫色语义边——星型模型一眼看清，SQL 引用再也不用猜。」
 
-**字幕**：`SourceTable 标注 · 表引用有据可依`
+**字幕**：`SourceTable 标注 · 表间语义边自动连出`
 
-**运镜**：鼠标悬停节点头的全限定名标注，停留 2 秒；再扫过 fact_sales 的外键字段。
+**运镜**：鼠标悬停节点头的全限定名标注，停留 2 秒；再沿 3 条紫虚线从 fact_sales 扫到三个 dim 表，最后停在左上角血缘图例。
 
-> **导演注意**：若「表间关系连线」在录制前实现（见文末功能缺口），本场景升级为——节点间自动连出 3 条外键边，画面效果显著增强，优先采用。
+> **导演注意**：表间连线已落地（X10），本场景按「连线版」录制。若录制时图谱不可用（CLI 未启动/关系未导入），边会降级为不连（节点上留 `tableRelationsError`）——录前按文末「录制前环境预检」跑一遍，确认 3 条边都在。
 
 ---
 
@@ -290,7 +290,7 @@ fact_sales/dim_country ─▶ gov-39 SQL ─▶ gov-41 df_hnmnpa（月度趋势�
 - [ ] 场景 3 的「错误口径」请求已实测稳定触发黄色警示（用词避免被 agent 自动纠正口径）
 - [ ] 场景 3A 正确口径请求已确认**无黄色警示**（consistent）——这是「不误报」的对照镜头
 - [ ] 场景 3B 若 agent 把列改名为 `revenue_calc` 等非指标名 → 判定降为 unknown（不亮灯，属 PD-2 边界）→ 重录该句
-- [ ] 场景 1 不出现表间连线（未实现）——旁白与画面均不宣称「自动连线」，除非功能缺口已实现
+- [ ] 场景 1 出现 **3 条表间紫虚线语义边**（X10 已实现：fact_sales → dim_product / dim_country / dim_channel）——录前实测确认三条边均已连出且图例可见；若图谱降级导致无边，先排查 govio-cli 与 RELATES_TO 导入后重录
 - [ ] 旁白稿按本脚本校时；字幕文件按场景时间码导出
 
 ## 备选镜头
@@ -303,7 +303,7 @@ fact_sales/dim_country ─▶ gov-39 SQL ─▶ gov-41 df_hnmnpa（月度趋势�
 
 | 缺口 | 现状 | 影响 |
 |---|---|---|
-| sourceTable 之间无关系连线 | 建边逻辑只覆盖数据血缘（引用/来源）与 sqlQuery↔sqlQuery 语义血缘；外键仅字段级 `references`/FK 徽标，`observe explore` 外键发现只出文字报告 | **已立项 X10（方案2：图谱 rel → 语义血缘紫虚线），本期录制暂不实现**；场景 1 按现状口径录制，功能落地后可升级为亮点镜头 |
+| ~~sourceTable 之间无关系连线~~ | **已实现（X10）**：服务端从图谱 `(:PhysicalTable)-[:RELATES_TO]->(:PhysicalTable)` 取表间关系（图谱不可用/无结果时降级到字段级 `references`），前端在 sourceTable 之间自动连紫色虚线语义血缘边（`lineageKind:"semantic"`）；星型模型 4 表上画布即出 3 条 fact→dim 边 | 场景 1 已升级为连线版（见上「导演注意」与录制前检查清单）；导出 HTML 报告与画布图例自动包含该类边（无需额外改动） |
 | 口径检测的别名归一（方案 C） | 检测范围 = 「问题点名的指标」；agent 主动把计算列改名（如 `revenue_calc`）则不算声称 → unknown 不亮灯 | PD-2 待讨论；录制期用干净措辞规避，遇改名则重录（见场景 3B 录制注意） |
 
 ## 风险与规避
