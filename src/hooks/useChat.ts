@@ -11,6 +11,7 @@ import type {
   WSPermissionDecision,
 } from "../types/ws-protocol";
 import { useCanvasStore } from "../store/canvas-store";
+import { foldTurnProcess, foldHistoryMessages } from "../utils/chat-fold";
 
 export interface ToolCall {
   toolName: string;
@@ -54,7 +55,7 @@ export interface ChatMessage {
   thinking?: string;
   tools?: ToolCall[];
   /**
-   * 过程消息（无正文，仅 thinking/tool）：agent_end 后折入「已处理」组。
+   * 过程消息（一轮内所有 thinking/tool 的合并结果）：agent_end 后折入「已处理」组。
    * 历史加载时按同一规则标记，恢复后与运行态一致。
    */
   folded?: boolean;
@@ -259,12 +260,8 @@ export function useChat() {
             break;
 
           case "session_messages_result": {
-            // 历史过程消息（无正文）同样折入「已处理」组，恢复后与运行态一致
-            const incoming = ((data.messages ?? []) as unknown as ChatMessage[]).map((m) =>
-              m.role === "assistant" && !(m.content && m.content.trim())
-                ? { ...m, folded: true }
-                : m
-            );
+            // 历史消息按轮收拢 thinking/tool 折入「已处理」组，恢复后与运行态一致
+            const incoming = foldHistoryMessages((data.messages ?? []) as unknown as ChatMessage[]);
             if (data.replace) {
               currentAssistantId.current = null;
               currentHasContent.current = false;
@@ -435,25 +432,16 @@ export function useChat() {
             setIsStreaming(false);
             finalizeRef.current();
             // 一轮完成：
-            // 1) 本轮没有正文的过程 message（thinking/tool）整体折入「已处理」组（folded）；
+            // 1) 本轮所有 assistant 消息的 thinking/tool（含带正文消息附着的）合并为
+            //    一条折叠过程消息折入「已处理」组，正文消息只保留正文；
             // 2) 未送达的排队 steering 显性化（run 先结束了），便于用户重发。
             const turnFirst = turnFirstIdRef.current;
             turnFirstIdRef.current = null;
             setMessages((prev) => {
-              const startIdx = turnFirst ? prev.findIndex((m) => m.id === turnFirst) : -1;
-              return prev.map((m, i) => {
-                const fold =
-                  startIdx >= 0 &&
-                  i >= startIdx &&
-                  m.role === "assistant" &&
-                  !(m.content && m.content.trim());
-                if (!fold && !m.isQueued) return m;
-                return {
-                  ...m,
-                  isQueued: undefined,
-                  ...(fold ? { folded: true } : {}),
-                };
-              });
+              const cleaned = prev.map((m) => (m.isQueued ? { ...m, isQueued: undefined } : m));
+              const startIdx = turnFirst ? cleaned.findIndex((m) => m.id === turnFirst) : -1;
+              if (startIdx < 0) return cleaned;
+              return [...cleaned.slice(0, startIdx), ...foldTurnProcess(cleaned.slice(startIdx))];
             });
             break;
           }
