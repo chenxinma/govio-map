@@ -14,6 +14,7 @@ import FloatingPreviewPanel from './FloatingPreviewPanel';
 import CanvasToolbar from './CanvasToolbar';
 import NodeFindBar from './NodeFindBar';
 import LineageLegend from './LineageLegend';
+import { lineageEdgeDefaults } from '../../utils/lineage';
 
 export default function Canvas() {
   const nodes = useCanvasStore((s) => s.nodes);
@@ -61,11 +62,7 @@ export default function Canvas() {
         maxZoom={2}
         snapToGrid
         snapGrid={[15, 15]}
-        defaultEdgeOptions={{
-          type: 'smoothstep',
-          animated: true,
-          style: { stroke: '#1db954', strokeWidth: 2 },
-        }}
+        defaultEdgeOptions={lineageEdgeDefaults('data')}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#e0e0e0" />
