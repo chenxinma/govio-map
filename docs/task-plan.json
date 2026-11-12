@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-12T06:56:23+08:00",
+  "updatedAt": "2026-11-12T21:40:29+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -884,7 +884,7 @@
     {
       "id": "X13",
       "title": "tableRelations 可视化：表间语义边的关系详情与降级留痕 UI 出口",
-      "status": "pending",
+      "status": "in_progress",
       "dependsOn": [
         "X10"
       ],
@@ -896,13 +896,36 @@
           "at": "2026-11-12T06:56:23+08:00",
           "by": "main-session",
           "note": "X10 验收后按用户指令立项（X10 design.md 遗留问题② 归口）：表间语义边已连线，但关系详情（列映射/类型/图谱描述）与降级留痕在画布上无出口。dependsOn X10（已 accepted，视为满足）。待排期，可与 X14 或 P3 并行。"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-12T21:40:29+08:00",
+          "by": "main-session",
+          "note": "用户指令 2026-11-12：与 X14 并行派发，agent=codex，各自独立 worktree（Orca SOP）。补全 scope/acceptance（验收契约）；并行模式下 worker 不改本文件，验收记账由主会话统一执行。基线按合并态 main ac8bab1 刷新为脚本 612 项 / vitest 14 文件 155 例 / UI 4 文件 21 例（原 note 内 609 项 / 11 文件 143 例 为 PR #31 之前的数字）。"
         }
+      ],
+      "scope": [
+        "关系详情 UI 出口（至少一处，建议节点内 + 边详情二选一或都做）：让 tableRelations 的 targetTable、sourceColumns→targetColumns 列映射、relationshipType（图谱原值如 many_to_one）、图谱 description 在画布上可见——① SourceTableNode 内新增「表间关系」折叠小节（视觉语言复用既有 PK/FK 徽标）；② 边侧出口（hover/点击看详情，或自定义 edge 组件带关系徽标）；若做 ②，需在 Canvas.tsx 注册 edgeTypes（当前未注册任何自定义边类型，只有 defaultEdgeOptions=lineageEdgeDefaults('data')）",
+        "样式纪律：色值/线型/形状唯一来源仍是 src/utils/lineage.ts 的 APPEARANCE 与 lineageEdge/lineageEdgeDefaults 工厂，组件与导出里禁止硬编码色值或线型；不新增第三种 lineageKind",
+        "降级留痕出口：tableRelationsSource='fields' 或存在 tableRelationsError 时给轻提示（标明来源=字段级 + 降级原因）；遵循 T2.3 caliber 的「不打扰」取舍——source='graph' 正常态与无关系态不显示任何提示",
+        "若把关系详情挂到 edge.data（当前语义边 data 只有 lineageKind）：必须确认随 canvas sidecar 往返无损、hydrateSession 恢复不丢、旧边（只有 lineageKind）向后兼容不报错；不改 PROTOCOL_VERSION（canvas_save/canvas_restore 的 nodes/edges 载荷是 Type.Array(Type.Unknown())，服务端出站不做运行时校验）",
+        "导出 HTML 同步：buildDeliveryReportHtml 里呈现同样的关系详情，风格与 Manifest 附录一致；边线型/箭头/图例仍按 lineageKind 泛化（lineageEdgeAppearance 唯一来源，见 export-report.ts:371/407-415/1215-1220）",
+        "测试：新 UI 用 tests/ui 组件测试覆盖（沿用 source-table-node.test.tsx 的 vi.hoisted store mock + ReactFlowProvider 范式；jsdom 无布局引擎，高度/间距/对齐类只能人工目视，须在 verification.md 明说）；edge.data 扩展与导出断言用 tests/integration（table-relations.test.ts / canvas-store.test.ts）与 scripts/verify-export-report.ts 钉住；每条链路至少 1 个失败/边界用例（X4 约定）",
+        "文档同步：docs/specs/ 中涉及 sourceTable 节点形状与导出报告的章节；三件套落盘 docs/tasks/X13-table-relations-ui/（design.md 含「遗留问题」小节、CHANGES.md、verification.md）"
+      ],
+      "acceptance": [
+        "星型模型实测：chocolate.chocolate.fact_sales + dim_product/dim_country/dim_channel 四表上画布后，能从边或节点看到 3 条关系的列映射与 many_to_one 类型（实测方式、命令与关键输出写进 verification.md）",
+        "降级路径实测：注入 fake runner（ENOENT / 超时 / Binder 错误）使 tableRelationsSource='fields' 或写 tableRelationsError 时，UI 能看到「来源=字段级」与原因；source='graph' 正常态无任何多余提示（不打扰）",
+        "导出 HTML 含同样的关系详情，且自包含/无 <script>/图例与线型断言零回归",
+        "npm run build / npm run lint / npm run verify 全绿且零回归——基线（主会话 2026-11-12 于 ac8bab1 实测）：脚本 612 项 0 失败（manifest 92 / rerun 71 / audit 119 / export 126 / source-table 39 / semantic-lineage 48 / caliber-conflict 46 / cwd 13 / prompt-injection 58）、vitest integration 14 文件 155 例、UI 子集 4 文件 21 例；新增用例数与覆盖点在 verification.md 逐项列出；verify 全跑后 git status --porcelain 干净",
+        "范围纪律：不改 server/table-relations.ts 的取数/降级逻辑（已定稿，tests/integration/table-relations.test.ts 27 例覆盖）、不改 PROTOCOL_VERSION、不引入任何新依赖（运行时与 dev 均不引入）、不动 X10 遗留①（同名表跨 catalog/schema 误配，属取数层改动）",
+        "功能类 → 走 GitHub PR：worker 不 push、不切分支、不合并；三件套齐全"
       ]
     },
     {
       "id": "X14",
       "title": "GitHub Actions CI 门禁（PR 合并前自动跑 build + lint + verify）",
-      "status": "pending",
+      "status": "in_progress",
       "dependsOn": [],
       "note": "动机（用户裁决 2026-11-11 立项；触发案例 docs/tasks/BUGFIX-lineage-edge-import.md）：PR #28/#29/#30 合并入 main 后，主会话按验收协议在**合并态 main** 复跑门槛，才发现 PR #29（X10）与 main 上 hotfix 5af8555（建边收束到 lineage.ts 的 lineageEdge 工厂）的行级冲突解决错误——4aee3bc 合并时调用点取 main 侧、import 行取 X10 侧，导致 lineageEdge 未导入：npm run build 报 TS2304 ×4、npm run verify 崩在第 6 个脚本 verify:semantic-lineage（ReferenceError），后续 5 个子脚本与 vitest 全部未执行。该缺陷在任一单独分支上都测不出来（X10 分支自洽、main 自洽），只在合并态暴露；本次靠人工复跑拦下（修复 d2c3790），若晚一步就流入用户手里。教训：文件级不相交 ≠ 无行级冲突。实现方向：① .github/workflows/ci.yml，触发 pull_request（含 synchronize）与 main push；runner 选型需先确认依赖——verify 链中 prompt-injection / caliber-conflict / source-table 等脚本是否依赖真实 govio-cli、图谱或 ObserveStore，若依赖则要么在 CI 装 govio-cli（外部 CLI，见 server/govio-installer.ts），要么确认这些脚本已有无 CLI 降级断言路径，**务必先在本机复现 CI 环境再定 runner（windows-latest vs ubuntu-latest，注意本仓开发环境为 Windows Git Bash，路径大小写与 shell 差异见 X7）**② 步骤：npm ci → npm run build → npm run lint → npm run verify（本机 build+lint+verify 合计约 233s，需评估 CI 超时与 node_modules 缓存）③ 把该 check 设为分支保护的必需状态检查（需仓库 admin，由用户在 GitHub 侧开启，agent 无法代做）④ 可选：merge queue 或 required linear history，进一步防「只在合并态炸」。范围纪律：不改业务代码、不削弱既有 verify 脚本断言；若某脚本在 CI 环境确实不可跑（依赖本机 govio-cli/图库/数据），必须在 design.md 记录取舍（跳过 vs mock vs 装 CLI）与断言数差值，不得为了 CI 变绿而删断言。验收方向：PR 上可见 CI 结论且失败能阻断合并；把 BUGFIX-lineage-edge-import 的坏例（删掉 lineageEdge 导入）在临时分支复现时 CI 必须红；CI 与本机断言数一致（609 项脚本断言 + vitest 11 文件/143 例），若有跳过需逐项说明；三件套齐全。基建类但涉及 CI 与仓库设置 → 走 GitHub PR，分支保护开关由用户操作。",
       "outputDir": "docs/tasks/X14-github-actions-ci/",
@@ -912,7 +935,28 @@
           "at": "2026-11-12T06:56:23+08:00",
           "by": "main-session",
           "note": "按用户指令立项（触发案例：BUGFIX-lineage-edge-import，合并态 main 曾 build + verify 双阻断）。无前置依赖，可独立排期；建议在 X13 与 P3 之前完成，后续所有任务都能白拿合并态回归防护。"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-12T21:40:29+08:00",
+          "by": "main-session",
+          "note": "用户指令 2026-11-12：与 X13 并行派发，agent=codex，各自独立 worktree（Orca SOP）。补全 scope/acceptance；主会话已把关键实证事实写入任务书 §3（verify 链零外部依赖、caseDrift 平台闸门、端口用 listen(0)、耗时实测 190s），worker 不必重复调研。并行模式下 worker 不改本文件。"
         }
+      ],
+      "scope": [
+        "新增 .github/workflows/ci.yml（仓库当前无 .github/ 目录）：触发 pull_request（含 synchronize 类型）与 main push；步骤 checkout → setup-node（npm 缓存）→ npm ci → npm run build → npm run lint → npm run verify",
+        "runner 与 Node 版本选型须给证据：本机 node v24.16.0，package.json 无 engines/packageManager 字段，package-lock.json 已提交（npm ci 可用）；必须处理 verify:cwd 的平台差异（scripts/verify-cwd-normalize.ts 用 caseDrift 闸门，非 Windows/大小写敏感文件系统上 SKIP 7 项大小写断言：13→6 项，脚本总断言 612→605）——windows-latest 可保断言齐平且与开发环境（Windows Git Bash，X7 路径大小写教训）一致，ubuntu-latest 更快但需在 design.md 逐项记录 SKIP 差值；也可选双 runner 矩阵，须评估耗时与并发额度",
+        "耗时与超时预算：本机实测 build 62s + lint 34s + verify 94s ≈ 190s（不含 npm ci 与 runner 冷启动），据此设 timeout-minutes 并留余量；setup-node 的 cache: npm 必开",
+        "反向验证（坏例必须红）：在临时分支复现 BUGFIX-lineage-edge-import 的坏例（删掉 src/store/canvas-store.ts 的 lineageEdge 导入），先在本机确认 build 报 TS2304、verify 在 verify:semantic-lineage 崩 ReferenceError；再让 CI 在实际 PR 上跑红一次并把日志摘要/结论写入 verification.md（若无法在 PR 上跑红，须说明原因并给出本地等价证据）；验证完必须还原，git diff 为空",
+        "分支保护：把该 check 设为必需状态检查需仓库 admin，由用户在 GitHub 侧开启——worker 只在 design.md 写清 check 名称与开启步骤，不代做、不假设已开启",
+        "三件套落盘 docs/tasks/X14-github-actions-ci/（design.md 含 runner 选型对比、SKIP/差值取舍与「遗留问题」小节、CHANGES.md、verification.md）"
+      ],
+      "acceptance": [
+        "ci.yml 语法与触发条件正确：pull_request（含 synchronize）与 main push 均触发；在本机以可行方式校验（actionlint 若可装则装为一次性工具、不写入 devDependencies；否则以 GitHub 上的真实运行结果作为证据），并把运行链接/结论写入 verification.md",
+        "断言齐平：CI 与本机逐项对齐——脚本 612 项（manifest 92 / rerun 71 / audit 119 / export 126 / source-table 39 / semantic-lineage 48 / caliber-conflict 46 / cwd 13 / prompt-injection 58）、vitest integration 14 文件 155 例、UI 子集 4 文件 21 例；若平台差异导致 SKIP，逐项列出差值与原因（如 ubuntu 上 verify:cwd 少 7 项），禁止为让 CI 变绿删断言或改判定",
+        "坏例反向验证证据齐全：删掉 lineageEdge 导入后门槛变红（build TS2304 ×4 / verify ReferenceError），贴出关键日志；还原后 git diff 为空",
+        "不改任何业务代码、不改既有 verify 脚本断言、不引入运行时依赖（CI 专用工具若必须入 devDependencies 须在 design.md 说明理由与体积影响）；CI 中不得调用真实 govio-cli（verify 链默认全 mock/stub，verify:rerun 的 --real 是 opt-in，禁止在 CI 打开）",
+        "走 GitHub PR：worker 不 push、不切分支、不合并（PR 由主会话创建、用户合并）；三件套齐全"
       ]
     }
   ],
@@ -925,9 +969,10 @@
       "#17 chore/move-sql-discipline",
       "#28 x12-ui-test-infra",
       "#29 x10-table-semantic-edges",
-      "#30 ui/chat-process-collapsed"
+      "#30 ui/chat-process-collapsed",
+      "#31 feat/lineage-semantic-handles"
     ],
-    "note": "#12-#17 全部合并入 main（14e39cf/3759971/1848b08/18ba6ab/fb237a2/3428f69）。相关功能分支（security/hardening、feature/phase1-trusted-analysis、feature/phase2-semantic-layer、fix/df-columns-fallback、chore/move-sql-discipline）已清理；docs/tech-roadmap 为已合并零提交分支，遗留未清理；docs/sync-readme-claudemd、feature/llm-config 为 2026-08 陈旧分支（含未合并提交），待用户裁决去留。 补充（2026-11-11）：X11 属 bugfix 直接 commit main（2fb6ea6 立项 / 8aca718 主修复 / 60b11d4 高度回归 / ebdd9cb 验收），未走 PR；X12 经 PR #28（merge 849ecf6）、X10 经 PR #29（merge a300128）合入，两者由 Orca worker 在独立 worktree 执行（X12=codex，X10=codex 首次未开工后按用户指令改 pi 重派）；#30（merge b2aa851）为用户侧 chat 折叠 UI 改动，非本计划任务。合并态 main 曾出现 lineageEdge 导入丢失（PR #29 与 hotfix 5af8555 的行级冲突解决错误，build+verify 阻断），已由 d2c3790 修复，详见 docs/tasks/BUGFIX-lineage-edge-import.md。#22-#27 未在本 map 记账。",
+    "note": "#12-#17 全部合并入 main（14e39cf/3759971/1848b08/18ba6ab/fb237a2/3428f69）。相关功能分支（security/hardening、feature/phase1-trusted-analysis、feature/phase2-semantic-layer、fix/df-columns-fallback、chore/move-sql-discipline）已清理；docs/tech-roadmap 为已合并零提交分支，遗留未清理；docs/sync-readme-claudemd、feature/llm-config 为 2026-08 陈旧分支（含未合并提交），待用户裁决去留。 补充（2026-11-11）：X11 属 bugfix 直接 commit main（2fb6ea6 立项 / 8aca718 主修复 / 60b11d4 高度回归 / ebdd9cb 验收），未走 PR；X12 经 PR #28（merge 849ecf6）、X10 经 PR #29（merge a300128）合入，两者由 Orca worker 在独立 worktree 执行（X12=codex，X10=codex 首次未开工后按用户指令改 pi 重派）；#30（merge b2aa851）为用户侧 chat 折叠 UI 改动，非本计划任务。合并态 main 曾出现 lineageEdge 导入丢失（PR #29 与 hotfix 5af8555 的行级冲突解决错误，build+verify 阻断），已由 d2c3790 修复，详见 docs/tasks/BUGFIX-lineage-edge-import.md。#22-#27 未在本 map 记账。 补充（2026-11-12）：#31（merge ac8bab1，分支 feat/lineage-semantic-handles：血缘边形状/样式随 lineage.ts APPEARANCE 区分 + 语义血缘专用 Handle 统一下出上入、画布全局排版方案B（数据血缘 LR 分层 + 语义血缘同列纵向堆叠）、工具栏「整理画布」按钮）为用户侧改动，非本计划任务，未建 X 条目与三件套。主会话已在合并态 main 独立复跑门槛全绿（build/lint/verify 均 exit 0，verify 全跑后 git status --porcelain 干净），断言基线随之刷新：脚本 612 项 0 失败（semantic-lineage 45→48）、vitest integration 14 文件/155 例（新增 tests/integration/layout.test.ts、tests/ui/sql-query-node.test.tsx、tests/ui/canvas-toolbar.test.tsx）、UI 子集 4 文件/21 例；耗时实测 build 62s + lint 34s + verify 94s ≈ 190s。陈旧本地分支 chenxinma/chat-processed-fold（已合并）、docs/sync-readme-claudemd（2 未合并提交）、feature/llm-config（1 未合并提交）已按用户指令 2026-11-12 删除，远端无对应分支。",
     "security": "https://github.com/chenxinma/govio-map/pull/12",
     "phase1": "https://github.com/chenxinma/govio-map/pull/13",
     "phase2": "https://github.com/chenxinma/govio-map/pull/14",
