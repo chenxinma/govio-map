@@ -4,6 +4,7 @@ import { AlertTriangle, ChevronDown, Maximize2, Quote, Trash2, ScrollText } from
 import type { SQLQueryNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
 import { caliberNodeAppearance, CALIBER_ASPECT_LABELS } from '../../utils/caliber';
+import { SEMANTIC_SOURCE_HANDLE, SEMANTIC_TARGET_HANDLE } from '../../utils/lineage';
 import SQLModal from './SQLModal';
 import ManifestDetails from './ManifestDetails';
 
@@ -222,6 +223,10 @@ function SQLNode({ data, id }: NodeProps) {
 
       <Handle type="source" position={Position.Right} className="!bg-brand" />
       <Handle type="target" position={Position.Left} className="!bg-brand" />
+      {/* 语义血缘边专用（lineage.ts SEMANTIC_*_HANDLE）：下出上入（与 SourceTable 统一，
+          配合方案B同列纵向堆叠，线走在两节点间不穿节点） */}
+      <Handle id={SEMANTIC_SOURCE_HANDLE} type="source" position={Position.Bottom} className="!bg-brand" />
+      <Handle id={SEMANTIC_TARGET_HANDLE} type="target" position={Position.Top} className="!bg-brand" />
 
       {showModal && (
         <SQLModal

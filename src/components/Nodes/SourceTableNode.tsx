@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Database, Quote, Trash2, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react';
 import type { SourceTableNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
+import { SEMANTIC_SOURCE_HANDLE, SEMANTIC_TARGET_HANDLE } from '../../utils/lineage';
 
 function SourceTableNode({ data, id }: NodeProps) {
   const nodeData = data as unknown as SourceTableNodeData;
@@ -56,7 +57,7 @@ function SourceTableNode({ data, id }: NodeProps) {
               }
             }}
             className="flex-shrink-0 flex items-center p-0.5 rounded text-text-dim hover:text-brand hover:bg-brand/5 transition-colors"
-            title="复制全限定名"
+            title="复制完整表名"
           >
             {copied ? <Check size={11} className="text-brand" /> : <Copy size={11} />}
           </button>
@@ -123,6 +124,10 @@ function SourceTableNode({ data, id }: NodeProps) {
 
       <Handle type="source" position={Position.Right} className="!bg-brand" />
       <Handle type="target" position={Position.Left} className="!bg-brand" />
+      {/* 语义血缘边专用（lineage.ts SEMANTIC_*_HANDLE）：表关系 RELATES_TO 边反向下出上入，
+          与 sqlQuery 口径沿袭边（上出下入）区分；sourceTable 只会出现在表关系语义边两端 */}
+      <Handle id={SEMANTIC_SOURCE_HANDLE} type="source" position={Position.Bottom} className="!bg-brand" />
+      <Handle id={SEMANTIC_TARGET_HANDLE} type="target" position={Position.Top} className="!bg-brand" />
     </div>
   );
 }

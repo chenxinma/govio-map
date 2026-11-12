@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { Node, Edge, Connection, OnNodesChange, OnEdgesChange } from '@xyflow/react';
 import { addEdge, applyNodeChanges, applyEdgeChanges, Position } from '@xyflow/react';
 import type { CanvasNodeData, DataFrameNodeData, ReferencedNode, RerunRecord, SemanticRef } from '../types';
-import { lineageEdge } from '../utils/lineage';
+import { lineageEdge, withSemanticHandles } from '../utils/lineage';
 import { tableSemanticEdgeCandidates } from '../utils/table-relations';
 import { MOCK_TABLES } from '../data/mock-tables';
 import { nextId, syncCountersFromNodes } from '../services/mock-ai';
@@ -530,8 +530,10 @@ export const useCanvasStore = create<CanvasStore>()(
 
   hydrateSession: (nodes, edges) => {
     syncCountersFromNodes(nodes);
+    // 旧持久化语义边升级到当前 Handle/形状（withSemanticHandles 幂等，见 lineage.ts）
+    const restoredEdges = withSemanticHandles(edges);
     // 切会话/重开会话时清掉上一个会话的复跑临时态（留痕态随 node.data.rerunHistory 恢复）
-    set({ nodes, edges, previewPanels: [], referencedNodes: [], rerunningNodeIds: [], rerunErrors: {} });
+    set({ nodes, edges: restoredEdges, previewPanels: [], referencedNodes: [], rerunningNodeIds: [], rerunErrors: {} });
   },
 
   createManualSQLNode: () => {

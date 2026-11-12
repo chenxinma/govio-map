@@ -25,8 +25,9 @@ vi.stubGlobal("localStorage", {
 });
 
 import { useCanvasStore } from "../../src/store/canvas-store.js";
-import { lineageEdgeAppearance } from "../../src/utils/lineage.js";
+import { lineageEdgeAppearance, SEMANTIC_SOURCE_HANDLE, SEMANTIC_TARGET_HANDLE } from "../../src/utils/lineage.js";
 import type { CanvasEvent } from "../../src/services/canvas-service.js";
+import type { Edge } from "@xyflow/react";
 
 const baseEvent = (over: Partial<CanvasEvent> & { nodeType: CanvasEvent["nodeType"] }): CanvasEvent => ({
   type: "govio_node_create",
@@ -243,12 +244,18 @@ describe("canvas-store：表间语义血缘边（X10）", () => {
   });
 
   /** 语义边外观断言：样式唯一来源是 src/utils/lineage.ts，store 不得硬编码色值/线型 */
-  const expectSemanticAppearance = (edge: { type?: string; animated?: boolean; style?: unknown; data?: unknown }) => {
+  const expectSemanticAppearance = (edge: {
+    type?: string; animated?: boolean; style?: unknown; data?: unknown;
+    sourceHandle?: string | null; targetHandle?: string | null;
+  }) => {
     const ap = lineageEdgeAppearance("semantic");
-    expect(edge.type).toBe("smoothstep");
+    expect(edge.type).toBe(ap.edgeType);
     expect(edge.animated).toBe(ap.animated);
     expect(edge.style).toEqual({ stroke: ap.stroke, strokeWidth: ap.strokeWidth, strokeDasharray: ap.strokeDasharray });
     expect((edge.data as Record<string, unknown>).lineageKind).toBe("semantic");
+    // 语义边走上/下专用 Handle（数据边不带 handle 键）
+    expect(edge.sourceHandle).toBe(SEMANTIC_SOURCE_HANDLE);
+    expect(edge.targetHandle).toBe(SEMANTIC_TARGET_HANDLE);
   };
 
   it("星型模型（先 fact 后 dim）：3 条 fact→dim 语义边，id 带 -sem 后缀", () => {
@@ -321,6 +328,9 @@ describe("canvas-store：表间语义血缘边（X10）", () => {
     const data = edges.find((e) => (e.data as Record<string, unknown>).lineageKind === "data");
     const sem = edges.find((e) => (e.data as Record<string, unknown>).lineageKind === "semantic");
     expect(data?.id).toBe(`e-${dimId}-${factId}`);
+    expect(data?.sourceHandle).toBeUndefined();
+    expect(data?.targetHandle).toBeUndefined();
+    expect(data?.type).toBe(lineageEdgeAppearance("data").edgeType);
     expect(sem?.id).toBe(`e-${factId}-${dimId}-sem`);
     expect(new Set(edges.map((e) => e.id)).size).toBe(2);
   });
@@ -383,6 +393,28 @@ describe("canvas-store：表间语义血缘边（X10）", () => {
     const after = useCanvasStore.getState().edges;
     expect(after).toHaveLength(2);
     expect(after[0]).toEqual(before[0]);
+  });
+
+  it("升级：hydrateSession 把旧持久化语义边补上上下 Handle/straight（数据边不动、幂等）", () => {
+    const legacySem: Edge = {
+      id: "e-old-sem", source: "a", target: "b", type: "smoothstep", animated: false, style: {},
+      data: { lineageKind: "semantic" },
+    };
+    const dataEdge: Edge = {
+      id: "e-d", source: "a", target: "c", type: "smoothstep", animated: true, style: {},
+      data: { lineageKind: "data" },
+    };
+    useCanvasStore.getState().hydrateSession([], [legacySem, dataEdge]);
+    const sem = useCanvasStore.getState().edges.find((e) => e.id === "e-old-sem")!;
+    expect(sem.sourceHandle).toBe(SEMANTIC_SOURCE_HANDLE);
+    expect(sem.targetHandle).toBe(SEMANTIC_TARGET_HANDLE);
+    expect(sem.type).toBe(lineageEdgeAppearance("semantic").edgeType);
+    const data = useCanvasStore.getState().edges.find((e) => e.id === "e-d");
+    expect(data?.sourceHandle).toBeUndefined();
+    expect(data?.type).toBe(lineageEdgeAppearance("data").edgeType);
+    // 幂等：再次恢复已升级的边返回同一引用
+    useCanvasStore.getState().hydrateSession([], useCanvasStore.getState().edges);
+    expect(useCanvasStore.getState().edges.find((e) => e.id === "e-old-sem")).toBe(sem);
   });
 
   it("降级路径：字段级 foreign_key 关系同样建边，tableRelationsError 透传留痕", () => {
