@@ -186,20 +186,47 @@ $ npm run build && npm run lint && npm run verify
 耗时对照（本机口径，非 CI 预算）：worktree 三门槛合计 173s（基线记 190s，同量级；`%TEMP%` 的 clean
 checkout 更快是 34s + 9s + 73s = 116s，磁盘与依赖缓存已热）。
 
-## 6. 待主会话补录（推分支开 PR 后）
+## 6. 主会话补录（首次真实 CI 运行，2026-11-12）
 
-| 待补项 | 需要记录什么 |
+### 6.1 待补清单逐项结论
+
+| 待补项 | 实测结果（主会话独立取证，非转述 worker） |
 |---|---|
-| PR 号 | 本分支 `chenxinma/x14-ci-gate` → `main` 的 PR 编号与标题 |
-| 首次 CI run | Actions 里该 run 的链接 + 各步骤耗时（尤其 `Install (npm ci)`），确认 `pull_request` 与（合并后的）`push: main` 两种触发都出现过 |
-| check 名称确认 | run 页面左侧显示的 job 名应为 `build + lint + verify`；分支保护里就选这个名字（见 design.md §7 第 4 步） |
-| registry 实际落点 | `Install` 步骤日志里请求的 host 是否为 `registry.npmjs.org`（若仍出现 `npmmirror` → 走 design.md §9 第 1 行的备选处置） |
-| ubuntu 断言数 | `Verify` 步骤里 `verify:cwd` 应打印 `- SKIP：…` 且小结为 `共 6 项断言，失败 0 项`，脚本合计应为 **605**（不是回归） |
-| 坏例 run 红/绿 | 用临时分支（删 `canvas-store.ts` 第 6 行的 `lineageEdge` 导入）开一个 PR，确认 **`Build` 步骤红（TS2304）**、`Verify` 步骤红（`verify:semantic-lineage` ReferenceError）或（build 先红即止）——这一步是「CI 真的能拦」的最终证据，本任务只有本机等价证据 |
-| 分支保护 | 用户开启 `main` 的 required status check 的结论（勾选名字、是否连 "Require branches to be up to date"、是否对 admin 生效），以及 merge queue 的「暂不开」是否被推翻 |
+| PR 号 | **#32**「X14: GitHub Actions CI 门禁（PR 合并前自动跑 build + lint + verify）」，`chenxinma/x14-ci-gate` → `main`，https://github.com/chenxinma/govio-map/pull/32 |
+| 首次 CI run | **run 43242165890，conclusion=success**，触发方式 `pull_request`（https://github.com/chenxinma/govio-map/actions/runs/43242165890）；job 总时长 **1m1s**（14:55:05Z → 14:56:03Z）。`push: main` 触发待本 PR 合并后自然出现 |
+| check 名称确认 | job 名实测为 **`build + lint + verify`**（workflow 显示名 `CI`）→ 分支保护里勾这个名字（design.md §7 第 4 步） |
+| registry 实际落点 | 整份 run 日志（1434 行）里 host 只出现 **`registry.npmjs.org`（2 次）**，**零 `npmmirror`/`cdn.npmmirror.com`** → `replace-registry-host=always` 按预期改写 lockfile 的 tarball host；design.md §9 第 1/2 行的备选处置**未触发** |
+| ubuntu 断言数 | `verify:cwd` 打印 `- SKIP：当前平台/文件系统无法构造大小写漂移，跳过大小写相关断言` 且小结 **`共 6 项断言，失败 0 项`**；脚本合计 **605**（92+71+119+126+39+48+46+6+58），与 §4 预期逐项一致，**非回归** |
+| ubuntu vitest | `verify:integration` **14 文件 / 155 例全通过**；`verify:ui` **4 文件 / 21 例全通过**（与 Windows 本机一致，无平台差值） |
+| Install 实测 | `npm ci --no-audit --no-fund` → **`added 518 packages in 12s`**（runner 网络远快于本机 154s）；仅 2 条 deprecated 警告（whatwg-encoding、node-domexception），无 `--ignore-scripts` 相关报错 |
+| 坏例 run 红/绿 | **尚未在 CI 上跑红**（需另开临时分支 PR）。本机等价证据已由主会话**独立复现**：删 `src/store/canvas-store.ts:6` 的 `lineageEdge` 导入 → `npm run build` **exit=2**、`error TS2304` 命中 5 个调用点（190/285/305/323/339，两个 tsconfig project 各报一遍=10 行）；`git checkout` 还原后 `git diff` 为空。是否再开一个坏例 PR 取 CI 红证据，交用户裁决（成本：一次 PR + 一次红 run） |
+| 分支保护 | **待用户操作**（agent 无法代做）：Settings → Branches → `main` → Require status checks to pass → 勾 `build + lint + verify`；merge queue 建议暂不开 |
+
+### 6.2 各步骤耗时（run 43242165890，全部 success）
+
+| 步骤 | 起讫（UTC） | 耗时 |
+|---|---|---|
+| Set up job / Checkout / Setup Node 24 / registry 配置 | 14:55:05 → 14:55:08 | 3s |
+| **Install (npm ci)** | 14:55:08 → 14:55:20 | **12s** |
+| Build (tsc -b + vite + esbuild) | 14:55:20 → 14:55:36 | 16s |
+| Lint (eslint) | 14:55:36 → 14:55:41 | 5s |
+| Verify (11-script aggregate chain) | 14:55:41 → 14:56:01 | 20s |
+| Verify left the working tree clean | 14:56:01 | <1s |
+| Post Setup Node 24 / Post Checkout / Complete job | 14:56:01 → 14:56:03 | 2s |
+
+> ubuntu runner 上门禁全链 **约 56s**（本机 Windows 190s）→ `timeout-minutes: 20` 余量充足；
+> 首次 run 已含 npm 缓存写入（`Post Setup Node 24`），后续 run 的 Install 可能更快。
+
+### 6.3 首次运行的两条注解（非阻断，建议后续处理）
+
+1. **`actions/checkout@v4` / `actions/setup-node@v4` 目标运行时是 Node 20，已被 runner 强制跑在 Node 24**
+   （GitHub 2025-09-19 起弃用 Node 20）。当前不影响结论，但属供应链/兼容性隐患 → 建议后续把两个
+   action 升到 v5（或 pin 到 commit SHA，同时解决 design.md §8 遗留 6）。
+2. **`ubuntu-latest` 将于 2026-10-19 起迁移到 Ubuntu 26**（actions/runner-images#14748）。届时需重跑一次
+   本表对照（尤其 `verify:cwd` 的 SKIP 项数与 vitest 例数），或把 runner 显式钉为 `ubuntu-24.04`。
 
 首次真实运行的红点排查清单见 design.md §9（9 条，含「PR 有冲突时 workflow 根本不触发」这一条，
-避免把「无 check」误读成 CI 故障）。
+避免把「无 check」误读成 CI 故障）——本次首跑 **9 条全部未触发**。
 
 ## 7. 复跑方式（本机等价，不含 GitHub 专有语义）
 
