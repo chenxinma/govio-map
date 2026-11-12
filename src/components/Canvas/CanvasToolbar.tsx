@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Code, FileDown, Loader2 } from "lucide-react";
+import { Code, FileDown, Loader2, Wand2 } from "lucide-react";
+import { useReactFlow } from "@xyflow/react";
 import { useCanvasStore } from "../../store/canvas-store";
 
 interface ExportNote {
@@ -12,7 +13,9 @@ const NOTE_TTL_MS = 8000;
 
 export default function CanvasToolbar() {
   const createManualSQLNode = useCanvasStore((s) => s.createManualSQLNode);
+  const autoLayout = useCanvasStore((s) => s.autoLayout);
   const nodeCount = useCanvasStore((s) => s.nodes.length);
+  const { fitView } = useReactFlow();
   const [exporting, setExporting] = useState(false);
   const [note, setNote] = useState<ExportNote | null>(null);
   const noteTimer = useRef<number | null>(null);
@@ -56,6 +59,15 @@ export default function CanvasToolbar() {
     }
   }, [exporting, showNote]);
 
+  /**
+   * 整理画布：autoLayout（方案B——数据血缘 LR 分层 + 语义血缘同列堆叠）。
+   * fitView 延到下一个宏任务：store set 后 React 要先重渲染，xyflow 才能拿到新坐标。
+   */
+  const handleAutoLayout = useCallback(() => {
+    autoLayout();
+    setTimeout(() => void fitView({ padding: 0.15, duration: 300 }), 0);
+  }, [autoLayout, fitView]);
+
   return (
     <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-1.5">
       <div className="flex items-center gap-1 p-1 rounded-lg bg-bg-surface border border-border-default">
@@ -66,6 +78,19 @@ export default function CanvasToolbar() {
         >
           <Code size={14} />
           <span>SQL</span>
+        </button>
+        <button
+          onClick={handleAutoLayout}
+          disabled={nodeCount < 2}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-text-primary hover:bg-bg-primary border border-transparent hover:border-border-default transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:border-transparent disabled:cursor-default"
+          title={
+            nodeCount < 2
+              ? "节点不足 2 个，无需整理"
+              : "整理画布：数据血缘按列分层，语义血缘同列纵向堆叠（源上/目标下）"
+          }
+        >
+          <Wand2 size={14} />
+          <span>整理画布</span>
         </button>
         <button
           onClick={() => void handleExportReport()}
