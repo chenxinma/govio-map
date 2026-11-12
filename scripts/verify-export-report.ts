@@ -20,6 +20,8 @@
  *  6. 附录 B：权限确认记录（只读通道返回值的解析白名单、关联节点、不可用时如实说明）
  *  7. 转义（画布内容不得变成 HTML/脚本）、确定性、不含数据行内容
  *  8. 确认门徽标区分（人工/自动放行）/ 审计截断告知 / 空 decisionIds 形态
+ *  9. 表间关系详情（X13）：sourceTable 卡片的关系小节 + 来源/降级原因 + 边悬停说明，
+ *     线型与图例仍按 lineageKind 泛化（自包含性质不变）
  *
  * 不调 govio-cli、不调模型、不读任何数据内容、不碰 `.govio/`。任一断言失败退出码 1。
  */
@@ -44,6 +46,7 @@ import {
   type AuditAppendix,
   type ChartRenderMap,
 } from "../src/utils/export-report.js";
+import { lineageEdgeAppearance } from "../src/utils/lineage.js";
 import type { AnalysisManifest } from "../src/types/manifest.js";
 import type { ChartNodeData, DataFrameNodeData, ReportNodeData, RerunRecord, SourceTableNodeData, SQLQueryNodeData } from "../src/types/index.js";
 
@@ -205,6 +208,12 @@ const ORDERS: SourceTableNodeData = {
     { name: "amount", type: "DOUBLE", nullable: true, description: "金额（元）" },
     { name: "created_at", type: "TIMESTAMP", nullable: false },
   ],
+  // X13：表间关系（图谱主路径形状：三段式目标 + many_to_one + 列映射，说明可有可无）
+  tableRelations: [
+    { targetTable: "sales.customers", relationshipType: "many_to_one", description: `客户外键 ${XSS_SENTINEL}`, sourceColumns: ["customer_id"], targetColumns: ["id"] },
+    { targetTable: "sales.warehouse.dim_date", relationshipType: "many_to_one", sourceColumns: ["created_at"], targetColumns: ["date_key"] },
+  ],
+  tableRelationsSource: "graph",
 };
 
 const CUSTOMERS: SourceTableNodeData = {
@@ -219,6 +228,10 @@ const CUSTOMERS: SourceTableNodeData = {
     { name: "区域", type: "VARCHAR", nullable: true, description: "华东/华北/华南/西部" },
     { name: "registered_at", type: "DATE", nullable: true },
   ],
+  // X13：字段级降级 + 图谱失败原因（导出必须同样可见）；列映射只有一侧
+  tableRelations: [{ targetTable: "sales.region", relationshipType: "foreign_key", targetColumns: ["region_code"] }],
+  tableRelationsSource: "fields",
+  tableRelationsError: "spawn govio-cli ENOENT",
 };
 
 const SQL_NODE: SQLQueryNodeData = {
@@ -499,6 +512,19 @@ console.log("\n[3] 节点卡片：五类静态快照");
 check("sourceTable 卡片含表名/数据源/行数/字段结构",
   HTML.includes("orders") && HTML.includes("128,450") && HTML.includes("字段结构（4）") && HTML.includes("BIGINT"));
 check("sourceTable 标出 PK 与 FK→引用", HTML.includes("PK") && HTML.includes("FK→customers.id"));
+check("X13：sourceTable 卡片导出表间关系小节（目标表 / 类型 / 列映射 / 说明）",
+  HTML.includes("表间关系（2）") && HTML.includes("sales.warehouse.dim_date") && HTML.includes("many_to_one")
+  && HTML.includes("customer_id → id") && HTML.includes("created_at → date_key"));
+check("X13：关系来源留痕进卡片（图谱 / 字段级两种取值都可见）",
+  HTML.includes("关系来源") && HTML.includes("图谱 RELATES_TO") && HTML.includes("字段级外键"));
+check("X13：字段级降级与图谱原因在报告里如实说明（全文不截断）",
+  HTML.includes("关系来源：字段级外键（图谱查询失败：spawn govio-cli ENOENT）"));
+check("X13：单侧缺失的列映射只渲染存在的一侧",
+  HTML.includes("<td>region_code</td>") && !HTML.includes("→ region_code"));
+check("X13：关系说明里的注入内容同样被转义",
+  HTML.includes("客户外键 &lt;script&gt;") && !HTML.includes("客户外键 <script>"));
+check("X13：图谱正常态（source=graph）不渲染降级警示框（不打扰）",
+  !HTML.includes("图谱降级") && !HTML.includes("本表无表间关系") && HTML.includes("字段级关系"));
 check("sqlQuery 卡片含 SQL 全文与输出列", HTML.includes("GROUP BY 1, 2") && HTML.includes("输出列") && HTML.includes("销售额"));
 check("dataFrame 卡片含列结构（列名 + dtype + nonNull）",
   HTML.includes("列结构（3）") && HTML.includes("VARCHAR") && HTML.includes("DOUBLE"));
@@ -518,6 +544,34 @@ check("卡片显示创建时间与节点 ID", HTML.includes(`创建于 ${EXPECT_
 check("10 张卡片都在节点章节里", (HTML.match(/<article class="card/g) ?? []).length === 10,
   `actual=${(HTML.match(/<article class="card/g) ?? []).length}`);
 check("摘要区统计节点/连线/DataFrame 数", HTML.includes("<dt>节点</dt><dd>10</dd>") && HTML.includes("<dt>血缘连线</dt><dd>9</dd>") && HTML.includes("<dt>DataFrame</dt><dd>4</dd>"));
+
+// ---------------------------------------------------------------------------
+console.log("\n[3b] 表间关系（X13）：血缘 SVG 悬停说明 + 边线型/图例零回归");
+{
+  const relNodes: Node[] = [node("rel-1", "sourceTable", ORDERS), node("rel-2", "sourceTable", CUSTOMERS)];
+  const relEdges: Edge[] = [{
+    id: "e-rel-1-rel-2-sem",
+    source: "rel-1",
+    target: "rel-2",
+    data: { lineageKind: "semantic", tableRelations: ORDERS.tableRelations?.slice(0, 1) },
+  }];
+  const relLayout = layoutLineage(relNodes, relEdges);
+  check("LineageEdgeView 带出关系原文（有 tableRelations 才建键）",
+    relLayout.edges.length === 1 && relLayout.edges[0].lineageKind === "semantic"
+    && relLayout.edges[0].relations?.length === 1,
+    JSON.stringify(relLayout.edges[0]));
+  const relHtml = buildDeliveryReportHtml({ nodes: relNodes, edges: relEdges, exportedAt: FIXED_EXPORTED_AT, audit: null });
+  check("语义边悬停 title 带出关系类型与列映射",
+    relHtml.includes("<title>rel-1 → rel-2 · many_to_one · customer_id → id</title>"));
+  check("数据边悬停 title 保持原样（不带关系摘要）",
+    HTML.includes("<title>src-1 → gov-1</title>"));
+  const semApp = lineageEdgeAppearance("semantic");
+  check("边线型仍按 lineageKind 泛化（紫虚线 + 专属箭头 + 图例文案）",
+    relHtml.includes(`stroke="${semApp.stroke}"`) && relHtml.includes(`stroke-dasharray="${semApp.strokeDasharray}"`)
+    && relHtml.includes('marker-end="url(#govio-arrow-sem)"') && relHtml.includes(semApp.label));
+  check("X13 新增内容不破坏自包含（无 script、无外部引用）",
+    !relHtml.includes("<script") && !/https?:\/\//.test(relHtml.replace(/xmlns(:xlink)?="[^"]*"/g, "")));
+}
 
 // ---------------------------------------------------------------------------
 console.log("\n[4] 漂移告警与复跑记录");

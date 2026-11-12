@@ -69,6 +69,15 @@ const nodeTypes: NodeTypes = {
 （`Edge.data.lineageKind = "semantic"`，样式唯一来源 `src/utils/lineage.ts`），匹配容忍三段式/
 两段式/裸表名差异（`src/utils/table-relations.ts` 的后缀变体集合），建边规则见 `docs/specs/05-store.md`。
 
+**X13 关系详情出口**：同一份关系数据在 UI 有三处可见——① sourceTable 节点内「表间关系」小节（目标表裸名 +
+`relationshipType` 徽标 + 列映射 + `description`，缺失的键不渲染，默认 3 条后折叠）；② 语义边 `label`
+（`关系类型 · 源列 → 目标列`，同节点对多条时末尾 `+N`）与 `edge.data.tableRelations`；③ 导出 HTML 报告
+（节点卡片关系小节 + 「关系来源」行 + 血缘 SVG 边悬停 `<title>`）。展示口径唯一来源
+`src/utils/table-relations-ui.ts`（纯函数，可在 node 环境单测）：`tableRelationsHint()` 只在
+`tableRelationsSource === 'fields'` 或存在 `tableRelationsError` 时给轻提示（沿袭 `caliber.ts` 的「不打扰」纪律，
+图谱正常态与无关系态静默），`relationTargetLabel` / `relationColumnView` / `relationEdgeLabel` /
+`TABLE_RELATIONS_SOURCE_LABELS` 供画布与导出共用，色值不在组件里写死。
+
 ### SQLQueryNodeData
 
 | 字段 | 类型 | 说明 |
@@ -159,7 +168,15 @@ type CanvasNodeData = SourceTableNodeData | SQLQueryNodeData | DataFrameNodeData
 1. **头部**：紫色左边框，Database 图标 + 表名，右侧 datasourceType 徽标（node-source/10 紫底，等宽大写，字段缺失时不渲染），数据库 + 行数（等宽大写 + 1.2px 字距）
 2. **全限定名行**（有 qualifiedName 时渲染）：等宽字体展示 SQL 应使用的全限定表名 + 一键复制按钮（复制后短暂显示对勾）；字段缺失时整行不渲染（回退旧显示）
 3. **字段列表**：默认显示前 6 个字段，PK/FK 标签，字段名 + 类型；超出可展开/折叠
-4. **操作栏**：引用按钮 + 删除按钮
+4. **表间关系小节**（X13，`tableRelations` 非空才渲染，旧节点形状不变不出现空壳）：标题行（Link2 图标 +
+   「表间关系」+ 条数）；逐条渲染目标表裸名（`title` 挂全限定名）+ `relationshipType` 徽标（node-source 紫底，
+   与 FK 徽标同一视觉语言）+ 列映射（`sourceColumns → targetColumns`，任一侧缺失只渲染存在的一侧，两侧都缺
+   省略该行）+ `description`（图谱里可能缺失，缺失不渲染空行）；默认前 3 条（`MAX_VISIBLE_TABLE_RELATIONS`），
+   超出「+N more relations」展开 /「Collapse」收起，与字段区同一交互范式
+5. **关系来源轻提示**（X13）：判定与配色唯一来源 `tableRelationsHint()`——字段级降级或图谱查询失败时一行
+   警示（warning 黄 + 徽标「字段级关系」/「图谱降级」+ 原因，超 60 字截断、全文放 `title`）；图谱正常态
+   与无关系态不渲染（不打扰）
+6. **操作栏**：引用按钮 + 删除按钮
 
 ### 字段标签
 

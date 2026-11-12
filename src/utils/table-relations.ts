@@ -31,10 +31,18 @@ export interface TableEdgeLike {
   data?: unknown;
 }
 
-/** 表间语义边候选：source → target 的节点 ID 对（已去重、已排除自环与既有语义边） */
+/**
+ * 表间语义边候选：source → target 的节点 ID 对（已去重、已排除自环与既有语义边）。
+ *
+ * `relations`（X13 加法扩展）：命中该节点对的关系原文，方向与候选一致（即 `sourceId`
+ * 节点上的 `tableRelations`）。同一对节点被多条关系命中时并入同一条边（无向去重规则
+ * 不变），供边侧 UI（label / `edge.data`）与导出报告说明「这条边基于哪几列」。
+ * 无关系可挂的候选省略该键——消费方必须容忍缺失（旧数据、sqlQuery 口径沿袭边）。
+ */
 export interface TableSemanticEdgeCandidate {
   sourceId: string;
   targetId: string;
+  relations?: TableRelation[];
 }
 
 /** 键归一：去空白 + 小写（DuckDB/Postgres 表名大小写不敏感的场景不因大小写漏配） */
@@ -143,19 +151,36 @@ export function tableSemanticEdgeCandidates(
   existingEdges: TableEdgeLike[] = [],
 ): TableSemanticEdgeCandidate[] {
   const out: TableSemanticEdgeCandidate[] = [];
-  const seen = new Set<string>();
   // 已存在的语义边不再重复建：id 规则见 canvas-store（`e-<src>-<tgt>-sem`），
   // 但历史边可能来自其它 id 规则，故按端点 + lineageKind 判定而非按 id。
+  const blocked = new Set<string>();
   for (const e of existingEdges) {
-    if (lineageKindOf(e) === 'semantic') seen.add(pairKey(e.source, e.target));
+    if (lineageKindOf(e) === 'semantic') blocked.add(pairKey(e.source, e.target));
   }
+  // 本轮已产出的候选：节点对键 → 候选。X13 还用它把同方向后续命中的关系并入同一条边
+  // （不能复用 blocked 提前 return，否则第二条关系会被吞掉）。
+  const byPair = new Map<string, TableSemanticEdgeCandidate>();
 
-  const push = (sourceId: string, targetId: string): void => {
+  const push = (sourceId: string, targetId: string, relation?: TableRelation): void => {
     if (!sourceId || !targetId || sourceId === targetId) return;
     const key = pairKey(sourceId, targetId);
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push({ sourceId, targetId });
+    if (blocked.has(key)) return;
+    const existing = byPair.get(key);
+    if (existing) {
+      // 同一节点对、同一方向再多一条关系仍只画一条边（合并关系）；方向不同
+      // （② 撞上 ① 已占用的节点对）沿用既有「先产出者胜出」去重，不并入。
+      if (relation && existing.sourceId === sourceId && existing.targetId === targetId) {
+        existing.relations = [...(existing.relations ?? []), relation];
+      }
+      return;
+    }
+    const candidate: TableSemanticEdgeCandidate = {
+      sourceId,
+      targetId,
+      ...(relation ? { relations: [relation] } : {}),
+    };
+    byPair.set(key, candidate);
+    out.push(candidate);
   };
 
   const newKeys = sourceTableMatchKeys(newNode);
@@ -166,18 +191,18 @@ export function tableSemanticEdgeCandidates(
     .map((n) => ({ node: n, keys: sourceTableMatchKeys(n) }))
     .filter((e) => e.keys.size > 0);
 
-  // ① 新节点的关系指向既有节点
+  // ① 新节点的关系指向既有节点（关系原文随候选一起带出，供边侧 UI 消费）
   for (const rel of nodeTableRelations(newNode)) {
     const targetKeys = relationTargetKeys(rel.targetTable);
     for (const { node, keys } of existingTables) {
-      if (intersects(targetKeys, keys)) push(newNode.id, node.id);
+      if (intersects(targetKeys, keys)) push(newNode.id, node.id, rel);
     }
   }
 
   // ② 既有节点的关系指向新节点
   for (const { node } of existingTables) {
     for (const rel of nodeTableRelations(node)) {
-      if (intersects(relationTargetKeys(rel.targetTable), newKeys)) push(node.id, newNode.id);
+      if (intersects(relationTargetKeys(rel.targetTable), newKeys)) push(node.id, newNode.id, rel);
     }
   }
 
