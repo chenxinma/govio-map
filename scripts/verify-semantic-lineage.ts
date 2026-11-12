@@ -31,7 +31,7 @@ import {
   toSemanticRefs,
 } from "../server/semantic-context.js";
 import { canvasPathFor, loadCanvas, saveCanvas } from "../server/session-history.js";
-import { lineageEdgeAppearance, lineageKindOf } from "../src/utils/lineage.js";
+import { lineageEdgeAppearance, lineageKindOf, SEMANTIC_SOURCE_HANDLE, SEMANTIC_TARGET_HANDLE } from "../src/utils/lineage.js";
 import { buildDeliveryReportHtml, layoutLineage } from "../src/utils/export-report.js";
 import type { CanvasEvent } from "../src/services/canvas-service.js";
 import type { SemanticRef } from "../src/types/index.js";
@@ -246,6 +246,10 @@ try {
   check("交集命中建语义边（source 旧 → target 新）",
     semAB !== undefined && semAB.source === a?.id && semAB.target === b?.id);
   check("语义边标记 lineageKind:semantic", (semAB?.data as Record<string, unknown>)?.lineageKind === "semantic");
+  check("语义边携带专用 Handle id（端口方向由节点组件决定，见 lineage.ts）",
+    semAB?.sourceHandle === SEMANTIC_SOURCE_HANDLE && semAB?.targetHandle === SEMANTIC_TARGET_HANDLE);
+  check("语义边形状随 APPEARANCE.edgeType（样式唯一来源，不硬编码具体值）",
+    semAB?.type === lineageEdgeAppearance("semantic").edgeType);
   check("语义边与数据边 id 不冲突（-sem 后缀）", edgeById(`e-${a?.id}-${b?.id}`) === undefined && semAB !== undefined);
 
   create({ nodeType: "sqlQuery", title: "Q: C", sql: "SELECT 3", outputColumns: ["3"], semanticRefs: [{ entityType: "Col", id: "c9" }] });
@@ -265,6 +269,9 @@ try {
   check("数据边 lineageKind:data、语义边 lineageKind:semantic",
     (dataAD?.data as Record<string, unknown>)?.lineageKind === "data"
     && (semAD?.data as Record<string, unknown>)?.lineageKind === "semantic");
+  check("数据边走默认左右 Handle（不带 handle 键）+ smoothstep",
+    dataAD?.sourceHandle === undefined && dataAD?.targetHandle === undefined
+    && dataAD?.type === lineageEdgeAppearance("data").edgeType);
   check("交集按 entityType+id 判等（B 与 D 共享 Metric:m1 也建边）",
     edgeById(`e-${b?.id}-${d?.id}-sem`) !== undefined);
 

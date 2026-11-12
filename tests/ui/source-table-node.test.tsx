@@ -81,6 +81,18 @@ describe("SourceTableNode 渲染与交互", () => {
     expect(screen.getByText("订单主键")).toBeTruthy();
   });
 
+  it("渲染语义血缘专用 Handle：表关系边反向（source 下 / target 上），默认左右 Handle 保留", () => {
+    renderNode(sourceData());
+    const semSource = document.querySelector('[data-handleid="semantic-source"]');
+    const semTarget = document.querySelector('[data-handleid="semantic-target"]');
+    expect(semSource).toBeTruthy();
+    expect(semSource?.getAttribute("data-handlepos")).toBe("bottom");
+    expect(semTarget).toBeTruthy();
+    expect(semTarget?.getAttribute("data-handlepos")).toBe("top");
+    // 默认（无 id）source/target Handle 仍各一个，数据血缘继续左右连接
+    expect(document.querySelectorAll(".react-flow__handle")).toHaveLength(4);
+  });
+
   it("引用按钮把节点 id 交给 store.addReference", async () => {
     const user = userEvent.setup();
     renderNode(sourceData());
@@ -94,7 +106,7 @@ describe("SourceTableNode 渲染与交互", () => {
   it("缺失 qualifiedName/datasourceType 时回退旧显示且不出现 undefined", () => {
     renderNode(sourceData());
 
-    expect(screen.queryByTitle("复制全限定名")).toBeNull();
+    expect(screen.queryByTitle("复制完整表名")).toBeNull();
     expect(screen.queryByText("undefined")).toBeNull();
     expect(document.body.textContent).not.toContain("undefined");
   });
