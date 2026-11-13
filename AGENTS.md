@@ -93,20 +93,29 @@ pending → in_progress → done → accepted / rejected
 7. **失败恢复**：启动/模型通道错误（订阅失效等）→ 停下问用户（换 agent/换模型/续订），禁止静默换 agent；用户明确要求重派后 `task-update --id <task_id> --status ready --run <run_id>` → `worker-start --task <task_id> --run <run_id> --worktree <placement> --agent <agent>`（复用原 spec；`--retry-of` 须指向 latest settled dispatch，常不适用）；重派前 `git -C <worktree> log/status` 确认无残留半成品
 8. **验收合入**：`worker_done` 必须是 **orca 信号**而非终端文本——若 worker 只把汇报写在终端就收尾（Task 未结），令其补发 `orca orchestration send --type worker_done --outcome succeeded --task-id ... --dispatch-id ...`，收到信号才按「验收协议」独立复跑 + 抽查；功能/大改动按 PR 门禁合入
 
-### 合入 main 纪律（PR 门禁）
+### 合入 main 纪律（PR 门禁 + 分支保护）
+
+`main` 已受 GitHub **ruleset「main」**保护（id=27209918，`enforcement: active`，2026-11-13 用户开启）：
+required status check **`build + lint + verify`**（X14 的 `.github/workflows/ci.yml`）+ 禁删分支 + 禁 non-fast-forward；
+`bypass_actors` = **RepositoryRole: admin（bypass_mode: always）**（2026-11-14 用户授权，仅供文档记账直推）。
 
 按变更性质分两类：
 
 | 变更类型 | 合入方式 |
 |---|---|
-| **bugfix**（小范围缺陷修复，不改交互/不加功能） | 可直接 commit 到 `main` 并 push（单次 commit，ID 前缀） |
-| **界面交互优化、新功能、大改动**（含 P2/P3 任务、X 项里的功能/体验类，如 T2.x、X3、X9 这类） | 必须走 **GitHub PR**：任务分支 → PR → （评审/CI）→ `Merge pull request #N` → 清理分支。**后续任务默认全部经 PR** |
+| **代码改动**（新功能、界面交互优化、大改动，**以及 bugfix**） | 必须走 **GitHub PR**：任务分支 → PR → CI `build + lint + verify` 绿 → 用户合并 → 清理分支。**bugfix 不再直推 main**（保护生效前的旧表述已作废：直推会被 `remote rejected ... repository rule violations` 拦下） |
+| **纯文档记账**（`docs/task-plan.json`、`docs/tasks/**` 三件套与 DISPATCH、`AGENTS.md`、`.pi/APPEND_SYSTEM.md`） | 可用 admin bypass 直接 commit + push `main`（单次 commit，`chore(plan): ...` 前缀）；push 后 main 的 CI 仍会跑，红了立即修 |
 
-- **PR 由用户合并**：主会话创建 PR 后停下等用户合并，**不得自行 merge**（用户指令 2026-11-04）；并行 PR 间若有冲突，主会话先行 rebase/消解再交付用户
-- PR 合并后主会话做验收（独立复跑验证 + 抽查）→ `accepted` 置位 + 单独 commit
-- 判不准是 bugfix 还是功能时，**按 PR 处理**（宁重勿漏）
-- 验收 commit（`chore(plan): accept ...`）与 task-plan 更新属文档记账，可直接 push `main`，不受 PR 门禁约束
-- 实例参考：PR 合并惯例见 `docs/task-plan.json → pullRequests`（#12-#17）；X7/X9 走本地 merge 是历史例外，已过 PR 的 #12-#17 是标准形态
+- **直推前自查（硬规则）**：`git diff --cached --name-only` 必须**全部**落在 `docs/` 或 `.pi/` 下，且不含
+  `src/` `server/` `scripts/` `tests/` `package.json` `package-lock.json` `.github/` 的任何改动；
+  只要沾到代码就改走 PR。`docs/specs/**` 若与代码同批变更，随代码 PR 一起走，不单独直推
+- **PR 由用户合并**：主会话创建 PR 后停下等用户合并，**不得自行 merge**（用户指令 2026-11-04；admin bypass
+  只用于文档直推，不用于合并代码 PR）；并行 PR 间若有冲突，主会话先行 rebase/消解再交付用户
+- PR 合并后主会话做验收（独立复跑验证 + 抽查）→ `accepted` 置位 + 记账 commit（文档，可直推）
+- 判不准是 bugfix 还是功能时，**按 PR 处理**（宁重勿漏）；判不准是否算「纯文档」时，同样**按 PR 处理**
+- 实例参考：PR 合并惯例见 `docs/task-plan.json → pullRequests`（#12-#17、#28-#35）；X7/X9 走本地 merge 是历史例外；
+  X14（PR #32）建立 CI 门禁，X15（PR #34）是门禁上线后第一个功能 PR；`chore/plan-x151-bookkeeping`（PR #35）
+  是保护刚生效、bypass 尚未加时被迫走 PR 的文档记账，bypass 加好后此类改回直推
 
 ### 主会话：验收协议
 
