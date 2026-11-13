@@ -151,14 +151,16 @@ describe("SourceTableNode 表间关系出口（X13）", () => {
     vi.clearAllMocks();
   });
 
-  it("星型模型 3 条关系：裸表名 + many_to_one 徽标 + 列映射都可见", () => {
+  it("星型模型 3 条关系：裸表名 + 列映射可见，关系类型不显示（X15）", () => {
     renderNode(sourceData({ tableName: "fact_sales", tableRelations: STAR_RELATIONS, tableRelationsSource: "graph" }));
 
     expect(screen.getByText("表间关系")).toBeTruthy();
     expect(screen.getByText("dim_product")).toBeTruthy();
     expect(screen.getByText("dim_country")).toBeTruthy();
     expect(screen.getByText("dim_channel")).toBeTruthy();
-    expect(screen.getAllByText("many_to_one")).toHaveLength(3);
+    // X15：关系类型（图谱原值）不再展示，只留字段关联
+    expect(screen.queryByText("many_to_one")).toBeNull();
+    expect(document.body.textContent).not.toContain("many_to_one");
     expect(screen.getByText("product_id → product_id")).toBeTruthy();
     expect(screen.getByText("channel_id → channel_id")).toBeTruthy();
     expect(screen.getByText("3")).toBeTruthy();
@@ -231,6 +233,8 @@ describe("SourceTableNode 表间关系出口（X13）", () => {
     }));
     expect(screen.getByText("字段级关系")).toBeTruthy();
     expect(screen.getByTitle(/图谱未记录该表关系/)).toBeTruthy();
+    // X15：降级路径的 `foreign_key` 类型同样不展示（提示文案里的「字段级关系」是来源，不是类型）
+    expect(screen.queryByText("foreign_key")).toBeNull();
     cleanup();
 
     renderNode(sourceData({ tableRelations: STAR_RELATIONS, tableRelationsSource: "graph" }));

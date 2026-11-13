@@ -127,7 +127,7 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 | config | chart | Plotly figure {type, data[], layout?} |
 | sourceDf | chart | 数据源 DataFrame 名称 |
 | manifest | dataFrame/sqlQuery | 分析留痕 Analysis Manifest（类型见 `src/types/manifest.ts`，服务端填充后写入 `node.data.manifest`） |
-| tableRelations | sourceTable | 表间语义关系（X10）：`Array<{targetTable, relationshipType, description?, sourceColumns?, targetColumns?}>`，由 `server/table-relations.ts` 解析（图谱 RELATES_TO 主路径 / 字段级 references 降级），前端据此建表间语义血缘边，并在节点内小节 / 边 label / 导出报告三处展示关系详情（X13，展示口径唯一来源 `src/utils/table-relations-ui.ts`）；拿不到不写键 |
+| tableRelations | sourceTable | 表间语义关系（X10）：`Array<{targetTable, relationshipType, description?, sourceColumns?, targetColumns?}>`，由 `server/table-relations.ts` 解析（图谱 RELATES_TO 主路径 / 字段级 references 降级），前端据此建表间语义血缘边，并在节点内小节 / 边 label / 导出报告三处展示关系详情（X13，展示口径唯一来源 `src/utils/table-relations-ui.ts`；**X15 起三处只展示字段关联（列映射），不再展示 `relationshipType`，但服务端仍照原样解析并下发该字段供留痕**）；拿不到不写键 |
 | tableRelationsSource | sourceTable | 关系来源留痕（X10）：`graph` / `fields`，仅在 tableRelations 非空时写键 |
 | tableRelationsError | sourceTable | 图谱查询降级原因（X10）：仅 status=degraded 时写键，随 canvas sidecar 持久化以供审计 |
 | referencedNodes | 全部 | 引用节点（自动附加） |
