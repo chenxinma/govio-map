@@ -70,7 +70,7 @@ onDrop:
 | 按钮 | 功能 | 实现 |
 |------|------|------|
 | **SQL** | 创建空白 SQL 查询节点 | `canvas-store.createManualSQLNode()` |
-| **导出交付报告** | 导出单文件自包含 HTML（节点快照 + 血缘图 + 附录 A/B），画布为空时禁用 | 动态 `import('../../utils/export-report')` → `exportCanvasDeliveryReport({ nodes, edges, appVersion })`；导出中按钮禁用并转圈，结果/失败原因以提示条显示 8s |
+| **导出交付报告** | 导出单文件自包含 HTML（节点快照 + 血缘图 + 附录 A/B；sourceTable 快照含 X13 表间关系小节与关系来源留痕，血缘 SVG 边悬停带出关系类型与列映射），画布为空时禁用 | 动态 `import('../../utils/export-report')` → `exportCanvasDeliveryReport({ nodes, edges, appVersion })`；导出中按钮禁用并转圈，结果/失败原因以提示条显示 8s |
 
 导出流程（Phase 1 KR4，详见 `docs/tasks/T1.4-canvas-export/design.md`）：
 1. `renderChartImages()`：借浏览器里已有的 Plotly 把 chart 节点渲染成内联 data URL（失败降级为配置摘要）

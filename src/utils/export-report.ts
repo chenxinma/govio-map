@@ -31,8 +31,16 @@ import type {
   SourceTableNodeData,
   SQLQueryNodeData,
   TableField,
+  TableRelation,
 } from '../types';
 import { lineageEdgeAppearance, lineageKindOf } from './lineage';
+import { nodeTableRelations } from './table-relations';
+import {
+  TABLE_RELATIONS_SOURCE_LABELS,
+  relationColumnView,
+  relationEdgeLabel,
+  tableRelationsHint,
+} from './table-relations-ui';
 import { RERUN_OUTCOME_LABELS, formatRerunTime, hasDrift, latestRerun } from './rerun';
 import { manifestModelLabel, manifestOriginLabel } from './manifest-labels';
 import { REPORT_CSS } from './export-report-style';
@@ -273,6 +281,11 @@ export interface LineageEdgeView {
   target: string;
   /** 血缘分类（T2.2）：数据血缘 / 语义血缘（口径沿袭）；旧边无 data 回退 "data" */
   lineageKind: LineageKind;
+  /**
+   * 表间关系原文（X13，可选）：语义边由 `tableRelations` 建出时挂在 `edge.data` 上，
+   * 导出报告用它给边补悬停说明（类型 + 列映射）。无关系（历史边 / 口径沿袭边）省略键。
+   */
+  relations?: TableRelation[];
   /** 三次贝塞尔路径（源盒子右侧中点 → 目标盒子左侧中点） */
   path: string;
 }
@@ -364,11 +377,14 @@ export function layoutLineage(nodes: Node[], edges: Edge[]): LineageLayout {
     const s = boxById.get(e.source);
     const t = boxById.get(e.target);
     if (!s || !t) continue;
+    // X13：表间关系随边带出（复用 nodeTableRelations 清洗 edge.data.tableRelations）
+    const relations = nodeTableRelations({ id: e.id ?? '', data: e.data });
     lineageEdges.push({
       id: e.id || `${e.source}->${e.target}`,
       source: e.source,
       target: e.target,
       lineageKind: lineageKindOf(e),
+      ...(relations.length > 0 ? { relations } : {}),
       path: edgePath(s, t),
     });
   }
@@ -413,9 +429,12 @@ export function lineageSvg(layout: LineageLayout): string {
     const app = lineageEdgeAppearance(e.lineageKind);
     const dash = app.strokeDasharray ? ` stroke-dasharray="${app.strokeDasharray}"` : '';
     const marker = e.lineageKind === 'semantic' ? 'govio-arrow-sem' : 'govio-arrow';
+    // 悬停说明：表间语义边额外带出「关系类型 + 列映射」（X13），数据边/历史边保持原样
+    const relationSummary = relationEdgeLabel(e.relations);
+    const titleText = `${esc(e.source)} → ${esc(e.target)}${relationSummary ? ` · ${esc(relationSummary)}` : ''}`;
     parts.push(
       `<path d="${e.path}" fill="none" stroke="${app.stroke}" stroke-width="1.6"${dash} marker-end="url(#${marker})">` +
-        `<title>${esc(e.source)} → ${esc(e.target)}</title></path>`,
+        `<title>${titleText}</title></path>`,
     );
   }
   for (const b of layout.boxes) {
@@ -586,6 +605,47 @@ function fieldKeyCell(field: TableField): string {
   return marks.length ? esc(marks.join(' ')) : '<span class="note">—</span>';
 }
 
+/**
+ * 表间关系小节（X13）：sourceTable 卡片导出与画布同一份关系详情——目标表（全限定名）、
+ * 关系类型、列映射、图谱说明。取值与画布同源（`nodeTableRelations` 清洗 + 同一展示模型），
+ * 缺失的键渲染「—」而不是空单元格；没有关系时整节不渲染。
+ */
+function tableRelationsBlock(d: SourceTableNodeData): string {
+  const relations = nodeTableRelations({ id: '', data: d });
+  if (relations.length === 0) return '';
+  const rows = relations.map((rel) => {
+    const columns = relationColumnView(rel);
+    return [
+      `<code>${esc(rel.targetTable)}</code>`,
+      rel.relationshipType ? badge(rel.relationshipType) : '<span class="note">—</span>',
+      columns.text ? esc(columns.text) : '<span class="note">—</span>',
+      rel.description ? esc(rel.description) : '<span class="note">—</span>',
+    ];
+  });
+  return (
+    label(`表间关系（${relations.length}）`) +
+    `<div class="scroll">${table(['目标表', '关系类型', '列映射', '说明'], rows)}</div>`
+  );
+}
+
+/**
+ * 关系来源与降级原因（X13）：与画布轻提示同一判定（`tableRelationsHint`）——
+ * 字段级降级或图谱失败才落一行警示，图谱正常态不啰嗦。
+ */
+function tableRelationsTraceBlock(d: SourceTableNodeData): string {
+  const relations = nodeTableRelations({ id: '', data: d });
+  const hint = tableRelationsHint({
+    tableRelationsSource: d.tableRelationsSource,
+    tableRelationsError: d.tableRelationsError,
+    tableRelations: relations,
+  });
+  if (!hint.showHint) return '';
+  return (
+    `<div class="box warn"><div class="t">${esc(hint.badgeLabel ?? '表间关系')}</div>` +
+    `<div>${esc(hint.detailFull ?? '')}</div></div>`
+  );
+}
+
 function sourceTableBody(d: SourceTableNodeData): string {
   const fields = Array.isArray(d.fields) ? d.fields : [];
   const shown = fields.slice(0, MAX_TABLE_ROWS);
@@ -604,13 +664,17 @@ function sourceTableBody(d: SourceTableNodeData): string {
     ['字段数', esc(groupDigits(fields.length))],
   ];
   if (d.description) info.push(['说明', esc(d.description)]);
+  // 关系来源留痕（X10 数据，X13 出口）：有 tableRelationsSource 才渲染，旧节点不出现空行
+  if (d.tableRelationsSource) info.push(['关系来源', esc(TABLE_RELATIONS_SOURCE_LABELS[d.tableRelationsSource])]);
   return (
     kv(info) +
     label(`字段结构（${shown.length}${fields.length > shown.length ? ` / 共 ${fields.length}` : ''}）`) +
     `<div class="scroll">${table(['#', '字段', '类型', '可空', '键 / 引用', '说明'], rows)}</div>` +
     (fields.length > shown.length
       ? `<p class="note">为控制文件体积，仅列出前 ${MAX_TABLE_ROWS} 个字段。</p>`
-      : '')
+      : '') +
+    tableRelationsBlock(d) +
+    tableRelationsTraceBlock(d)
   );
 }
 
@@ -1220,7 +1284,7 @@ function renderLineageSection(layout: LineageLayout): string {
     })
     .join('');
   return `<section id="lineage"><h2><span class="n">1</span> 血缘连线图</h2>` +
-    `<p class="note">按血缘层次从左到右排布（同源同层按画布顺序纵向排列），箭头表示数据流向；实线绿色为数据血缘，虚线紫色为语义血缘（口径沿袭，T2.2）；点击任意盒子跳到对应节点卡片。` +
+    `<p class="note">按血缘层次从左到右排布（同源同层按画布顺序纵向排列），箭头表示数据流向；实线绿色为数据血缘，虚线紫色为语义血缘（口径沿袭，T2.2）；点击任意盒子跳到对应节点卡片，鼠标悬停连线看两端节点与表间关系（类型 + 列映射，X13）。` +
     `这是一张静态示意图，不复用画布的 ReactFlow 运行时，因此离线打开也能看。</p>` +
     (layout.boxes.length
       ? `<div class="lineage-wrap">${lineageSvg(layout)}</div><div class="legend">${legend}</div><div class="legend">${edgeLegend}</div>`

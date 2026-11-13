@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ReactFlowProvider, type NodeProps } from "@xyflow/react";
 import SourceTableNode from "../../src/components/Nodes/SourceTableNode.js";
-import type { SourceTableNodeData, TableField } from "../../src/types/index.js";
+import type { SourceTableNodeData, TableField, TableRelation } from "../../src/types/index.js";
 
 const storeMocks = vi.hoisted(() => ({
   addReference: vi.fn(),
@@ -134,5 +134,144 @@ describe("SourceTableNode 渲染与交互", () => {
     fireEvent.click(deleteButton!);
 
     expect(storeMocks.deleteNodes).toHaveBeenCalledWith(["source-1"]);
+  });
+});
+// ── X13：表间关系小节与降级留痕提示 ──────────────────────────────────────
+
+/** live 图谱实测形状（X10）：三段式目标 + many_to_one，三行都没有 description */
+const STAR_RELATIONS: TableRelation[] = [
+  { targetTable: "chocolate.chocolate.dim_product", relationshipType: "many_to_one", sourceColumns: ["product_id"], targetColumns: ["product_id"] },
+  { targetTable: "chocolate.chocolate.dim_country", relationshipType: "many_to_one", sourceColumns: ["country_id"], targetColumns: ["country_id"] },
+  { targetTable: "chocolate.chocolate.dim_channel", relationshipType: "many_to_one", sourceColumns: ["channel_id"], targetColumns: ["channel_id"] },
+];
+
+describe("SourceTableNode 表间关系出口（X13）", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("星型模型 3 条关系：裸表名 + many_to_one 徽标 + 列映射都可见", () => {
+    renderNode(sourceData({ tableName: "fact_sales", tableRelations: STAR_RELATIONS, tableRelationsSource: "graph" }));
+
+    expect(screen.getByText("表间关系")).toBeTruthy();
+    expect(screen.getByText("dim_product")).toBeTruthy();
+    expect(screen.getByText("dim_country")).toBeTruthy();
+    expect(screen.getByText("dim_channel")).toBeTruthy();
+    expect(screen.getAllByText("many_to_one")).toHaveLength(3);
+    expect(screen.getByText("product_id → product_id")).toBeTruthy();
+    expect(screen.getByText("channel_id → channel_id")).toBeTruthy();
+    expect(screen.getByText("3")).toBeTruthy();
+    expect(screen.getByTitle("关系目标表：chocolate.chocolate.dim_product").textContent).toBe("dim_product");
+  });
+
+  it("description 存在时渲染说明行，缺失时不渲染空行（行数可断言）", () => {
+    renderNode(sourceData({
+      tableRelations: [{ ...STAR_RELATIONS[0], description: "事实表产品外键" }],
+      tableRelationsSource: "graph",
+    }));
+    const row = screen.getByText("dim_product").closest(".text-xs");
+    expect(row).not.toBeNull();
+    expect(screen.getByText("事实表产品外键")).toBeTruthy();
+    // 行结构：目标表 + 类型 / 列映射 / 说明 = 3 个子节点
+    expect(row!.children).toHaveLength(3);
+    cleanup();
+
+    renderNode(sourceData({ tableRelations: [STAR_RELATIONS[0]], tableRelationsSource: "graph" }));
+    const bare = screen.getByText("dim_product").closest(".text-xs");
+    expect(bare!.children).toHaveLength(2);
+    expect(document.body.textContent).not.toContain("undefined");
+  });
+
+  it("无 tableRelations 时整个小节不渲染（旧节点形状不变、不出现空壳）", () => {
+    renderNode(sourceData());
+    expect(screen.queryByText("表间关系")).toBeNull();
+    expect(screen.queryByText("many_to_one")).toBeNull();
+  });
+
+  it("关系多于 3 条时默认折叠，可展开与收起", async () => {
+    const user = userEvent.setup();
+    const relations: TableRelation[] = [
+      ...STAR_RELATIONS,
+      { targetTable: "chocolate.chocolate.dim_date", relationshipType: "many_to_one", sourceColumns: ["date_id"], targetColumns: ["date_id"] },
+    ];
+    renderNode(sourceData({ tableRelations: relations, tableRelationsSource: "graph" }));
+
+    expect(screen.queryByText("dim_date")).toBeNull();
+    expect(screen.getByText("+1 more relations")).toBeTruthy();
+
+    await user.click(screen.getByText("+1 more relations"));
+    expect(screen.getByText("dim_date")).toBeTruthy();
+    expect(screen.getByText("date_id → date_id")).toBeTruthy();
+
+    await user.click(screen.getByText("Collapse"));
+    expect(screen.queryByText("dim_date")).toBeNull();
+  });
+
+  it("列映射单侧缺失只渲染存在的一侧，两侧都缺时不渲染映射行", () => {
+    renderNode(sourceData({
+      tableRelations: [
+        { targetTable: "dim_product", relationshipType: "many_to_one", sourceColumns: ["product_id"] },
+        { targetTable: "dim_country", relationshipType: "one_to_many", targetColumns: ["country_id"] },
+        { targetTable: "dim_channel", relationshipType: "many_to_one" },
+      ],
+    }));
+    expect(screen.getByText("product_id")).toBeTruthy();
+    expect(screen.getByText("country_id")).toBeTruthy();
+    expect(screen.getByText("dim_channel")).toBeTruthy();
+    // 没有任何一条孤立的「→」空映射行
+    expect(document.body.textContent).not.toContain("→");
+    expect(screen.getByText("dim_channel").closest(".text-xs")!.children).toHaveLength(1);
+  });
+
+  it("降级留痕：source=fields 出现「字段级关系」提示；graph 正常态不出现", () => {
+    renderNode(sourceData({
+      tableRelations: [{ targetTable: "dim_product", relationshipType: "foreign_key", sourceColumns: ["product_id"], targetColumns: ["product_id"] }],
+      tableRelationsSource: "fields",
+    }));
+    expect(screen.getByText("字段级关系")).toBeTruthy();
+    expect(screen.getByTitle(/图谱未记录该表关系/)).toBeTruthy();
+    cleanup();
+
+    renderNode(sourceData({ tableRelations: STAR_RELATIONS, tableRelationsSource: "graph" }));
+    expect(screen.queryByText("字段级关系")).toBeNull();
+    expect(screen.queryByText("图谱降级")).toBeNull();
+    expect(screen.getByText("表间关系")).toBeTruthy();
+  });
+
+  it("降级留痕：图谱失败原因可见（展示行截断，title 保留全文）", () => {
+    const longError = `spawn govio-cli ENOENT: ${"detail ".repeat(30)}`;
+    renderNode(sourceData({
+      tableRelations: [{ targetTable: "dim_product", relationshipType: "foreign_key" }],
+      tableRelationsSource: "fields",
+      tableRelationsError: longError,
+    }));
+    const shown = screen.getByTitle(/spawn govio-cli ENOENT/);
+    expect(shown.textContent!.length).toBeLessThanOrEqual(60);
+    expect(shown.getAttribute("title")).toContain(longError.trim());
+    expect(screen.getByText("字段级关系")).toBeTruthy();
+  });
+
+  it("只有 tableRelationsError（一条关系都没拿到）：提示图谱降级，关系小节仍不渲染", () => {
+    renderNode(sourceData({ tableRelationsError: "graph query timeout after 8000ms" }));
+    expect(screen.getByText("图谱降级")).toBeTruthy();
+    expect(screen.getByTitle(/本表无表间关系/)).toBeTruthy();
+    expect(screen.queryByText("表间关系")).toBeNull();
+  });
+
+  it("脏关系数据被过滤（null / 缺 targetTable），节点不报错", () => {
+    renderNode(sourceData({
+      tableRelations: [STAR_RELATIONS[0], null, { relationshipType: "many_to_one" }] as unknown as TableRelation[],
+      tableRelationsSource: "graph",
+    }));
+    expect(screen.getByText("表间关系")).toBeTruthy();
+    expect(screen.getByText("dim_product")).toBeTruthy();
+    expect(screen.getByText("1")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("undefined");
+  });
+
+  it("关系小节不影响 Handle：默认左右 + 语义上下仍各 4 个", () => {
+    renderNode(sourceData({ tableRelations: STAR_RELATIONS, tableRelationsSource: "graph" }));
+    expect(document.querySelectorAll(".react-flow__handle")).toHaveLength(4);
   });
 });
