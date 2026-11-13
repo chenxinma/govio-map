@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-13T14:05:00+08:00",
+  "updatedAt": "2026-11-13T14:40:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -982,6 +982,40 @@
         "不改任何业务代码、不改既有 verify 脚本断言、不引入运行时依赖（CI 专用工具若必须入 devDependencies 须在 design.md 说明理由与体积影响）；CI 中不得调用真实 govio-cli（verify 链默认全 mock/stub，verify:rerun 的 --real 是 opt-in，禁止在 CI 打开）",
         "走 GitHub PR：worker 不 push、不切分支、不合并（PR 由主会话创建、用户合并）；三件套齐全"
       ]
+    },
+    {
+      "id": "X15",
+      "title": "表间关系展示只保留字段关联（去掉 relationshipType 类型显示）",
+      "status": "in_progress",
+      "kr": null,
+      "dependsOn": [
+        "X13"
+      ],
+      "note": "动机（用户指令 2026-11-13）：X13 交付的表间关系展示里，`many_to_one` / `one_to_many` / `foreign_key` 这类**关系类型**对用户是噪声，用户要求「不用显示 many_to_one one_to_many 等，只要显示字段关联关系」。因此三处展示出口（节点内「表间关系」小节的类型徽标、语义边 label 的类型前缀、导出 HTML 关系表的「关系类型」列与 SVG <title> 摘要）一律去掉类型，只留**目标表 + 列映射**（`sourceColumns → targetColumns`，图谱 description 若有仍保留，因为它不是类型而是说明）。数据层不动：`TableRelation.relationshipType` 仍由 `server/table-relations.ts` 解析、随 `node.data.tableRelations` / `edge.data.tableRelations` 落 canvas sidecar，保持可追溯与将来可再开。实现者=主会话（单写者，改动面小且已定位到行）。",
+      "scope": [
+        "展示层三处去掉关系类型：① `src/components/Nodes/SourceTableNode.tsx` 关系小节的 `rel.relationshipType` 徽标块（约 151-158 行）② `src/utils/table-relations-ui.ts` 的 `relationEdgeLabel`（约 85-92 行，label 由「类型 · 列映射」改为只有列映射，多条仍附 `+N`）③ `src/utils/export-report.ts` 的 `tableRelationsBlock`（约 620 行的类型单元格 + 表头「关系类型」）与边 SVG `<title>` 摘要（约 433 行经 relationEdgeLabel 自动生效）",
+        "label 退化处理：关系缺列信息（sourceColumns/targetColumns 皆缺）时 `relationEdgeLabel` 返回空串 → `canvas-store` 不写 `label` 键（避免空 label），节点内小节仍渲染目标表（description 若有照旧）",
+        "数据层零改动：不动 `src/types/index.ts` 的 `TableRelation`、不动 `server/table-relations.ts`、不动 `src/utils/table-relations.ts` 的匹配/去重；`relationshipType` 继续随 sidecar 往返（已有断言保持不变即为证据）",
+        "测试同步（只改与本需求直接相关的断言，其余零回归）：`tests/integration/table-relations-ui.test.ts`（label 期望 4 处：169/170/215/316 行）、`tests/ui/source-table-node.test.tsx`（161 行「3 个 many_to_one 徽标」反转为不渲染 + 补一条列映射仍可见的断言；189 行的 null 断言按新语义核对）、`scripts/verify-export-report.ts`（516 行导出含 many_to_one → 改为不含类型且含列映射；564-565 行 `<title>` 摘要去掉类型段）",
+        "文档同步：`docs/specs/02-nodes.md`（第 73 行与第 172 行的关系小节描述）、`docs/specs/06-backend.md`（第 130 行 tableRelations 行的「三处展示」描述）、`docs/demo/video-script-chocolate.md`（第 106 行的演示口径）",
+        "三件套落盘 `docs/tasks/X15-relation-columns-only/`（design.md 含取舍与「遗留问题」小节、CHANGES.md、verification.md）"
+      ],
+      "acceptance": [
+        "画布与导出 HTML 中不再出现 `many_to_one` / `one_to_many` / `foreign_key` 等关系类型字样（UI/脚本断言反向钉住）；目标表、列映射（如 `product_id → product_id`）、`+N` 折叠、图谱 description、降级留痕提示照常显示",
+        "`node.data.tableRelations[].relationshipType` 与 `edge.data.tableRelations` 仍随 canvas sidecar 往返不丢（数据留痕不变，既有往返断言不改即通过）",
+        "npm run build / lint / verify 全绿：基线（合并态 main ab42d46）脚本 623 项、vitest 15 文件 193 例、UI 4 文件 31 例——除本需求直接相关的断言调整外零回归，且调整后总数不得低于基线（反向断言替代正向断言，条数持平或增加）；verify 全跑后 git status --porcelain 干净",
+        "范围纪律：不改 `server/table-relations.ts`、`src/utils/lineage.ts`（APPEARANCE）、`src/utils/layout.ts`（方案B）、`PROTOCOL_VERSION`；不引入任何新依赖；不改 `docs/task-plan.json`（记账由主会话在 main 上做）",
+        "界面交互改动 → 走 GitHub PR（分支 `chenxinma/x15-relation-columns-only`），由用户合并；合并后主会话复跑合并态门槛并置 accepted"
+      ],
+      "outputDir": "docs/tasks/X15-relation-columns-only/",
+      "history": [
+        {
+          "status": "in_progress",
+          "at": "2026-11-13T14:40:00+08:00",
+          "by": "main-session",
+          "note": "用户指令 2026-11-13 立项并即刻实施（dependsOn X13 已 accepted，视为满足）。改动面小且已定位到行（3 处展示 + 3 处测试 + 3 处文档），由主会话亲自实现，单写者纪律：实施期间不派发其它 worker 改同一批文件。"
+        }
+      ]
     }
   ],
   "pullRequests": {
@@ -998,7 +1032,7 @@
       "#32 x14-ci-gate",
       "#33 x13-table-relations-ui"
     ],
-    "note": "#12-#17 全部合并入 main（14e39cf/3759971/1848b08/18ba6ab/fb237a2/3428f69）。相关功能分支（security/hardening、feature/phase1-trusted-analysis、feature/phase2-semantic-layer、fix/df-columns-fallback、chore/move-sql-discipline）已清理；docs/tech-roadmap 为已合并零提交分支，遗留未清理；docs/sync-readme-claudemd、feature/llm-config 为 2026-08 陈旧分支（含未合并提交），待用户裁决去留。 补充（2026-11-11）：X11 属 bugfix 直接 commit main（2fb6ea6 立项 / 8aca718 主修复 / 60b11d4 高度回归 / ebdd9cb 验收），未走 PR；X12 经 PR #28（merge 849ecf6）、X10 经 PR #29（merge a300128）合入，两者由 Orca worker 在独立 worktree 执行（X12=codex，X10=codex 首次未开工后按用户指令改 pi 重派）；#30（merge b2aa851）为用户侧 chat 折叠 UI 改动，非本计划任务。合并态 main 曾出现 lineageEdge 导入丢失（PR #29 与 hotfix 5af8555 的行级冲突解决错误，build+verify 阻断），已由 d2c3790 修复，详见 docs/tasks/BUGFIX-lineage-edge-import.md。#22-#27 未在本 map 记账。 补充（2026-11-12）：#31（merge ac8bab1，分支 feat/lineage-semantic-handles：血缘边形状/样式随 lineage.ts APPEARANCE 区分 + 语义血缘专用 Handle 统一下出上入、画布全局排版方案B（数据血缘 LR 分层 + 语义血缘同列纵向堆叠）、工具栏「整理画布」按钮）为用户侧改动，非本计划任务，未建 X 条目与三件套。主会话已在合并态 main 独立复跑门槛全绿（build/lint/verify 均 exit 0，verify 全跑后 git status --porcelain 干净），断言基线随之刷新：脚本 612 项 0 失败（semantic-lineage 45→48）、vitest integration 14 文件/155 例（新增 tests/integration/layout.test.ts、tests/ui/sql-query-node.test.tsx、tests/ui/canvas-toolbar.test.tsx）、UI 子集 4 文件/21 例；耗时实测 build 62s + lint 34s + verify 94s ≈ 190s。陈旧本地分支 chenxinma/chat-processed-fold（已合并）、docs/sync-readme-claudemd（2 未合并提交）、feature/llm-config（1 未合并提交）已按用户指令 2026-11-12 删除，远端无对应分支。 补充（2026-11-12 夜）：X14 经 PR #32（分支 chenxinma/x14-ci-gate，commit c68aefd + 主会话补录 23cfad6）、X13 经 PR #33（分支 chenxinma/x13-table-relations-ui，commit 8e762fa）交付，两者由 codex worker 在独立 Orca worktree 并行执行（首次派发因 codex 缺 OPENAI_API_KEY 卡在 turn_start_unobserved，用户补 key 后按 recovery-and-cleanup 重派：worker-release → task-update ready → worker-start --task 复用既有 worktree）。PR #32 首次真实 CI run 43242165890 success（pull_request 触发，job「build + lint + verify」1m1s），补录 commit 再触发 run 43242897266 success（synchronize，49s）→ 两种触发均已实证。PR #33 因 base(main) 尚无 workflow 文件（pull_request 取 base+head 合并态）暂无 CI check，需 #32 先合入。**合并顺序：先 #32 再 #33**；两 PR 均由用户合并，主会话不自行 merge。 补充（2026-11-13）：用户已合并 #33（X13，2026-11-13T05:42:25Z，merge 9783b92）与 #32（X14，2026-11-13T05:43:18Z，merge ab42d46）——实际合并顺序与建议相反（先 #33 后 #32），两 PR 文件集不相交（X14 只加 .github/+三件套，X13 只改 src/scripts/tests/docs），无冲突，合并态双向复跑均绿。#32 合入触发 main 的 push 门禁：run 43373860168 success（1m17s，ubuntu），脚本断言 616（=623-verify:cwd SKIP 7）、vitest 15 文件/193 例、UI 4 文件/31 例、registry 仅 registry.npmjs.org → X14 的三种触发（pull_request/synchronize/push main）全部实证。#33 因 base 无 workflow 未获 CI check（已在 PR 正文预告）。分支与 worktree 已清理：远端 chenxinma/x13-table-relations-ui、chenxinma/x14-ci-gate 删除，Orca worktree 以 rm --delete-branch 移除，本地仅剩 main。**新基线（合并态 main ab42d46）：脚本 623 项 0 失败（Windows）/ 616（ubuntu CI）、vitest 15 文件 193 例、UI 4 文件 31 例。** 分支保护尚未开启（gh api branches/main/protection → 404 Branch not protected），required check 名应为 build + lint + verify。",
+    "note": "#12-#17 全部合并入 main（14e39cf/3759971/1848b08/18ba6ab/fb237a2/3428f69）。相关功能分支（security/hardening、feature/phase1-trusted-analysis、feature/phase2-semantic-layer、fix/df-columns-fallback、chore/move-sql-discipline）已清理；docs/tech-roadmap 为已合并零提交分支，遗留未清理；docs/sync-readme-claudemd、feature/llm-config 为 2026-08 陈旧分支（含未合并提交），待用户裁决去留。 补充（2026-11-11）：X11 属 bugfix 直接 commit main（2fb6ea6 立项 / 8aca718 主修复 / 60b11d4 高度回归 / ebdd9cb 验收），未走 PR；X12 经 PR #28（merge 849ecf6）、X10 经 PR #29（merge a300128）合入，两者由 Orca worker 在独立 worktree 执行（X12=codex，X10=codex 首次未开工后按用户指令改 pi 重派）；#30（merge b2aa851）为用户侧 chat 折叠 UI 改动，非本计划任务。合并态 main 曾出现 lineageEdge 导入丢失（PR #29 与 hotfix 5af8555 的行级冲突解决错误，build+verify 阻断），已由 d2c3790 修复，详见 docs/tasks/BUGFIX-lineage-edge-import.md。#22-#27 未在本 map 记账。 补充（2026-11-12）：#31（merge ac8bab1，分支 feat/lineage-semantic-handles：血缘边形状/样式随 lineage.ts APPEARANCE 区分 + 语义血缘专用 Handle 统一下出上入、画布全局排版方案B（数据血缘 LR 分层 + 语义血缘同列纵向堆叠）、工具栏「整理画布」按钮）为用户侧改动，非本计划任务，未建 X 条目与三件套。主会话已在合并态 main 独立复跑门槛全绿（build/lint/verify 均 exit 0，verify 全跑后 git status --porcelain 干净），断言基线随之刷新：脚本 612 项 0 失败（semantic-lineage 45→48）、vitest integration 14 文件/155 例（新增 tests/integration/layout.test.ts、tests/ui/sql-query-node.test.tsx、tests/ui/canvas-toolbar.test.tsx）、UI 子集 4 文件/21 例；耗时实测 build 62s + lint 34s + verify 94s ≈ 190s。陈旧本地分支 chenxinma/chat-processed-fold（已合并）、docs/sync-readme-claudemd（2 未合并提交）、feature/llm-config（1 未合并提交）已按用户指令 2026-11-12 删除，远端无对应分支。 补充（2026-11-12 夜）：X14 经 PR #32（分支 chenxinma/x14-ci-gate，commit c68aefd + 主会话补录 23cfad6）、X13 经 PR #33（分支 chenxinma/x13-table-relations-ui，commit 8e762fa）交付，两者由 codex worker 在独立 Orca worktree 并行执行（首次派发因 codex 缺 OPENAI_API_KEY 卡在 turn_start_unobserved，用户补 key 后按 recovery-and-cleanup 重派：worker-release → task-update ready → worker-start --task 复用既有 worktree）。PR #32 首次真实 CI run 43242165890 success（pull_request 触发，job「build + lint + verify」1m1s），补录 commit 再触发 run 43242897266 success（synchronize，49s）→ 两种触发均已实证。PR #33 因 base(main) 尚无 workflow 文件（pull_request 取 base+head 合并态）暂无 CI check，需 #32 先合入。**合并顺序：先 #32 再 #33**；两 PR 均由用户合并，主会话不自行 merge。 补充（2026-11-13）：用户已合并 #33（X13，2026-11-13T05:42:25Z，merge 9783b92）与 #32（X14，2026-11-13T05:43:18Z，merge ab42d46）——实际合并顺序与建议相反（先 #33 后 #32），两 PR 文件集不相交（X14 只加 .github/+三件套，X13 只改 src/scripts/tests/docs），无冲突，合并态双向复跑均绿。#32 合入触发 main 的 push 门禁：run 43373860168 success（1m17s，ubuntu），脚本断言 616（=623-verify:cwd SKIP 7）、vitest 15 文件/193 例、UI 4 文件/31 例、registry 仅 registry.npmjs.org → X14 的三种触发（pull_request/synchronize/push main）全部实证。#33 因 base 无 workflow 未获 CI check（已在 PR 正文预告）。分支与 worktree 已清理：远端 chenxinma/x13-table-relations-ui、chenxinma/x14-ci-gate 删除，Orca worktree 以 rm --delete-branch 移除，本地仅剩 main。**新基线（合并态 main ab42d46）：脚本 623 项 0 失败（Windows）/ 616（ubuntu CI）、vitest 15 文件 193 例、UI 4 文件 31 例。** 分支保护尚未开启（gh api branches/main/protection → 404 Branch not protected），required check 名应为 build + lint + verify。 补充（2026-11-13 分支保护核查）：仓库已存在 ruleset「main」（id=27209918，target=branch，条件 refs/heads/main），规则含 deletion / non_fast_forward / required_status_checks（context = 「build + lint + verify」，integration_id=15368 即 GitHub Actions，strict=false），**但 enforcement = disabled（未生效）**，`gh api repos/.../branches/main/protection` 仍返回 404 Branch not protected、`rules/branches/main` 返回空。需用户在 Settings → Rules → Rulesets → main 把 Enforcement status 改为 **Active**（或授权主会话用 API 置 active）。",
     "security": "https://github.com/chenxinma/govio-map/pull/12",
     "phase1": "https://github.com/chenxinma/govio-map/pull/13",
     "phase2": "https://github.com/chenxinma/govio-map/pull/14",
