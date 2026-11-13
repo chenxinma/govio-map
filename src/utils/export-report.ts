@@ -429,7 +429,7 @@ export function lineageSvg(layout: LineageLayout): string {
     const app = lineageEdgeAppearance(e.lineageKind);
     const dash = app.strokeDasharray ? ` stroke-dasharray="${app.strokeDasharray}"` : '';
     const marker = e.lineageKind === 'semantic' ? 'govio-arrow-sem' : 'govio-arrow';
-    // 悬停说明：表间语义边额外带出「关系类型 + 列映射」（X13），数据边/历史边保持原样
+    // 悬停说明：表间语义边额外带出「列映射」（X13；X15 起不含关系类型），数据边/历史边保持原样
     const relationSummary = relationEdgeLabel(e.relations);
     const titleText = `${esc(e.source)} → ${esc(e.target)}${relationSummary ? ` · ${esc(relationSummary)}` : ''}`;
     parts.push(
@@ -607,8 +607,10 @@ function fieldKeyCell(field: TableField): string {
 
 /**
  * 表间关系小节（X13）：sourceTable 卡片导出与画布同一份关系详情——目标表（全限定名）、
- * 关系类型、列映射、图谱说明。取值与画布同源（`nodeTableRelations` 清洗 + 同一展示模型），
+ * 列映射、图谱说明。取值与画布同源（`nodeTableRelations` 清洗 + 同一展示模型），
  * 缺失的键渲染「—」而不是空单元格；没有关系时整节不渲染。
+ * X15（用户指令 2026-11-13）：**不再导出关系类型列**（画布同步去掉）；类型原值仍在
+ * `node.data.tableRelations[].relationshipType` 里随 sidecar 持久化，需要时可追溯。
  */
 function tableRelationsBlock(d: SourceTableNodeData): string {
   const relations = nodeTableRelations({ id: '', data: d });
@@ -617,14 +619,13 @@ function tableRelationsBlock(d: SourceTableNodeData): string {
     const columns = relationColumnView(rel);
     return [
       `<code>${esc(rel.targetTable)}</code>`,
-      rel.relationshipType ? badge(rel.relationshipType) : '<span class="note">—</span>',
       columns.text ? esc(columns.text) : '<span class="note">—</span>',
       rel.description ? esc(rel.description) : '<span class="note">—</span>',
     ];
   });
   return (
     label(`表间关系（${relations.length}）`) +
-    `<div class="scroll">${table(['目标表', '关系类型', '列映射', '说明'], rows)}</div>`
+    `<div class="scroll">${table(['目标表', '列映射', '说明'], rows)}</div>`
   );
 }
 

@@ -512,9 +512,11 @@ console.log("\n[3] 节点卡片：五类静态快照");
 check("sourceTable 卡片含表名/数据源/行数/字段结构",
   HTML.includes("orders") && HTML.includes("128,450") && HTML.includes("字段结构（4）") && HTML.includes("BIGINT"));
 check("sourceTable 标出 PK 与 FK→引用", HTML.includes("PK") && HTML.includes("FK→customers.id"));
-check("X13：sourceTable 卡片导出表间关系小节（目标表 / 类型 / 列映射 / 说明）",
-  HTML.includes("表间关系（2）") && HTML.includes("sales.warehouse.dim_date") && HTML.includes("many_to_one")
+check("X13：sourceTable 卡片导出表间关系小节（目标表 / 列映射 / 说明）",
+  HTML.includes("表间关系（2）") && HTML.includes("sales.warehouse.dim_date")
   && HTML.includes("customer_id → id") && HTML.includes("created_at → date_key"));
+check("X15：关系类型不再出现在导出报告（无类型列头、无 many_to_one/foreign_key 字样）",
+  !HTML.includes("<th>关系类型</th>") && !HTML.includes("many_to_one") && !HTML.includes("foreign_key"));
 check("X13：关系来源留痕进卡片（图谱 / 字段级两种取值都可见）",
   HTML.includes("关系来源") && HTML.includes("图谱 RELATES_TO") && HTML.includes("字段级外键"));
 check("X13：字段级降级与图谱原因在报告里如实说明（全文不截断）",
@@ -561,8 +563,8 @@ console.log("\n[3b] 表间关系（X13）：血缘 SVG 悬停说明 + 边线型/
     && relLayout.edges[0].relations?.length === 1,
     JSON.stringify(relLayout.edges[0]));
   const relHtml = buildDeliveryReportHtml({ nodes: relNodes, edges: relEdges, exportedAt: FIXED_EXPORTED_AT, audit: null });
-  check("语义边悬停 title 带出关系类型与列映射",
-    relHtml.includes("<title>rel-1 → rel-2 · many_to_one · customer_id → id</title>"));
+  check("语义边悬停 title 带出列映射（X15：不含关系类型）",
+    relHtml.includes("<title>rel-1 → rel-2 · customer_id → id</title>") && !relHtml.includes("many_to_one"));
   check("数据边悬停 title 保持原样（不带关系摘要）",
     HTML.includes("<title>src-1 → gov-1</title>"));
   const semApp = lineageEdgeAppearance("semantic");

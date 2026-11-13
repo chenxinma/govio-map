@@ -343,11 +343,13 @@ export const useCanvasStore = create<CanvasStore>()(
           target: targetId,
         });
         // X13 关系详情上边：匹配到的关系挂进 edge.data（data.lineageKind 仍由工厂给出、
-        // 不被覆盖），label 取同一份关系的摘要（类型 + 列映射）。形状/样式/Handle 全部
-        // 来自 lineageEdge 工厂；没匹配到关系（含 sqlQuery 口径沿袭边、历史边）时不加 label。
+        // 不被覆盖），label 取同一份关系的**列映射**摘要（X15 起不含关系类型）。
+        // 形状/样式/Handle 全部来自 lineageEdge 工厂；没匹配到关系（含 sqlQuery 口径沿袭边、
+        // 历史边）时不加 label；关系全部缺列信息时 label 为空串 → 不建 label 键。
+        const label = relations && relations.length > 0 ? relationEdgeLabel(relations) : '';
         newEdges.push(
           relations && relations.length > 0
-            ? { ...edge, data: { ...edge.data, tableRelations: relations }, label: relationEdgeLabel(relations) }
+            ? { ...edge, data: { ...edge.data, tableRelations: relations }, ...(label ? { label } : {}) }
             : edge,
         );
       }

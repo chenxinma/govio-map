@@ -5,6 +5,7 @@
  *  - `tableRelationsHint`（caliberNodeAppearance 同构）：正常态不打扰、字段级降级与图谱
  *    失败才亮灯、原因过长截断 + 全文、空白原因的边界
  *  - 展示小函数：目标表裸名、列映射（单侧缺失只渲染存在的一侧）、边 label 摘要
+ *    （X15：label 只有列映射，不再带关系类型；类型原值仍留在数据里）
  *  - `tableSemanticEdgeCandidates` 的**加法扩展**：候选携带关系原文、同节点对多关系合并、
  *    既有语义边覆盖时不产出、① 优先于 ② 的去重语义不变
  *  - `canvas-store` 建边：`edge.data.tableRelations` + `label` 挂上，且 lineageKind /
@@ -41,6 +42,7 @@ import {
   TABLE_RELATIONS_HINT_COLOR,
   relationColumnView,
   relationEdgeLabel,
+  relationRowTitle,
   relationTargetLabel,
   tableRelationsHint,
 } from "../../src/utils/table-relations-ui.js";
@@ -165,12 +167,38 @@ describe("关系展示小函数", () => {
     expect(relationColumnView({ targetTable: "d", relationshipType: "r", sourceColumns: ["  "] }).text).toBe("");
   });
 
-  it("边 label 摘要 = 类型 · 列映射；多条关系末尾附 +N；空输入为空串", () => {
-    expect(relationEdgeLabel([STAR_RELATIONS[0]])).toBe("many_to_one · product_id → product_id");
-    expect(relationEdgeLabel(STAR_RELATIONS)).toBe("many_to_one · product_id → product_id +2");
+  it("行 hover 全文（X15.1）：目标表全限定名 + 字段关联 + 说明；缺项自动省略，类型不进 hover", () => {
+    expect(relationRowTitle(STAR_RELATIONS[0])).toBe(
+      "关系目标表：chocolate.chocolate.dim_product\n字段关联：product_id → product_id",
+    );
+    expect(relationRowTitle({ ...STAR_RELATIONS[0], description: "事实表产品外键" })).toBe(
+      "关系目标表：chocolate.chocolate.dim_product\n字段关联：product_id → product_id\n说明：事实表产品外键",
+    );
+    // 只有类型、没有列信息：hover 只有目标表行（不出现空的「字段关联：」，也不出现类型原值）
+    const typeOnly = relationRowTitle({ targetTable: "sales.region", relationshipType: "one_to_many" });
+    expect(typeOnly).toBe("关系目标表：sales.region");
+    expect(typeOnly).not.toContain("one_to_many");
+    // 单侧列缺失只带存在的一侧；空白 description 不算有说明
+    expect(relationRowTitle({ targetTable: "d", relationshipType: "r", sourceColumns: ["a"] }))
+      .toBe("关系目标表：d\n字段关联：a");
+    expect(relationRowTitle({ ...STAR_RELATIONS[0], description: "   " })).not.toContain("说明：");
+  });
+
+  it("边 label 摘要 = 列映射（X15：不含关系类型）；多条关系末尾附 +N；空输入/全缺列为空串", () => {
+    expect(relationEdgeLabel([STAR_RELATIONS[0]])).toBe("product_id → product_id");
+    expect(relationEdgeLabel(STAR_RELATIONS)).toBe("product_id → product_id +2");
     expect(relationEdgeLabel([])).toBe("");
     expect(relationEdgeLabel(undefined)).toBe("");
     expect(relationEdgeLabel([{ targetTable: "d", relationshipType: "" }])).toBe("");
+    // 关系类型不再出现在 label 里（数据层仍有该值，只是不展示）
+    expect(relationEdgeLabel(STAR_RELATIONS)).not.toContain("many_to_one");
+    // 首条缺列、次条有列 → 取有列的那条做摘要（不让 label 白白变空），+N 仍按总条数
+    expect(
+      relationEdgeLabel([
+        { targetTable: "a", relationshipType: "many_to_one" },
+        { targetTable: "b", relationshipType: "many_to_one", sourceColumns: ["x"], targetColumns: ["y"] },
+      ]),
+    ).toBe("x → y +1");
   });
 });
 
@@ -212,7 +240,7 @@ describe("tableSemanticEdgeCandidates：候选携带关系", () => {
     });
     expect(candidates).toHaveLength(1);
     expect(candidates[0].relations).toHaveLength(2);
-    expect(relationEdgeLabel(candidates[0].relations)).toBe("many_to_one · product_id → product_id +1");
+    expect(relationEdgeLabel(candidates[0].relations)).toBe("product_id → product_id +1");
   });
 
   it("既有语义边覆盖的节点对不再产出候选（恢复后不重复建边）", () => {
@@ -313,7 +341,10 @@ describe("canvas-store：表间关系上边（X13）", () => {
       expect(data.lineageKind).toBe("semantic");
       const rels = data.tableRelations as TableRelation[];
       expect(rels).toHaveLength(1);
-      expect(e.label).toBe(`many_to_one · ${rels[0].sourceColumns![0]} → ${rels[0].targetColumns![0]}`);
+      // X15：label 只有列映射（关系类型不再展示），但类型原值仍随 edge.data 持久化
+      expect(e.label).toBe(`${rels[0].sourceColumns![0]} → ${rels[0].targetColumns![0]}`);
+      expect(e.label).not.toContain("many_to_one");
+      expect(rels[0].relationshipType).toBe("many_to_one");
       // 零回归：形状/样式/Handle 全部来自 lineageEdge 工厂
       expect(e.type).toBe(ap.edgeType);
       expect(e.animated).toBe(ap.animated);
@@ -331,9 +362,9 @@ describe("canvas-store：表间关系上边（X13）", () => {
       .map((e) => relationEdgeLabel((e.data as Record<string, unknown>).tableRelations as TableRelation[]))
       .sort();
     expect(pairs).toEqual([
-      "many_to_one · channel_id → channel_id",
-      "many_to_one · country_id → country_id",
-      "many_to_one · product_id → product_id",
+      "channel_id → channel_id",
+      "country_id → country_id",
+      "product_id → product_id",
     ]);
   });
 
@@ -347,7 +378,7 @@ describe("canvas-store：表间关系上边（X13）", () => {
     expect(sem!.label).toBeUndefined();
   });
 
-  it("② 方向建边同样带关系；关系无列映射时 label 只有类型（缺键不出现 undefined）", () => {
+  it("② 方向建边同样带关系；关系无列映射时不写 label 键（X15：类型不再充当 label 兜底）", () => {
     const store = useCanvasStore.getState();
     store.createGovioNode(tableEvent("dim_product", DIM_PRODUCT));
     // 模拟历史节点：关系后来才出现在既有节点的 node.data 上
@@ -358,8 +389,13 @@ describe("canvas-store：表间关系上边（X13）", () => {
     const edges = useCanvasStore.getState().edges;
     expect(edges).toHaveLength(1);
     expect((edges[0].data as Record<string, unknown>).tableRelations).toHaveLength(1);
-    expect(edges[0].label).toBe("one_to_many");
-    expect(edges[0].label).not.toContain("undefined");
+    // 没有列映射就没有可展示的字段关联 → label 键省略（不出现空 label，也不出现 undefined 字样）
+    expect(edges[0].label).toBeUndefined();
+    expect("label" in edges[0]).toBe(false);
+    // 数据留痕不变：类型原值仍在 edge.data.tableRelations 里（只是不展示）
+    expect(
+      ((edges[0].data as Record<string, unknown>).tableRelations as TableRelation[])[0].relationshipType,
+    ).toBe("one_to_many");
   });
 
   it("旧边（只有 lineageKind，无 tableRelations）恢复后不报错、不显示 label", () => {

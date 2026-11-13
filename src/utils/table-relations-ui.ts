@@ -79,17 +79,42 @@ export function relationColumnView(rel: TableRelation): RelationColumnView {
 }
 
 /**
- * 语义边上的关系摘要（边 label 的唯一取值来源）：
- * 一条关系时 `many_to_one · product_id → product_id`；同节点对多条时末尾附 `+N`。
+ * 关系行的 hover 全文（节点内「表间关系」小节的 title 唯一取值来源）。
+ *
+ * X15.1（用户裁决 2026-11-13：「hover 显示 description，先保留」）：图谱 `description`
+ * **只在 hover 出现**，不再单独占一行——画布上关系行只留「目标表裸名 + 字段关联」，
+ * 说明与全限定名按需查看（数据仍原样留在 `node.data.tableRelations` 里，不删不改）。
+ * 关系类型（`relationshipType`）按 X15 口径**不进 hover**：用户明确不要看到它。
+ *
+ * 多行 title（浏览器原生按 `\n` 换行）：目标表全限定名 / 字段关联 / 图谱说明，缺项自动省略。
+ */
+export function relationRowTitle(rel: TableRelation): string {
+  const parts = [`关系目标表：${rel?.targetTable ?? ''}`];
+  const columns = relationColumnView(rel).text;
+  if (columns) parts.push(`字段关联：${columns}`);
+  const description = typeof rel?.description === 'string' ? rel.description.trim() : '';
+  if (description) parts.push(`说明：${description}`);
+  return parts.join('\n');
+}
+
+/**
+ * 语义边上的关系摘要（边 label 的唯一取值来源）：**只显示字段关联（列映射）**。
+ *
+ * X15（用户指令 2026-11-13）：不再显示 `many_to_one` / `one_to_many` / `foreign_key` 一类
+ * 关系类型——对看画布的人是噪声。类型原值仍在 `node.data.tableRelations[].relationshipType`
+ * 与 `edge.data.tableRelations` 里随 canvas sidecar 持久化，可追溯；将来若要恢复展示，
+ * 只改展示层即可，不必动数据层与取数层。
+ *
+ * 一条关系时 `product_id → product_id`；同节点对多条时末尾附 `+N`（N = 其余关系条数）。
+ * 全部关系都缺列信息时返回空串 → 调用方不写 `label` 键（不渲染空 label）。
  */
 export function relationEdgeLabel(relations: TableRelation[] | undefined): string {
   if (!Array.isArray(relations) || relations.length === 0) return '';
-  const first = relations[0];
-  const summary = [first.relationshipType, relationColumnView(first).text]
-    .filter((part) => !!part)
-    .join(' · ');
+  // 取第一条**有列映射**的关系做摘要：首条恰好缺列时不让 label 直接变空
+  const first = relations.find((rel) => relationColumnView(rel).text !== '');
+  if (!first) return '';
   const extra = relations.length > 1 ? ` +${relations.length - 1}` : '';
-  return `${summary}${extra}`;
+  return `${relationColumnView(first).text}${extra}`;
 }
 
 function truncateReason(text: string): string {

@@ -8,6 +8,7 @@ import { nodeTableRelations } from '../../utils/table-relations';
 import {
   MAX_VISIBLE_TABLE_RELATIONS,
   relationColumnView,
+  relationRowTitle,
   relationTargetLabel,
   tableRelationsHint,
 } from '../../utils/table-relations-ui';
@@ -127,9 +128,14 @@ function SourceTableNode({ data, id }: NodeProps) {
         )}
       </div>
 
-      {/* 表间关系（X13）：X10 落到 node.data 的关系数据在节点内的出口——目标表 + 关系类型
-          + 列映射 + 图谱说明。缺失的键一律不渲染（不出现空行/undefined）；没有关系时整节不渲染，
-          旧节点形状不变。折叠范式与上方字段区一致（默认前 3 条 + 「+N more relations」）。 */}
+      {/* 表间关系（X13）：X10 落到 node.data 的关系数据在节点内的出口——目标表 + 列映射。
+          X15（用户指令 2026-11-13）起**不再显示关系类型**（many_to_one /
+          one_to_many / foreign_key 一类对看画布的人是噪声）；类型原值仍随 node.data 落 sidecar
+          可追溯。X15.1（用户裁决：「hover 显示 description，先保留」）：图谱 `description` 不再
+          单独占一行，改为随整行 hover 的 `title` 按需查看（取值唯一来源 `relationRowTitle`：
+          目标表全限定名 / 字段关联 / 说明，缺项自动省略）。缺失的键一律不渲染（不出现空行/
+          undefined）；没有关系时整节不渲染，旧节点形状不变。折叠范式与上方字段区一致
+          （默认前 3 条 + 「+N more relations」）。 */}
       {relations.length > 0 && (
         <div className="border-t border-border-subtle px-4 py-2">
           <div className="flex items-center gap-1.5 mb-1">
@@ -140,31 +146,15 @@ function SourceTableNode({ data, id }: NodeProps) {
           {visibleRelations.map((rel, index) => {
             const columns = relationColumnView(rel);
             return (
-              <div key={`${rel.targetTable}-${index}`} className="py-[3px] text-xs">
+              <div key={`${rel.targetTable}-${index}`} className="py-[3px] text-xs" title={relationRowTitle(rel)}>
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <span
-                    className="text-text-primary font-mono truncate"
-                    title={`关系目标表：${rel.targetTable}`}
-                  >
+                  <span className="text-text-primary font-mono truncate">
                     {relationTargetLabel(rel.targetTable)}
                   </span>
-                  {rel.relationshipType && (
-                    <span
-                      className="text-[10px] px-1 py-0.5 rounded bg-node-source/10 text-node-source font-mono flex-shrink-0"
-                      title="关系类型（图谱原值；字段级降级路径为 foreign_key）"
-                    >
-                      {rel.relationshipType}
-                    </span>
-                  )}
                 </div>
                 {columns.text && (
                   <div className="text-text-muted text-[11px] font-mono truncate mt-0.5" title={columns.text}>
                     {columns.text}
-                  </div>
-                )}
-                {rel.description && (
-                  <div className="text-text-muted text-[11px] truncate mt-0.5" title={rel.description}>
-                    {rel.description}
                   </div>
                 )}
               </div>
