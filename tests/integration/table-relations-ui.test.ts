@@ -42,6 +42,7 @@ import {
   TABLE_RELATIONS_HINT_COLOR,
   relationColumnView,
   relationEdgeLabel,
+  relationRowTitle,
   relationTargetLabel,
   tableRelationsHint,
 } from "../../src/utils/table-relations-ui.js";
@@ -164,6 +165,23 @@ describe("关系展示小函数", () => {
     expect(relationColumnView({ targetTable: "d", relationshipType: "r" }).text).toBe("");
     expect(relationColumnView({ targetTable: "d", relationshipType: "r", sourceColumns: [], targetColumns: [] }).text).toBe("");
     expect(relationColumnView({ targetTable: "d", relationshipType: "r", sourceColumns: ["  "] }).text).toBe("");
+  });
+
+  it("行 hover 全文（X15.1）：目标表全限定名 + 字段关联 + 说明；缺项自动省略，类型不进 hover", () => {
+    expect(relationRowTitle(STAR_RELATIONS[0])).toBe(
+      "关系目标表：chocolate.chocolate.dim_product\n字段关联：product_id → product_id",
+    );
+    expect(relationRowTitle({ ...STAR_RELATIONS[0], description: "事实表产品外键" })).toBe(
+      "关系目标表：chocolate.chocolate.dim_product\n字段关联：product_id → product_id\n说明：事实表产品外键",
+    );
+    // 只有类型、没有列信息：hover 只有目标表行（不出现空的「字段关联：」，也不出现类型原值）
+    const typeOnly = relationRowTitle({ targetTable: "sales.region", relationshipType: "one_to_many" });
+    expect(typeOnly).toBe("关系目标表：sales.region");
+    expect(typeOnly).not.toContain("one_to_many");
+    // 单侧列缺失只带存在的一侧；空白 description 不算有说明
+    expect(relationRowTitle({ targetTable: "d", relationshipType: "r", sourceColumns: ["a"] }))
+      .toBe("关系目标表：d\n字段关联：a");
+    expect(relationRowTitle({ ...STAR_RELATIONS[0], description: "   " })).not.toContain("说明：");
   });
 
   it("边 label 摘要 = 列映射（X15：不含关系类型）；多条关系末尾附 +N；空输入/全缺列为空串", () => {

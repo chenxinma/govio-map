@@ -164,24 +164,33 @@ describe("SourceTableNode 表间关系出口（X13）", () => {
     expect(screen.getByText("product_id → product_id")).toBeTruthy();
     expect(screen.getByText("channel_id → channel_id")).toBeTruthy();
     expect(screen.getByText("3")).toBeTruthy();
-    expect(screen.getByTitle("关系目标表：chocolate.chocolate.dim_product").textContent).toBe("dim_product");
+    // X15.1：hover 全文挂在关系行上（目标表全限定名 + 字段关联；无 description 时不带说明段）
+    const hoverRow = screen.getByTitle(/关系目标表：chocolate\.chocolate\.dim_product/);
+    expect(hoverRow.textContent).toContain("dim_product");
+    expect(hoverRow.getAttribute("title")).toContain("字段关联：product_id → product_id");
+    expect(hoverRow.getAttribute("title")).not.toContain("说明：");
+    expect(hoverRow.getAttribute("title")).not.toContain("many_to_one");
   });
 
-  it("description 存在时渲染说明行，缺失时不渲染空行（行数可断言）", () => {
+  it("description 不占行、只在 hover title 里（X15.1）；缺失时 title 不带说明段", () => {
     renderNode(sourceData({
       tableRelations: [{ ...STAR_RELATIONS[0], description: "事实表产品外键" }],
       tableRelationsSource: "graph",
     }));
     const row = screen.getByText("dim_product").closest(".text-xs");
     expect(row).not.toBeNull();
-    expect(screen.getByText("事实表产品外键")).toBeTruthy();
-    // 行结构：目标表 + 类型 / 列映射 / 说明 = 3 个子节点
-    expect(row!.children).toHaveLength(3);
+    // 不再渲染成独立说明行：可见文本里没有 description，行结构只剩「目标表行 + 列映射」= 2 个子节点
+    expect(screen.queryByText("事实表产品外键")).toBeNull();
+    expect(document.body.textContent).not.toContain("事实表产品外键");
+    expect(row!.children).toHaveLength(2);
+    // 按需查看：hover 全文里带说明原文
+    expect(row!.getAttribute("title")).toContain("说明：事实表产品外键");
     cleanup();
 
     renderNode(sourceData({ tableRelations: [STAR_RELATIONS[0]], tableRelationsSource: "graph" }));
     const bare = screen.getByText("dim_product").closest(".text-xs");
     expect(bare!.children).toHaveLength(2);
+    expect(bare!.getAttribute("title")).not.toContain("说明：");
     expect(document.body.textContent).not.toContain("undefined");
   });
 

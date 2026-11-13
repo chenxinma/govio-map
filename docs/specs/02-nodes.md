@@ -70,7 +70,8 @@ const nodeTypes: NodeTypes = {
 两段式/裸表名差异（`src/utils/table-relations.ts` 的后缀变体集合），建边规则见 `docs/specs/05-store.md`。
 
 **X13 关系详情出口**：同一份关系数据在 UI 有三处可见——① sourceTable 节点内「表间关系」小节（目标表裸名 +
-列映射 + `description`，缺失的键不渲染，默认 3 条后折叠）；② 语义边 `label`
+列映射，缺失的键不渲染，默认 3 条后折叠；**X15.1 起图谱 `description` 不再单独占行，改为随整行 hover 的
+`title` 按需查看**，hover 全文 = 目标表全限定名 / 字段关联 / 说明）；② 语义边 `label`
 （`源列 → 目标列`，同节点对多条时末尾 `+N`）与 `edge.data.tableRelations`；③ 导出 HTML 报告
 （节点卡片关系小节「目标表 / 列映射 / 说明」三列 + 「关系来源」行 + 血缘 SVG 边悬停 `<title>`）。
 **X15（用户指令 2026-11-13）：三处出口一律不显示关系类型**——`many_to_one` / `one_to_many` /
@@ -78,8 +79,9 @@ const nodeTypes: NodeTypes = {
 `edge.data.tableRelations` 落 canvas sidecar，将来要恢复展示只改展示层，不动数据层与取数层。展示口径唯一来源
 `src/utils/table-relations-ui.ts`（纯函数，可在 node 环境单测）：`tableRelationsHint()` 只在
 `tableRelationsSource === 'fields'` 或存在 `tableRelationsError` 时给轻提示（沿袭 `caliber.ts` 的「不打扰」纪律，
-图谱正常态与无关系态静默），`relationTargetLabel` / `relationColumnView` / `relationEdgeLabel` /
-`TABLE_RELATIONS_SOURCE_LABELS` 供画布与导出共用，色值不在组件里写死。
+图谱正常态与无关系态静默），`relationTargetLabel` / `relationColumnView` / `relationRowTitle`（行 hover 全文）/ `relationEdgeLabel` /
+`TABLE_RELATIONS_SOURCE_LABELS` 供画布与导出共用，色值不在组件里写死。导出 HTML 是静态交付物（无 hover），
+故说明仍作为「说明」列直接呈现。
 
 ### SQLQueryNodeData
 
@@ -173,7 +175,8 @@ type CanvasNodeData = SourceTableNodeData | SQLQueryNodeData | DataFrameNodeData
 3. **字段列表**：默认显示前 6 个字段，PK/FK 标签，字段名 + 类型；超出可展开/折叠
 4. **表间关系小节**（X13，`tableRelations` 非空才渲染，旧节点形状不变不出现空壳）：标题行（Link2 图标 +
    「表间关系」+ 条数）；逐条渲染目标表裸名（`title` 挂全限定名）+ 列映射（`sourceColumns → targetColumns`，
-   任一侧缺失只渲染存在的一侧，两侧都缺省略该行）+ `description`（图谱里可能缺失，缺失不渲染空行）；
+   任一侧缺失只渲染存在的一侧，两侧都缺省略该行）；**X15.1 起 `description` 不再渲染成独立说明行**，
+   改为挂到整行的 `title`（`relationRowTitle()`：目标表全限定名 / 字段关联 / 说明，缺项自动省略）；
    **X15 起不再渲染 `relationshipType` 徽标**（只留字段关联，类型原值仍在 `node.data` 里）；默认前 3 条
    （`MAX_VISIBLE_TABLE_RELATIONS`），超出「+N more relations」展开 /「Collapse」收起，与字段区同一交互范式
 5. **关系来源轻提示**（X13）：判定与配色唯一来源 `tableRelationsHint()`——字段级降级或图谱查询失败时一行

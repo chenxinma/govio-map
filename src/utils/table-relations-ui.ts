@@ -79,6 +79,25 @@ export function relationColumnView(rel: TableRelation): RelationColumnView {
 }
 
 /**
+ * 关系行的 hover 全文（节点内「表间关系」小节的 title 唯一取值来源）。
+ *
+ * X15.1（用户裁决 2026-11-13：「hover 显示 description，先保留」）：图谱 `description`
+ * **只在 hover 出现**，不再单独占一行——画布上关系行只留「目标表裸名 + 字段关联」，
+ * 说明与全限定名按需查看（数据仍原样留在 `node.data.tableRelations` 里，不删不改）。
+ * 关系类型（`relationshipType`）按 X15 口径**不进 hover**：用户明确不要看到它。
+ *
+ * 多行 title（浏览器原生按 `\n` 换行）：目标表全限定名 / 字段关联 / 图谱说明，缺项自动省略。
+ */
+export function relationRowTitle(rel: TableRelation): string {
+  const parts = [`关系目标表：${rel?.targetTable ?? ''}`];
+  const columns = relationColumnView(rel).text;
+  if (columns) parts.push(`字段关联：${columns}`);
+  const description = typeof rel?.description === 'string' ? rel.description.trim() : '';
+  if (description) parts.push(`说明：${description}`);
+  return parts.join('\n');
+}
+
+/**
  * 语义边上的关系摘要（边 label 的唯一取值来源）：**只显示字段关联（列映射）**。
  *
  * X15（用户指令 2026-11-13）：不再显示 `many_to_one` / `one_to_many` / `foreign_key` 一类

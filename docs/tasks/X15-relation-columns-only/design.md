@@ -16,7 +16,7 @@ X13 把 `tableRelations` 的关系详情做成了三处出口（节点内小节�
 | `relationshipType`（类型徽标 / label 前缀 / 导出「关系类型」列） | **三处全部去掉** | 用户明确要求 |
 | 列映射 `sourceColumns → targetColumns` | 保留（成为唯一主体） | 就是用户说的「字段关联关系」 |
 | 目标表名（裸名 + `title` 挂全限定名） | 保留 | 字段关联必须有对端 |
-| 图谱 `description` | 保留 | 它是**说明**不是类型；实测常缺失，缺失仍不渲染空行 |
+| 图谱 `description` | **X15.1：不再占独立行，改为关系行 hover `title`**（数据与字段本身保留） | 用户裁决 2026-11-13「hover 显示 description，先保留」——画布上关系行只留「目标表 + 字段关联」，说明按需查看；导出 HTML 无 hover，仍保留「说明」列 |
 | 降级留痕轻提示（`tableRelationsHint`：字段级关系 / 图谱降级 + 原因） | 保留 | 与关系类型无关，是 X13 的来源留痕出口 |
 | `TableRelation.relationshipType` **数据字段** | **保留不动** | 见 §2 |
 
@@ -92,14 +92,29 @@ DOM 结构层级不变（徽标原本嵌在「目标表」所在的 flex 行内�
 - 边 SVG `<title>`：经 `relationEdgeLabel` 自动变成 `src → tgt · customer_id → id`（不再有类型段）
 - `badge()` 辅助函数保留（Manifest/复跑/确认门等仍在用），只是不再被关系小节调用
 
+### 3.5 X15.1 追加（用户裁决 2026-11-13）：`description` 收进 hover
+
+用户回复「hover 显示 description 先保留」——据此把图谱说明从「单独一行可见文本」改为「关系行 hover 的
+`title` 按需查看」：信息保留，但不再占视觉重量。
+
+- 新增纯函数 `relationRowTitle(rel)`（`src/utils/table-relations-ui.ts`）作为行 hover 全文的**唯一取值来源**：
+  `关系目标表：<全限定名>` / `字段关联：<列映射>` / `说明：<description>` 三行，**缺项自动省略**
+  （空白 description 不算有说明），用 `\n` 分隔（浏览器原生 title 按换行渲染）
+- `SourceTableNode.tsx`：关系行 `<div>` 挂 `title={relationRowTitle(rel)}`；删掉原目标表 `<span>` 上的局部
+  `title`（避免嵌套 title 互相遮蔽）与 `rel.description && <div>` 说明行 → 行子节点数由 3 降为 2
+- **关系类型不进 hover**：用户明确不要看到 `many_to_one` 一类，故 `relationRowTitle` 不拼
+  `relationshipType`（已有断言钉住）；类型原值仍只在 `node.data` / sidecar 里
+- **导出 HTML 不改**：静态交付物没有 hover，`tableRelationsBlock` 的「说明」列照旧直接呈现（否则说明在
+  报告里彻底丢失）——画布与导出这一处的不对称是有意的，记入遗留 1
+
 ## 4. 测试与断言策略
 
 原则：**反向断言替代正向断言，总数只增不减**（不许为了变绿删断言）。
 
 | 文件 | 改动 |
 |---|---|
-| `tests/integration/table-relations-ui.test.ts` | label 期望 4 处去掉类型前缀；新增「首条缺列时取次条」与「label 不含 many_to_one」断言；「② 方向建边」用例改为断言 `label` 键不存在（`"label" in edges[0] === false`）+ 类型原值仍在 `edge.data`；`candidates[0].relations?.[0].relationshipType === "one_to_many"` 一类**数据留痕断言原样保留** |
-| `tests/ui/source-table-node.test.tsx` | 「3 个 many_to_one 徽标」→ `queryByText("many_to_one")` 为 null + `document.body.textContent` 不含该串；降级用例补 `queryByText("foreign_key")` 为 null（降级路径的类型值同样不得泄漏到 UI） |
+| `tests/integration/table-relations-ui.test.ts` | label 期望 4 处去掉类型前缀；新增「首条缺列时取次条」与「label 不含 many_to_one」断言；「② 方向建边」用例改为断言 `label` 键不存在（`"label" in edges[0] === false`）+ 类型原值仍在 `edge.data`；`candidates[0].relations?.[0].relationshipType === "one_to_many"` 一类**数据留痕断言原样保留**。**X15.1 另新增 1 个用例**（193 → 194 例）钉 `relationRowTitle`：三段全文拼接、无 description 时不带「说明：」、只有类型无列时只剩目标表行且**不含类型原值**、单侧列缺失、空白 description 不算有说明 |
+| `tests/ui/source-table-node.test.tsx` | 「3 个 many_to_one 徽标」→ `queryByText("many_to_one")` 为 null + `document.body.textContent` 不含该串；降级用例补 `queryByText("foreign_key")` 为 null（降级路径的类型值同样不得泄漏到 UI）。**X15.1 改写 2 处**：① 星型用例的 `getByTitle("关系目标表：…")` 改为正则匹配行级 hover，并断言 title 含「字段关联：」、不含「说明：」与类型原值；② 原「description 渲染说明行」用例改为「**不占行、只在 hover title 里**」：`queryByText("事实表产品外键")` 为 null、`body.textContent` 不含该串、行子节点 3 → 2、`title` 含「说明：事实表产品外键」 |
 | `scripts/verify-export-report.ts` | 关系小节断言去掉 `includes("many_to_one")`；**新增 1 项**断言：导出全文不含 `<th>关系类型</th>`、不含 `many_to_one`、不含 `foreign_key`；边 `<title>` 断言改为 `rel-1 → rel-2 · customer_id → id` 且不含类型 |
 
 `tests/integration/table-relations.test.ts`（server 侧 27 例）、`canvas-store.test.ts`（X10 星型/去重）、
@@ -108,17 +123,19 @@ DOM 结构层级不变（徽标原本嵌在「目标表」所在的 flex 行内�
 ## 5. 验证结果
 
 见 `verification.md`。摘要：`build`/`lint`/`verify` 全 exit 0；脚本断言 **623 → 624**（+1，新增导出
-反向断言）；vitest **15 文件 / 193 例**、UI **4 文件 / 31 例**（例数持平，断言内容按新语义改写）；
-verify 全跑后除本任务改动外工作树干净。
+反向断言）；vitest **15 文件 / 193 → 194 例**（X15.1 新增 `relationRowTitle` 用例）、UI **4 文件 / 31 例**
+（例数持平，断言内容按新语义改写）；verify 全跑后除本任务改动外工作树干净。
 
 ## 6. 遗留问题
 
-1. **`description` 是否也该收掉**：本任务按「类型是噪声、说明不是」保留了图谱 `description`。若用户
-   希望关系行只剩「目标表 + 列映射」两要素，删掉 `SourceTableNode.tsx` 与 `export-report.ts` 里各一处
-   `rel.description &&` 分支即可（另有 2 处测试断言需同步）。**待用户裁决**。
-2. **类型信息的可发现性归零**：画布与导出都看不到 `many_to_one` 后，用户若想知道基数关系只能查图谱
-   （`govio-cli query`）或读 sidecar。若将来要「按需查看」，建议做成节点关系行的 hover `title`
-   （不占视觉重量）而不是恢复徽标——需先确认 hover 在导出 HTML 里也成立。
+1. **已裁决（X15.1）：`description` 保留，但画布上改为 hover 按需查看**（用户 2026-11-13：「hover 显示
+   description 先保留」）。残留的不对称：**导出 HTML 仍把说明当一列直接呈现**（静态交付物无 hover，
+   若也收掉则说明在报告里彻底丢失）。若产品要求两边一致，两个方向二选一：导出也去掉说明列（信息丢失），
+   或画布恢复可见行（回到 X13 形态）。**待产品裁决**。
+2. **类型信息的可发现性仍归零**：用户只要求把 `description` 放 hover，**未要求把类型放 hover**，故
+   `relationRowTitle` 不拼 `relationshipType`（已有断言钉住）。想知道基数关系仍只能查图谱
+   （`govio-cli query`）或读 sidecar；若将来要「按需查看」，在 `relationRowTitle` 里加一行即可（已有唯一
+   取值来源，改动面极小），不必恢复徽标。
 3. **`+N` 语义在混合缺列时略有歧义**：`+N` 按关系总条数算，而摘要取的是「第一条有列映射的关系」，
    极端情况（首条无列、后两条有列）下 label 显示的是第二条的列映射 + `+2`。属可接受近似；若要精确，
    需改成 `+N` 只数「其余有列映射的」，会让 label 与节点内条数不一致，故未做。
