@@ -1,0 +1,68 @@
+name: CI
+
+# X14 gate: run build + lint + verify on the MERGED-STATE candidate before merge.
+# Motivation: docs/tasks/BUGFIX-lineage-edge-import.md (line-level conflict resolved
+# wrong -> TS2304 in build, ReferenceError in verify:semantic-lineage; invisible on
+# each individual branch). Runner / Node / registry tradeoffs:
+# docs/tasks/X14-github-actions-ci/design.md
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# A new push to the same PR cancels the still-running older attempt.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: build + lint + verify
+    runs-on: ubuntu-latest
+    # Local baseline (2026-11-12, main): build 62s + lint 34s + verify 94s ~= 190s.
+    # Headroom covers npm ci and runner cold start.
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      # package-lock.json: 1160/1178 resolved URLs point at registry.npmmirror.com
+      # (the local ~/.npmrc mirror). Instead of rewriting the lockfile, tell npm to
+      # swap the tarball host back to the configured public registry.
+      - name: Use public npm registry for lockfile tarballs
+        run: |
+          npm config set registry https://registry.npmjs.org
+          npm config set replace-registry-host always
+
+      - name: Install (npm ci)
+        run: npm ci --no-audit --no-fund
+
+      # Separate steps: non-zero exit fails the run, and the failing step is named.
+      - name: Build (tsc -b + vite + esbuild)
+        run: npm run build
+
+      - name: Lint (eslint)
+        run: npm run lint
+
+      - name: Verify (11-script aggregate chain)
+        run: npm run verify
+
+      # Matches the repo definition of done: tracked files untouched after verify
+      # (verify:export only rewrites sample-export.html with an explicit --write).
+      - name: Verify left the working tree clean
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)"
