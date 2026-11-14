@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T12:28:21+08:00",
+  "updatedAt": "2026-11-14T12:39:57+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -394,7 +394,7 @@
           "id": "T3.1",
           "title": "画布团队存储抽象",
           "kr": "KR1",
-          "status": "in_progress",
+          "status": "done",
           "dependsOn": [
             "P2.accepted",
             "X2"
@@ -412,6 +412,12 @@
               "at": "2026-11-14T11:32:49+08:00",
               "by": "main-session",
               "note": "2026-11-14 用户决策：与 T3.2 合并单 worker；存储后端定为逐画布 S3 地址方案（不新作文件服务后端），先评估技术可行性再实施。本轮派发 W1。"
+            },
+            {
+              "status": "done",
+              "at": "2026-11-14T12:39:57+08:00",
+              "by": "main-session",
+              "note": "主会话独立复跑验收通过（de82151，与 T3.2 合并单 commit）：build/lint/verify 全 0、624/215(+21)/31 零回归、package.json 零依赖变化（S3 后端零依赖 SigV4）、LocalBackend 逐字节不变有断言、凭据安全断言锁定。PR #38 已建（用户合并）。补录待办：真实 S3 端到端与浏览器冒烟（verification.md 有步骤）；遗留 7 条（真实 S3 未验、ListObjectsV2 未翻页最重）。"
             }
           ]
         },
@@ -419,7 +425,7 @@
           "id": "T3.2",
           "title": "只读分享与 fork 续写",
           "kr": "KR2",
-          "status": "in_progress",
+          "status": "done",
           "dependsOn": [
             "T3.1"
           ],
@@ -435,6 +441,12 @@
               "at": "2026-11-14T11:32:49+08:00",
               "by": "main-session",
               "note": "2026-11-14 用户决策：与 T3.1 合并为单 worker（内部两阶段串行：T3.1 存储抽象/S3 → T3.2 分享/fork）。"
+            },
+            {
+              "status": "done",
+              "at": "2026-11-14T12:39:57+08:00",
+              "by": "main-session",
+              "note": "主会话独立复跑验收通过（同 de82151）：/share/<token> 只读视图含 Manifest+T1.2 语义复跑、forkFrom 画布级血缘抗 autosave 且再分享继承、canvas_fork_apply/fork_applied 按 X2 登记且 PROTOCOL_VERSION=1；share-fork 9 例新增断言。PR #38（用户合并）。遗留 4 条（分享无过期/撤销最重）。"
             }
           ]
         },
