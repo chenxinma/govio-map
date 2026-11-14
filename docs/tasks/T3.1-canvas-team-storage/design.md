@@ -98,7 +98,7 @@ fork = `POST …/fork` 暂存 + 主界面 `canvas_fork_apply`（新 WS 消息）
 
 ## 4. 遗留问题
 
-1. **真实 S3 端到端未验**：sigv4 正确性、path-style vs virtual-host、ListObjectsV2 分页（>1000 key 未实现翻页——画布数量级远低于此）待主会话用真实凭据补录（verification.md 附步骤）。
+1. **真实 S3 端到端（RustFS）已验 2026-11-14**：SigV4/path-style/ListObjectsV2/If-Match-412 全通（verification.md 15 项 PASS）；virtual-host 风格与 >1000 key 翻页仍未实现/未验（画布数量级远低于此，量级到了再补）。
 2. **绑定无 UI 入口**：仅 API/HTTP 可配（刻意的最小面）；建议后续在画布头部加「团队存储」指示与绑定弹层（属功能不属本任务 scope）。
 3. **canvas 冲突仅 LWW + 留痕**：未做整幅快照三方合并（local/remote/base 差异提示）；若团队并发编辑成为常态，考虑把 `conflict` 透传 WS 提示条。
 4. **分享无过期/撤销**：令牌永久有效（文件即记录）；`DELETE /api/shares/<token>`（本地删 + 远端尽力删）留待下一迭代——涉及生命周期与合规，暂不拍脑袋加。

@@ -26,20 +26,43 @@ ifMatch 冲突→StorageConflictError、非法 canvasId 拒绝）+ 绑定门面 
 `git status --porcelain` 仅剩本任务文件改动（无脚本污染）；`_w/`、`_jqfilter.jq` 为工作笔记，交付 commit 前删除。
 （注：既有 verify 脚本会写 `.govio/`，该目录 gitignore，不构成脏树。）
 
-## 待主会话补录（真实 S3 环境）
+## 真实 S3 验证记录（RustFS，2026-11-14 worker 按用户指示补录）
 
-1. 准备 S3 兼容桶（AWS/MinIO/R2 皆可），写 `.govio/storage-profiles.json`：
-   `{"version":1,"profiles":{"team-a":{"endpoint":"https://…","region":"…","bucket":"…","prefix":"govio","accessKeyIdEnv":"GOVIO_S3_AK","secretAccessKeyEnv":"GOVIO_S3_SK"}}}`；
-   export 两个 env 后启动 `npm run dev`。
-2. 会话 A：画布出几个节点 → `curl -X POST localhost:5174/api/canvas-storage -d '{"profile":"team-a"}'` →
-   控制台 `curl -s localhost:5174/api/preview` 无关；直接到 S3 控制台确认 `<prefix>/<canvasId>/canvas.json` 已上传、
-   `<session>.canvas.json.storage.json` 记录 lastSyncedHash/remoteEtag。
-3. 会话 B（另一台机器/另一份 checkout 同 profile）：把 canvasId 对齐（绑定时传 `{"profile":"team-a","canvasId":"<A的canvasId>"}`）→
-   打开会话（pushSessionState 自动 refresh）→ 画布一致；实测 SigV4 签名正确性（错误签名会 403 SignatureDoesNotMatch）。
-4. 分享跨实例：A 绑 S3 后 `curl -X POST localhost:5174/api/shares` → 把 `/share/<token>` 链接给 B →
-   B 本机无分享记录，resolveShare 逐 profile 扫远端命中 → 只读视图打开（验证 MB 级 canvas.json 的加载延迟在秒级）。
-5. 并发写：两端先后 canvas_save（间隔 <1s）→ 观察 `[storage] canvas … last-write-wins` warn 出现且最终一端胜出。
-6. ListObjectsV2 >1000 key 分页未实现（遗留 1），量级评估后再定。
+**结论：15/15 PASS（SigV4 真实网关兼容性坐实）。** 环境：`wslc run -d -p 9000:9000 -p 9001:9001` RustFS
+（docs/rustfs-usage.txt 流程；数据/日志在 %TEMP%/rustfs-t31/，容器名 rustfs-t31，stopped 保留可复用）。
+驱动方式：临时 tsx 脚本（已删）直调**产品真实模块**（canvas-storage bind/sync/refresh、S3CanvasBackend、
+share createShare/resolveShare/forkShare、s3-client SigV4），零 mock。
+
+| # | 断言（全 PASS） | 证据摘要 |
+|---|---|---|
+| 1 | CreateBucket PUT SigV4 被 RustFS 接受 | status=200（错误签名必 403，即签名正确性证明） |
+| 2 | ListObjectsV2 bucket root | status=200 |
+| 3 | syncCanvasToRemote 真实上传 | synced=true，远端 etag=e1519fa8…（S3 原生 ETag，非本地 sha256 前缀） |
+| 4 | 远端对象字节等值 | GET 200，与本地 sidecar 逐字节一致 |
+| 5 | 内容未变跳过重复上传 | synced=false |
+| 6 | S3 list() prefix 过滤 | 命中本画布 id |
+| 7 | 对端改远端 → refresh 拉回 | pulled=true，本地 loadCanvas 变 peer-edit |
+| 8 | 本地未同步改动不被覆盖 | pulled=false + conflict=true |
+| 9 | 冲突后 sync LWW | synced=true + conflict=true + warn 留痕日志 |
+| 10 | 远端终态=本地版本 | body 含 local-wip |
+| 11 | 分享记录写远端 shares/ key | GET 200 |
+| 12 | 删本地记录后跨实例经 profile 枚举发现分享 | resolveShare 命中，manifests=1 |
+| 13 | 视图载荷无凭据/profile/endpoint 字样 | 深度字符串断言过 |
+| 14 | fork 暂存 + forkFrom 血缘（shareId/canvasId 对齐） | readStagedFork 校验过 |
+| 15 | 远端 remove 幂等 | true→false |
+
+延迟观测：本地回环全程（含建桶）15 步 513ms，单对象 GET/PUT 亚 10ms 级——满足「秒级可接受」。
+
+复现步骤：
+1. 按 docs/rustfs-usage.txt 启动（凭据 env：RUSTFS_ACCESS_KEY/RUSTFS_SECRET_KEY 自选）；
+2. 写 profiles 文件 {endpoint:"http://127.0.0.1:9000", region 任意, bucket:"govio-e2e", prefix:"t31", accessKeyIdEnv/secretAccessKeyEnv 指 env}，GOVIO_S3_PROFILES_FILE 指向它；
+3. 直调 server/storage/* 与 server/share.ts 产品函数即可（本轮 e2e 脚本模式）。
+
+### 仍未做（留给主会话的真实浏览器项）
+
+1. `npm run dev` 起栈 → 活动会话 `POST /api/canvas-storage {"profile":…}` → S3 控制台确认对象 → 对端绑同 canvasId 打开会话验证自动 refresh。
+2. 浏览器打开 `/share/<token>`：只读渲染、右栏 Manifest、复跑按钮、Fork 跳转续写（UI 冒烟）。
+3. ListObjectsV2 >1000 key 翻页仍未实现（RustFS 实测通过不改变该边界；量级评估后处理，见遗留 1/7）。
 
 ## 手工冒烟（本机可验部分，已通过）
 
