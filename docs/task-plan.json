@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T19:57:00+08:00",
+  "updatedAt": "2026-11-14T20:07:48+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1372,7 +1372,7 @@
     {
       "id": "X21",
       "title": "输出列抽取升级（node-sql-parser）+ SQL 高亮统一",
-      "status": "done",
+      "status": "accepted",
       "kr": null,
       "dependsOn": [],
       "note": "用户实测案例 2026-11-14：SQL 带行内 -- 注释时 SQLQuery 节点输出列只显示第一列。主会话实证复现（带注释 [m_sales_amount]、去注释两列齐全），根因=extractSelectColumns 不剥注释 + columnNameOf 别名正则锚定串尾被注释尾巴顶掉。另一问题：SQLQuery 卡片（自写 regex highlightSQL）与编辑弹窗（CodeMirror lang-sql）两套高亮技术观感不一致。用户裁决 2026-11-14：批准 node-sql-parser 新依赖、高亮统一本轮一起做。",
@@ -1404,6 +1404,12 @@
           "at": "2026-11-14T19:57:00+08:00",
           "by": "main-session",
           "note": "主会话独立复跑验收通过（a91e4b9）：670→671（verify-export +1 只增）、vitest 273 例(+17)、UI 37 不变；三例实测（注释案例两列全出/函数逗号旧坏例零回归/QUALIFY 回落不产垃圾名）全过。node-sql-parser 5.4.0 唯一新依赖（shim 类型）；编辑跟手 commitSQL 重抽取；高亮 sql-highlight.ts 单源（tokenize 供卡片、Lezer tag 供弹窗）；bundle 主 chunk +0.5kB gzip、新增懒加载 chunk、plotly 未回退。PR #42 已建（用户合并；与 PR #41 同改 package.json 不同行段，建议先合 #41）。遗留 7 条（懒加载 chunk 全方言打包可瘦身最重）；人工目视待用户确认高亮观感。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-14T20:07:48+08:00",
+          "by": "main-session",
+          "note": "PR #42 用户合并（merge b5d3503，人工目视高亮通过）；合并态复跑 671/273/37 全绿（本地 npm install 补 node-sql-parser 后三门槛 0，非合并缺陷）。X21 补入 release-v0.7.2.md（PR #41）。"
         }
       ]
     }
