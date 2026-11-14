@@ -45,6 +45,7 @@
     "dotenv": "^18.0.5",
     "hyparquet": "^1.31.2",
     "lucide-react": "^1.52.0",
+    "node-sql-parser": "^5.4.0",
     "pi-subagents": "^0.81.0",
     "plotly.js-dist-min": "^4.1.2",
     "react": "^19.3.0",

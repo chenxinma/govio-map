@@ -8,36 +8,23 @@ import { MAX_VISIBLE_SEMANTIC_REFS, semanticRefBadges } from '../../utils/semant
 import { SEMANTIC_SOURCE_HANDLE, SEMANTIC_TARGET_HANDLE } from '../../utils/lineage';
 import SQLModal from './SQLModal';
 import ManifestDetails from './ManifestDetails';
+import { SQL_TOKEN_CLASS, tokenizeSQL } from '../../utils/sql-highlight';
 
-// SQL关键字高亮
-const SQL_KEYWORDS = [
-  'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'IN', 'ON', 'AS', 'JOIN',
-  'LEFT', 'RIGHT', 'INNER', 'OUTER', 'FULL', 'CROSS', 'GROUP', 'BY', 'ORDER',
-  'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'ALL', 'DISTINCT', 'INSERT', 'INTO',
-  'VALUES', 'UPDATE', 'SET', 'DELETE', 'CREATE', 'TABLE', 'ALTER', 'DROP',
-  'INDEX', 'VIEW', 'IF', 'EXISTS', 'BETWEEN', 'LIKE', 'IS', 'NULL', 'CASE',
-  'WHEN', 'THEN', 'ELSE', 'END', 'ASC', 'DESC', 'COUNT', 'SUM', 'AVG',
-  'MIN', 'MAX', 'COALESCE', 'CAST', 'OVER', 'PARTITION', 'WITH', 'RECURSIVE',
-];
-
+/**
+ * SQL 关键字高亮（X21）：分类与配色与 SQL 编辑弹窗同源——
+ * tokenizeSQL 出 token，SQL_TOKEN_CLASS 给 class，index.css 给颜色。
+ * data-sqltok 供测试与样式定位用，不参与渲染。
+ */
 function highlightSQL(sql: string): React.ReactNode[] {
-  if (!sql) return [];
-  const regex = new RegExp(`(${SQL_KEYWORDS.join('|')})`, 'gi');
-  const parts = sql.split(regex);
-  return parts.map((part, i) => {
-    if (SQL_KEYWORDS.includes(part.toUpperCase())) {
-      return <span key={i} className="text-violet-400 font-semibold">{part}</span>;
-    }
-    // 字符串高亮
-    if (/^['"].*['"]$/.test(part)) {
-      return <span key={i} className="text-amber-400">{part}</span>;
-    }
-    // 数字高亮
-    if (/^\d+$/.test(part)) {
-      return <span key={i} className="text-emerald-400">{part}</span>;
-    }
-    return part;
-  });
+  return tokenizeSQL(sql).map((token, i) =>
+    token.kind === 'plain'
+      ? token.text
+      : (
+        <span key={i} data-sqltok={token.kind} className={SQL_TOKEN_CLASS[token.kind]}>
+          {token.text}
+        </span>
+      ),
+  );
 }
 
 function SQLNode({ data, id }: NodeProps) {
@@ -83,11 +70,30 @@ function SQLNode({ data, id }: NodeProps) {
     }
   }, [isEditing]);
 
+  // X21：SQL 改完「输出列」要跟着变。抽取器与服务端建节点用的是同一个模块
+  // （src/utils/sql-columns），前端按需懒加载，不进首屏 chunk。
+  // 抽不出列名（`SELECT *`、无别名表达式、解析全失败）时保留原值：
+  // 节点上的既有值可能是服务端给的 `tableName.*` 兜底，清空是退步。
+  const commitSQL = useCallback(
+    async (raw: string) => {
+      const trimmed = raw.trim();
+      const patch: { sql: string; outputColumns?: string[] } = { sql: trimmed };
+      try {
+        const { extractSelectColumns } = await import('../../utils/sql-columns');
+        const columns = extractSelectColumns(trimmed);
+        if (columns.length > 0) patch.outputColumns = columns;
+      } catch {
+        // 抽取模块不可用：只改 SQL，保留既有输出列
+      }
+      updateNodeData(id, patch);
+    },
+    [id, updateNodeData],
+  );
+
   const handleSave = useCallback(() => {
-    const trimmed = editValue.trim();
-    updateNodeData(id, { sql: trimmed });
+    void commitSQL(editValue);
     setIsEditing(false);
-  }, [id, editValue, updateNodeData]);
+  }, [commitSQL, editValue]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -289,7 +295,7 @@ function SQLNode({ data, id }: NodeProps) {
           sql={nodeData.sql}
           title={nodeData.title}
           onSave={(newSql) => {
-            updateNodeData(id, { sql: newSql });
+            void commitSQL(newSql);
             setShowModal(false);
           }}
           onClose={() => setShowModal(false)}

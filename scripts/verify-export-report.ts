@@ -49,6 +49,7 @@ import {
   type ChartRenderMap,
 } from "../src/utils/export-report.js";
 import { lineageEdgeAppearance } from "../src/utils/lineage.js";
+import { extractSelectColumns } from "../src/utils/sql-columns.js";
 import type { AnalysisManifest } from "../src/types/manifest.js";
 import type { ChartNodeData, DataFrameNodeData, ReportNodeData, RerunRecord, SourceTableNodeData, SQLQueryNodeData } from "../src/types/index.js";
 
@@ -540,6 +541,12 @@ check("X13：关系说明里的注入内容同样被转义",
 check("X13：图谱正常态（source=graph）不渲染降级警示框（不打扰）",
   !HTML.includes("图谱降级") && !HTML.includes("本表无表间关系") && HTML.includes("字段级关系"));
 check("sqlQuery 卡片含 SQL 全文与输出列", HTML.includes("GROUP BY 1, 2") && HTML.includes("输出列") && HTML.includes("销售额"));
+// X21：导出 chips 直接消费节点 outputColumns，值来自 src/utils/sql-columns 的同一抽取器。
+// 行内 `--` 注释案例必须两列全出（旧正则管道只剩第一列），导出侧才可能有第二枚 chip。
+const X21_COMMENTED_SQL =
+  "SELECT\n  SUM(amount)     AS m_sales_amount,  -- 销售额：SUM(amount)\n  COUNT(order_id) AS m_order_count    -- 订单数：COUNT(order_id)\nFROM chocolate.chocolate.fact_sales;";
+check("X21：导出侧输出列与抽取器同源（行内注释 SQL 两列全出）",
+  extractSelectColumns(X21_COMMENTED_SQL).join(",") === "m_sales_amount,m_order_count");
 check("dataFrame 卡片含列结构（列名 + dtype + nonNull）",
   HTML.includes("列结构（3）") && HTML.includes("VARCHAR") && HTML.includes("DOUBLE"));
 check("dataFrame 卡片含行 × 列与内存占用", HTML.includes("12 × 3") && HTML.includes("1.2 KB"));
