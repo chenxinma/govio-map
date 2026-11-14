@@ -27,7 +27,8 @@
   3. **存疑降噪**：dimension_ref 缺失默认不计入 differences（或仅在 role=measure 时产出），让 `consistent` 可达
   4. **unknown 可见性**：UI 完全不显示 unknown（`src/utils/caliber.ts` 设计取舍）——是否给一个更轻的提示（如节点角标小圆点）待定
 - **状态**：✅ **已定调并立项**（2026-11-14 用户裁决：「以**计算表达式**和**维度限定条件**作为实质判断依据」）→ `docs/task-plan.json → crossCutting[X19]`（口径判定升级：维度限定条件的实质比对，status=pending，跳仓 govio + govio-map）。取证补充：**计算表达式部分已落地**（govio `src/govio/metadata/caliber.py` 的 `_canonical_expr`(406) + `_compare_aggregation`(424) 已按归一后的聚合参数表达式比对，即上文方案 1；`_compare_columns`(597) 已改 measure-first 即方案 2），**缺口在维度限定**：`_compare_filter`(522) 目前只做「剔除类词是否出现在 WHERE 段」的子串包含 + 否定算子检查，且一律只给 unknown 不判 conflict，未与指标侧维度声明（`statistical_scope` / `DIMENSION_USED` / `REFERS_COLUMN role=dimension`）做结构化比对。
-- **待定**：X19 在哪个仓起 worker（建议 govio 仓为主、map 仓跟随一个小 PR）；`_compare_time_scope` 是否同批升级；是否需指标元数据补「输出列名」声明（上文方案 2）。按用户指令「先不要做实际开发」，**暂不派发**。
+- **落地状态（2026-11-14 收尾）**：✅ **已定调并落地**——维度限定条件升级为**结构化实质比对**（SQL 侧「列 / 算子 / 值集合」三元组 vs 指标侧维度声明，产出 `consistent`/`conflict`/`unknown` 三态，判定纪律仍是「宁可 unknown 不误报」），随 govio **PR #24** 合并（交付 commit `c621de9`，merge `a92a291`）。CLI 输出契约未变（差异条目仍 `aspect/expected/found/detail`，维度差异复用 `filter`、时间粒度复用 `time_scope`），故 map 解析面与展示名**零改动**，消费侧 stub 断言 46 → 77；map 侧记录见 `docs/tasks/X19-caliber-dimension-substance/`。
+- **待定（已全部回答，2026-11-14）**：① worker 在哪个仓起——按「govio 为主（W5a）+ map 跟随（W5b）」执行，两仓各自走 PR；② `_compare_time_scope` 同批核查结论——时间**窗口**逻辑维持现状（已是双侧归一到天数的实质比对，非子串包含），但补上了原来完全看不到的**时间粒度**比对（声明月度 vs SQL 取年度），aspect 仍为 `time_scope`；③ 指标元数据「输出列名」声明——**未新增字段**，维度判定只用既有 `Dimension.values_example` / `DIMENSION_USED.usage_type` / `REFERS_COLUMN.role`，「限定取值升级为显式字段」留在 govio 侧遗留问题（其 design.md §7-2）。
 
 ### PD-2 补充（2026-11-08，govio 0.7.2 sqlparse 接入后实测）
 
