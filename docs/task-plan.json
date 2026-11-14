@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T21:57:25+08:00",
+  "updatedAt": "2026-11-15T07:07:57+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1428,7 +1428,7 @@
     {
       "id": "X22",
       "title": "BUGFIX：SQL 输出列中文别名兜底失效 + 三段式表名取错段（Q: chocolate）",
-      "status": "done",
+      "status": "accepted",
       "kr": null,
       "dependsOn": [
         "X21"
@@ -1454,6 +1454,46 @@
           "at": "2026-11-14T21:57:25+08:00",
           "by": "main-session",
           "note": "主会话亲自实现（用户裁决 B）：三门槛全 0，脚本断言 671 不变、vitest 273→278（+5）、UI 37 不变，verify 后工作区干净。实测对照：中文别名+QUALIFY 修复前 [] → 修复后 [国家,销售额]；extractTableName 三段式修复前 Q: chocolate → 修复后 Q: fact_sales。含 cherry-pick 17ab411（X18 裁决文档）。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-15T07:07:57+08:00",
+          "by": "main-session",
+          "note": "PR #43 用户合并（merge 9ce7878）；合并态独立复跑：build/lint/verify 全 0、脚本 671 不变、vitest 20 文件 278 例、UI 37 例、工作区干净；main CI run success 且无 Node20/ubuntu-latest 注解。同车 cherry-pick 的 X18 裁决记录（27b7bc9）已在 main。"
+        }
+      ]
+    },
+    {
+      "id": "X23",
+      "title": "CI 断言数看板基线过期（每 run 6 条 warning）——基线迁 task-plan.json 单一事实源",
+      "status": "pending",
+      "kr": null,
+      "dependsOn": [
+        "X16",
+        "X22"
+      ],
+      "note": "主会话发现（2026-11-14，PR #43 合并态 run 9ce7878）：X16 的断言数看板基线仍是派发时口径（脚本 linux 617 / vitest 15 文件 194 例 / UI 4 文件 31 例 / caliber 46 / semantic-lineage 48 / export 138），本轮 X18(+15 脚本)、X19-W5b(+31)、X21(+1)、X22(+5 vitest) 等增量落地后，看板每个 run 都产 6 条 warning：『verify:ui expected 4/31 got 4/37』『verify:integration expected 15/194 got 20/278』『script total expected 617 on linux got 664』『caliber-conflict expected 46 got 77』『semantic-lineage expected 48 got 54』『export expected 138 got 148』。看板逻辑本身正确（664 = 671 − 7 cwd SKIP，平台差值建模无误；非门禁、job 仍绿），只是基线数字过期。X16 design.md 遗留 1 早已指出：基线应迁到 docs/task-plan.json 单一事实源，需主会话加字段。",
+      "scope": [
+        "docs/task-plan.json 增 verificationBaseline 字段（各子脚本断言数 + windows/ubuntu 脚本合计 + vitest/UI 文件与例数 + 口径说明），作为看板唯一基线来源",
+        ".github/workflows/scripts/assertion-dashboard.mjs 改为读该字段（找不到字段或解析失败时降级为『只报实际值不比对』，绝不因基线缺失令 job 变红）",
+        "基线数字刷新到当前口径：脚本 671（ubuntu 664 = 671 − 7 cwd caseDrift SKIP）、vitest 20 文件 278 例、UI 4 文件 37 例",
+        "验收需证明：刷新后 run 的 annotations 为空（或仅剩真实漂移）；再故意造一次漂移确认仍只 warning 不红",
+        "三件套落盘 docs/tasks/X23-ci-dashboard-baseline/"
+      ],
+      "acceptance": [
+        "看板基线单一事实源为 docs/task-plan.json（脚本内不再硬编码数字）",
+        "刷新后真实 run 的 ANNOTATIONS 无基线漂移 warning；看板失败/基线缺失均不阻断（job 绿）",
+        "required check 名 build + lint + verify 不变；不改业务代码与既有 verify 脚本断言",
+        "npm run build/lint/verify 全绿且断言数与刷新后的基线一致",
+        "走 GitHub PR（用户合并）"
+      ],
+      "outputDir": "docs/tasks/X23-ci-dashboard-baseline/",
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-11-15T07:07:57+08:00",
+          "by": "main-session",
+          "note": "2026-11-14 立项（X16 遗留 1 落地 + 本轮增量导致的基线过期）。待用户决定何时做、由谁做（主会话直接改或派 worker）。"
         }
       ]
     }
@@ -1495,6 +1535,7 @@
     "t3-storage-sharing": "https://github.com/chenxinma/govio-map/pull/38",
     "x18-semantic-badges": "https://github.com/chenxinma/govio-map/pull/39",
     "x19-caliber-map": "https://github.com/chenxinma/govio-map/pull/40",
-    "x19-caliber-govio": "https://github.com/chenxinma/govio/pull/24"
+    "x19-caliber-govio": "https://github.com/chenxinma/govio/pull/24",
+    "x22-sql-columns-unicode": "https://github.com/chenxinma/govio-map/pull/43"
   }
 }
