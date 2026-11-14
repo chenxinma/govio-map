@@ -6,6 +6,8 @@
  * 函数内逗号（`ROUND(x, 0)`）把表达式切碎，尾部碎片被当成列名。
  * 回归来源二：用户实测 2026-11-14，带行内 `--` 注释的 SELECT 只剩第一列
  * （别名正则锚定串尾，注释尾巴顶掉匹配）。
+ * 回归来源三（X22）：中文别名（`AS 国家`）曾被 ASCII-only 字符类挡掉，兜底管道返回空
+ * → 上层退化成 `tableName.*`，画布「输出列」显示成 `chocolate.*`。
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -159,5 +161,55 @@ FROM t`;
     // 兜底不如主解析的地方（DISTINCT 前缀 / 子查询项）——主解析必须覆盖
     expect(extractSelectColumnsByRegex("SELECT DISTINCT a, b FROM t")).toEqual(["b"]);
     expect(extractSelectColumns("SELECT DISTINCT a, b FROM t")).toEqual(["a", "b"]);
+  });
+});
+
+describe("extractSelectColumns · X22 中文别名（Unicode 标识符）", () => {
+  const zhSql = `SELECT c.country_name AS 国家,
+       SUM(f.amount)                    AS 销售额,
+       COUNT(DISTINCT f.order_id)       AS 订单数
+FROM chocolate.chocolate.fact_sales AS f
+JOIN chocolate.chocolate.dim_country AS c ON f.country_id = c.country_id`;
+
+  // DuckDB 特有语法：parser 扛不动 → 必走兜底管道，用它锁定兜底侧的 Unicode 支持
+  const qualifySql =
+    "SELECT country_name AS 国家, SUM(amount) AS 销售额 FROM t " +
+    "QUALIFY ROW_NUMBER() OVER (PARTITION BY country_name ORDER BY amount DESC) = 1";
+
+  it("端到端：中文别名不丢列名", () => {
+    expect(extractSelectColumns(zhSql)).toEqual(["国家", "销售额", "订单数"]);
+  });
+
+  it("兜底管道：中文别名同样出列名（parser 失败时的唯一路径）", () => {
+    expect(extractSelectColumnsByParser(qualifySql)).toBeNull(); // 确实走兜底
+    const cols = extractSelectColumns(qualifySql);
+    expect(cols).toEqual(["国家", "销售额"]);
+    assertNoGarbage(cols);
+    expect(extractSelectColumnsByRegex(zhSql)).toEqual(["国家", "销售额", "订单数"]);
+  });
+
+  it("中文裸列 / 中文隐式别名（无 AS）/ 全角标点尾缀 / 四种引号形式", () => {
+    expect(extractSelectColumnsByRegex("SELECT 国家 FROM t")).toEqual(["国家"]);
+    expect(extractSelectColumnsByRegex("SELECT SUM(amount) 总额 FROM t")).toEqual(["总额"]);
+    expect(extractSelectColumnsByRegex("SELECT SUM(amount) AS 销售额（万元） FROM t")).toEqual(["销售额（万元）"]);
+    for (const quoted of ['"销售额"', "`销售额`", "[销售额]", "'销售额'"]) {
+      expect(extractSelectColumnsByRegex(`SELECT SUM(amount) AS ${quoted} FROM t`)).toEqual(["销售额"]);
+    }
+    // 中文裸列带表限定
+    expect(extractSelectColumnsByRegex("SELECT c.国家 FROM t c")).toEqual(["国家"]);
+  });
+
+  it("放宽字符类后仍不产垃圾碎片（反垃圾约束保留）", () => {
+    expect(extractSelectColumnsByRegex("SELECT ROUND(SUM(amount), 2) FROM t")).toEqual([]);
+    expect(extractSelectColumnsByRegex("SELECT CAST(amount AS DECIMAL(18,2)) FROM t")).toEqual([]);
+    expect(extractSelectColumnsByRegex("SELECT COUNT(DISTINCT f.order_id) AS 订单数, ROUND(x, 0) FROM t")).toEqual([
+      "订单数",
+    ]);
+    const cols = extractSelectColumnsByRegex(
+      "SELECT c.country_name AS 国家, SUM(f.amount) AS 销售额, ROUND(SUM(f.amount), 2) AS 销售额（万元） FROM t c",
+    );
+    expect(cols).toEqual(["国家", "销售额", "销售额（万元）"]);
+    expect(cols.every((c) => !/[()"'`,*]/.test(c))).toBe(true);
+    assertNoGarbage(cols);
   });
 });
