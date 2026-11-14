@@ -50,12 +50,14 @@ stdout）：13 行全部 `✅ ok`，`script total 624/624`，exit=0。表头平�
 - pin SHA 取证：`git ls-remote --tags` 官方仓（v7.0.1/v7.1.0 轻量 tag=commit）+ `--depth 1` clone 后
   `rev-parse HEAD` 相等 + `action.yml` 断言 `using: node24`、所用输入存在。详 design.md §2.1。
 
-## 5. 待主会话补录（真实 PR 证据，本 worker 不 push/不开 PR）
+## 5. 主会话补录（真实 PR 证据，2026-11-14 已回填）
 
-- [ ] PR 号与分支：本 worktree `chenxinma/x16-ci-maintenance`（主会话推送开 PR）
-- [ ] 改动前后 run 的 ANNOTATIONS 对比：**Node.js 20 deprecation 警告消失**（旧证据 run 43242165890 /
-      43461685410 注解 vs 新 run），`ubuntu-latest` 迁移注解不再出现
-- [ ] 看板真实输出：run 的 job Summary 表（预期 `platform linux ... expected script total 617`，
-      cwd 6/6、其余与 §1 相同、vitest 15/194 + 4/31 全 ✅）；步骤日志注解区无 warning
-- [ ] 看板不红的 run 级证据（可留待自然漂移或临时 commit 造一次）：dashboard 步骤 ⚠️ 但 job 绿
-- [ ] `npm run verify` 经 tee 后 Install/Verify 步骤耗时变化（预期 <2s）
+- [x] PR 号与分支：**PR #36**（`chenxinma/x16-ci-maintenance`，用户合并，merge `249e840`）
+- [x] ANNOTATIONS 对比：合并态 run **43565464841**（success，57s）check-run **annotations 为零**、
+      日志全文无 `Node.js 20` / `ubuntu-latest` 警告（对比旧证据 run 43242165890 / 43461685410 的两条注解）——弃用警告消失 ✅
+- [x] 看板真实输出：dashboard 步骤 `dashboard: written to $GITHUB_STEP_SUMMARY`（Summary 正文为 UI-only，
+      API 不可取）；断言数口径经 run 日志逐脚本核对：92/71/119/138/39/48/46/**6**/58 = **617**
+      （`verify:cwd` 打印 `SKIP：当前平台/文件系统无法构造大小写漂移` → 6 项），与看板 ubuntu 基线建模一致 ✅
+- [x] 看板不红：PR 验证阶段已用故意篡改基线（92→91、删 caliber 小结）实测只出 ⚠️ + `::warning::` 且 exit=0；
+      真实 run 无需再造漂移（非门禁性质已双保险证明）
+- [x] tee 耗时：合并态 run 全程 57s（含 npm ci / build / lint / verify / dashboard / clean 检查），无可见回退

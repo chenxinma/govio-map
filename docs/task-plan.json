@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T14:16:39+08:00",
+  "updatedAt": "2026-11-14T14:19:35+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1095,7 +1095,7 @@
     {
       "id": "X16",
       "title": "CI 维护小修包（actions 升级/pin、runner 钉版、断言数看板、windows nightly 腿、并发组）",
-      "status": "done",
+      "status": "accepted",
       "kr": null,
       "dependsOn": [
         "X14"
@@ -1135,6 +1135,12 @@
           "at": "2026-11-14T12:23:35+08:00",
           "by": "main-session",
           "note": "主会话独立复跑验收通过（7403607）：build/lint/verify 全 0、624/194/31 零回归、SHA 经 git ls-remote 独立核验、看板恒 exit0+continue-on-error 双保险、required check 名未动。PR #36 已建（用户合并）。nightly 腿未实现（design §6 评估）；遗留 5 条含基线迁 task-plan 字段待主会话做。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-14T14:19:35+08:00",
+          "by": "main-session",
+          "note": "PR #36 用户合并（merge 249e840）；合并态真实 run 43565464841 复核：annotations 为零（Node20/ubuntu-latest 警告消失）、ubuntu 断言口径 92/71/119/138/39/48/46/6/58=617 与看板建模一致、看板写 step summary 正常、run 57s 全绿。verification.md §5 已回填。"
         }
       ]
     },
