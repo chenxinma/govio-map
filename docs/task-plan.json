@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T20:07:48+08:00",
+  "updatedAt": "2026-11-14T20:11:56+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1332,7 +1332,7 @@
     {
       "id": "X20",
       "title": "govio-map 0.7.2 版本号升级与发版记录（跳过 0.7.1）",
-      "status": "done",
+      "status": "accepted",
       "kr": null,
       "dependsOn": [
         "T3.1",
@@ -1366,6 +1366,12 @@
           "at": "2026-11-14T18:10:03+08:00",
           "by": "main-session",
           "note": "主会话亲自执行（纯版本记账）：package.json 0.7.0→0.7.2 + docs/release-v0.7.2.md（沿用 0.7.0 格式，含 0.7.1 跳过说明与已知取舍）；build/lint/verify 全 0。PR #41 已建（用户合并后置 accepted）。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-14T20:11:56+08:00",
+          "by": "main-session",
+          "note": "PR #41 用户合并（merge 60c1506）；package.json=0.7.2 落 main，release-v0.7.2.md 含 X16-X21 全部变更与 0.7.1 跳过说明。本轮（govio-map 0.7.2）全部任务 accepted。"
         }
       ]
     },
