@@ -168,6 +168,12 @@ strokeDasharray}`、`data:{lineageKind:"semantic"}`。
    优先匹配（需要图谱侧 `RELATES_TO` 查询返回 `b.schema`/`b.database_name` 并落到
    `TableRelation`），或给 sourceTable 节点补 `catalog` 字段。当前星型演示场景无同名表，
    风险可接受。
+   > **已由 X17 解决（档 A，2026-11-14）**：图谱 `RELATES_TO` 查询其实早已返回
+   > `b.full_table_name AS target`，X17 把它落成 `TableRelation.targetQualifiedName`（零新增查询），
+   > 前端改三级匹配：全等（大小写归一）命中即止 → 变体兜底 → 都不中不建边。同名跨库场景下
+   > 边只连全限定名一致的节点（断言见 `tests/integration/x17-relation-match.test.ts`，
+   > 方案与取舍见 `docs/tasks/X17-relation-match-exact/design.md`）。用 `PhysicalTable.id` 的
+   > 彻底方案（档 B）用户裁决暂不实施。
 2. **关系数据只在边上体现，节点内不可见**：`tableRelations`（含 `description`、列映射、
    `tableRelationsError` 降级留痕）没有 UI 出口，用户只能看到一条紫虚线，无法知道
    「这条边基于哪几列、图谱怎么描述的」，也看不到降级原因。建议后续在 SourceTableNode

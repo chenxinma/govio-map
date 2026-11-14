@@ -132,6 +132,10 @@ X10 把关系数据放进了 `node.data` 并连出紫虚线，但画布上**只�
    > id 判定；主会话取证：id 确为 primary_key 且逐表唯一（形如 `PT11B596C1`），但**当前 live 图谱
    > `full_table_name` 与裸 `table_name` 均无重复**（误配属潜在风险），且现有 RELATES_TO 查询已返回
    > `b.full_table_name` → X17 默认先做「全限定名全等优先」（零新增查询），用 id 的彻底方案列为可选档 B。
+   >
+   > **已由 X17 解决（档 A，2026-11-14）**：匹配语义已升级为三级（`targetQualifiedName` 全等优先、
+   > 命中即止 → 变体兜底 → 不建边），跨库同名误配场景有自动化断言（`tests/integration/x17-relation-match.test.ts`）；
+   > 展示层口径未动（X15/X15.1 裁决保持）。档 B（id 匹配）用户裁决暂不实施。
 6. **前端 mock 路径仍不产出关系**（X10 遗留③）：`MOCK_TABLES` / `addSourceTableToCanvas` 没有
    `tableRelations`，演示模式下关系小节恒空——形状兼容，不是缺陷。
 7. **关系多于 3 条时节点明显变高**：若实测影响画布密度，可考虑更紧凑的出口（徽标 + 浮层），与 §8 遗留① 同批评估。

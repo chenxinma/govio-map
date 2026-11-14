@@ -57,6 +57,12 @@ export type NodeType = 'sourceTable' | 'sqlQuery' | 'dataFrame' | 'report' | 'ch
 export interface TableRelation {
   /** 目标表名（图谱原值或字段 references 原值）；建边时按限定名变体匹配画布节点 */
   targetTable: string;
+  /**
+   * 目标表全限定名（X17 档 A）：图谱 `b.full_table_name` 原值，匹配用的最精确键。
+   * 仅图谱路径的关系携带该键（`server/table-relations.ts` 的 `withGraphQualifiedNames` 落键）；
+   * 字段级降级路径或缺 target 列的行**不建键、禁止猜测**，匹配退回 `targetTable` 变体求交（X10 行为）。
+   */
+  targetQualifiedName?: string;
   /** 关系类型原值（如 `many_to_one`；字段降级路径为 `foreign_key`） */
   relationshipType: string;
   /** 关系说明（图谱 `r.description`），缺失省略键 */
