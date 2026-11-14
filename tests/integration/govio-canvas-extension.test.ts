@@ -238,6 +238,55 @@ describe("govio-canvas 扩展：工具结果 → GovioNodeCreateEvent", () => {
     expect(ev?.manifest?.checksum).toBeUndefined();
   });
 
+  it("X22 message_end 输出列：中文别名走真实列名，三段式表名取末段（不再 Q: chocolate）", async () => {
+    // 回归：① 中文别名曾因 ASCII-only 字符类解析失败，节点显示成 chocolate.*；
+    //      ② extractTableName 取 parts[1]，三段式 qualifiedName 拿到的是 schema。
+    const { handlers } = makePiStub();
+    const messageEnd = handlers.get("message_end");
+    const zhSql =
+      "SELECT c.country_name AS 国家, SUM(f.amount) AS 销售额, COUNT(DISTINCT f.order_id) AS 订单数 " +
+      "FROM chocolate.chocolate.fact_sales AS f JOIN chocolate.chocolate.dim_country AS c ON f.country_id = c.country_id";
+    await messageEnd?.(
+      {
+        message: { role: "assistant", content: [{ type: "text", text: "```sql\n" + zhSql + "\n```" }] },
+      },
+      piCtx,
+    );
+    const zh = flushGovioNodes().find((e) => e.nodeType === "sqlQuery");
+    expect(zh?.outputColumns).toEqual(["国家", "销售额", "订单数"]);
+    expect(zh?.title).toBe("Q: fact_sales");
+
+    // 兜底管道（DuckDB QUALIFY，parser 扛不动）+ 中文别名：仍不得退化成 fact_sales.*
+    const { handlers: handlersFb } = makePiStub();
+    const qualifySql =
+      "SELECT country_name AS 国家, SUM(amount) AS 销售额 FROM chocolate.chocolate.fact_sales " +
+      "QUALIFY ROW_NUMBER() OVER (PARTITION BY country_name ORDER BY amount DESC) = 1";
+    await handlersFb.get("message_end")?.(
+      {
+        message: { role: "assistant", content: [{ type: "text", text: "```sql\n" + qualifySql + "\n```" }] },
+      },
+      piCtx,
+    );
+    const fb = flushGovioNodes().find((e) => e.nodeType === "sqlQuery");
+    expect(fb?.outputColumns).toEqual(["国家", "销售额"]);
+    expect(fb?.title).toBe("Q: fact_sales");
+
+    // SELECT * 才回退 tableName.*，且表名取末段
+    const { handlers: handlers2 } = makePiStub();
+    await handlers2.get("message_end")?.(
+      {
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "```sql\nSELECT * FROM chocolate.chocolate.fact_sales\n```" }],
+        },
+      },
+      piCtx,
+    );
+    const star = flushGovioNodes().find((e) => e.nodeType === "sqlQuery");
+    expect(star?.outputColumns).toEqual(["fact_sales.*"]);
+    expect(star?.title).toBe("Q: fact_sales");
+  });
+
   it("message_end 边界：无 sql 代码块 / 非 assistant 消息 → 不建节点", async () => {
     const { handlers } = makePiStub();
     const messageEnd = handlers.get("message_end");

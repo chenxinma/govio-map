@@ -280,10 +280,14 @@ function extractSqlCodeBlocks(text: string): Array<{ sql: string; outputColumns:
 }
 
 function extractTableName(sql: string): string {
-  const match = sql.match(/FROM\s+([\w.]+)/i);
+  // X22 BUGFIX：标识符可含中文；qualifiedName 三段式（datasource.schema.table）取**最后一段**=表名。
+  // 旧实现取 parts[1]：两段式（schema.table）恰好正确，三段式会拿到 schema
+  // （chocolate.chocolate.fact_sales → chocolate），于是节点标题变成 `Q: chocolate`、
+  // 输出列兜底变成 `chocolate.*`（见 docs/tasks/BUGFIX-sql-columns-unicode-and-table-segment.md）。
+  const match = sql.match(/FROM\s+([\p{L}\p{N}_$.]+)/iu);
   if (!match) return "";
-  const parts = match[1].split(".");
-  return parts.length > 1 ? parts[1] : parts[0];
+  const parts = match[1].split(".").filter((part) => part.length > 0);
+  return parts.length > 0 ? parts[parts.length - 1] : "";
 }
 
 function extractDfName(text: string): string | null {

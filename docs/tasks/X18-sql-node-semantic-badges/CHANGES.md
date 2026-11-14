@@ -31,6 +31,17 @@
 - `docs/task-plan.json`：零改动（并行模式，主会话记账）
 - W1（session-history / 分享）、W2（`.github/`）、W3/X17（`server/table-relations.ts`、`src/utils/table-relations.ts`、`docs/specs/02-nodes.md` 表间关系小节）的文件：零改动
 
+## 追加 commit：用户裁决「暂时不用中文显示，保留 code」（2026-11-14）
+
+首次提交后用户就 design.md 遗留 1 表态，故**行为不变**（短名仍是 `code ?? name`），只把裁决固化到文档与代码注释，防止后来者当未定项改掉：
+
+| 文件 | 摘要 |
+|---|---|
+| `src/utils/semantic-refs-ui.ts` | `semanticRefLabel` 的单行注释扩为 docblock：写明用户裁决、为何保留 code（与图谱指标编码 / SQL 输出列互相对应，便于追溯）、中文名在 hover 与导出表、以及将来改回 `name ?? code` 需要一并同步的 3 处 UI 期望与 2 条脚本断言。**逻辑零改动**。 |
+| `docs/tasks/X18-sql-node-semantic-badges/design.md` | §3.3 标题与正文补「用户裁决：暂时保留 code」；遗留 1 改为**已裁决关闭**（保留重开路径）。 |
+| `docs/tasks/X18-sql-node-semantic-badges/verification.md` | 人工目视第 5 条的括号说明由「见遗留 1」改为「用户已裁决暂时保留 code」。 |
+| `docs/PENDING-DISCUSSION.md` | PD-1「待定」由「若产品更想直接看中文名可改一处」改为「已按用户裁决定稿：保留 code，中文名放 hover 与导出表，不再作为待确认项」。 |
+
 ## diffstat
 
 ```

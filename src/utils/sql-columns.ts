@@ -35,10 +35,33 @@ function getParser(): ParserInstance | null {
   return parserInstance;
 }
 
-/** 去标识符引号："x" / `x` / [x] */
+/** 去标识符引号："x" / `x` / [x] / 'x' */
 function stripIdentQuotes(ident: string): string {
-  return ident.replace(/^["`\x5b]|["`\x5d]$/g, "");
+  return ident.replace(/^["'`\x5b]|["'`\x5d]$/g, "");
 }
+
+/**
+ * 兜底管道的标识符字符类（X22 BUGFIX）。
+ *
+ * 旧实现把别名/裸列收紧成 ASCII `[A-Za-z_][A-Za-z0-9_$]*`（为修「函数内逗号切碎表达式」
+ * 那次改动引入），中文别名（`AS 国家`）一律解析不出列名 → `extractSelectColumns` 返回空
+ * → 上层回退成 `tableName.*`，画布「输出列」从 `国家 / 销售额 / 订单数` 退化成
+ * `chocolate.*`。X21 的 parser 主路径能解析中文别名，但 DuckDB 特有语法（QUALIFY /
+ * `* EXCLUDE` / `GROUP BY ALL` 等）会回落到本管道，故这里必须同样支持 Unicode 标识符。
+ *
+ * **反垃圾约束保留**：别名 token 内不允许 ASCII 括号/引号/方括号/逗号/星号与空白，
+ * 所以 `amount)`、`0)` 这类碎片不会因放宽字符类而复现（见 tests/integration/select-columns.test.ts）。
+ */
+const IDENT_SRC = String.raw`[\p{L}\p{N}_$][\p{L}\p{N}_$]*`;
+/** 别名 token：引号形式（"x" / `x` / [x] / 'x'）优先，否则裸标识符（可带全角标点尾缀，如 `销售额（万元）`） */
+const ALIAS_TOKEN_SRC =
+  String.raw`"[^"]+"` +
+  "|\\x60[^\\x60]+\\x60|\\[[^\\]]+\\]|'[^']+'" +
+  `|${IDENT_SRC}` +
+  String.raw`[^\s\x22\x27\x60\x5b\x5d(),*]*`;
+const AS_ALIAS_RE = new RegExp(`(?:^|\\s)AS\\s+(${ALIAS_TOKEN_SRC})\\s*$`, "iu");
+const IMPLICIT_ALIAS_RE = new RegExp(`[)\\w"\\]]\\s+(${ALIAS_TOKEN_SRC})\\s*$`, "u");
+const BARE_COLUMN_RE = new RegExp(`^(?:${IDENT_SRC}\\s*\\.\\s*)*(${IDENT_SRC})$`, "u");
 
 /** 候选列名清洗：去引号、去空白，`*` 与空串视为「无列名」 */
 function normalizeColumnName(text: string | null | undefined): string | null {
@@ -142,17 +165,17 @@ function splitTopLevelCommas(text: string): string[] {
 function columnNameOf(item: string): string | null {
   const expr = item.trim();
   if (!expr) return null;
-  // 显式别名：`AS alias`（别名可能带引号/反引号/方括号）
-  const asMatch = expr.match(/(?:^|\s)AS\s+([A-Za-z_][A-Za-z0-9_$]*|"[^"]+"|`[^`]+`|\[[^\]]+\])\s*$/i);
+  // 显式别名：`AS alias`（别名可带引号/反引号/方括号，也可以是中文）
+  const asMatch = expr.match(AS_ALIAS_RE);
   if (asMatch) return stripIdentQuotes(asMatch[1]);
   // 隐式别名：`SUM(x) total`（别名前的表达式以 `)` 结尾）；`price * qty` 不算
-  const implicit = expr.match(/[)\w"\]]\s+([A-Za-z_][A-Za-z0-9_$]*)\s*$/);
+  const implicit = expr.match(IMPLICIT_ALIAS_RE);
   if (implicit) {
     const aliasAt = expr.lastIndexOf(implicit[1]);
-    if (expr.slice(0, aliasAt).trim().endsWith(")")) return implicit[1];
+    if (expr.slice(0, aliasAt).trim().endsWith(")")) return stripIdentQuotes(implicit[1]);
   }
-  // 裸列（可带表限定）
-  const bare = expr.match(/^(?:[A-Za-z_][A-Za-z0-9_$]*\s*\.\s*)*([A-Za-z_][A-Za-z0-9_$]*)$/);
+  // 裸列（可带表限定，标识符可含中文）
+  const bare = expr.match(BARE_COLUMN_RE);
   if (bare) return bare[1];
   // 其余（无别名的表达式、`*`、`t.*`）不产列名，交由调用方回退
   return null;

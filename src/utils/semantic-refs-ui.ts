@@ -61,7 +61,14 @@ export function semanticRefTypeLabel(entityType: unknown): string {
   return labels[raw] ?? raw;
 }
 
-/** 徽标短名：`code` 优先、`name` 回退；两者都缺（含纯空白）返回 null → 调用方跳过该条 */
+/**
+ * 徽标短名：`code` 优先、`name` 回退；两者都缺（含纯空白）返回 null → 调用方跳过该条。
+ *
+ * 用户裁决 2026-11-14（X18）：**暂时保留 code 显示**，画布上不直接换成中文名——code 与图谱指标
+ * 编码、SQL 输出列名互相对应，便于追溯；中文名放 hover（`名称：` 行）与导出表的「名称」列。
+ * 将来若要改为直接显示中文名，只把优先级换成 `name ?? code`（本函数一处，画布与导出同步生效），
+ * 并同步 `tests/ui/sql-query-node.test.tsx` 的 3 处期望与两个 verify 脚本的断言。
+ */
 export function semanticRefLabel(ref: SemanticRef | undefined | null): string | null {
   if (!ref || typeof ref !== 'object') return null;
   return clean(ref.code) ?? clean(ref.name);

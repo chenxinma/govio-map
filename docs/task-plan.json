@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T20:41:08+08:00",
+  "updatedAt": "2026-11-14T21:57:25+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1422,6 +1422,38 @@
           "at": "2026-11-14T20:07:48+08:00",
           "by": "main-session",
           "note": "PR #42 用户合并（merge b5d3503，人工目视高亮通过）；合并态复跑 671/273/37 全绿（本地 npm install 补 node-sql-parser 后三门槛 0，非合并缺陷）。X21 补入 release-v0.7.2.md（PR #41）。"
+        }
+      ]
+    },
+    {
+      "id": "X22",
+      "title": "BUGFIX：SQL 输出列中文别名兜底失效 + 三段式表名取错段（Q: chocolate）",
+      "status": "done",
+      "kr": null,
+      "dependsOn": [
+        "X21"
+      ],
+      "note": "用户实测截图里 sqlQuery 节点标题为 `Q: chocolate`。主会话在 main（af3dfca）取证两个独立缺陷：① X21 的兜底正则管道标识符字符类仍是 ASCII-only（`[A-Za-z_][A-Za-z0-9_$]*`），中文别名在 parser 失败回落时（QUALIFY / * EXCLUDE / GROUP BY ALL 等 DuckDB 语法）解析不出列名 → 上层退化成 `tableName.*`；② `extractTableName` 对三段式 qualifiedName（datasource.schema.table，见 specs/11）取 `parts[1]` = schema 段，`chocolate.chocolate.fact_sales` → `chocolate`，标题与兜底文本双双错。修复原型来自 X19-W5b worker 在其 worktree 内未推送的 commit 94bc841（基于 X21 之前的文件布局），由主会话按用户裁决（2026-11-14「B 当前会话直接修复」）移植到 X21 后的新架构（src/utils/sql-columns.ts）。同车收编 X18 worktree 未推送的 17ab411（记录用户裁决「口径徽标暂时保留 code 显示」，纯注释与文档）。",
+      "scope": [
+        "src/utils/sql-columns.ts：兜底管道标识符字符类改 Unicode 感知（IDENT_SRC / ALIAS_TOKEN_SRC / AS_ALIAS_RE / IMPLICIT_ALIAS_RE / BARE_COLUMN_RE，u 标志）；引号别名补单引号形式；隐式别名分支补 stripIdentQuotes；反垃圾约束保留（别名 token 内禁 ASCII 括号/引号/方括号/逗号/星号/空白）",
+        "server/extensions/govio-canvas.ts：extractTableName 取最后一个非空分段 + FROM 捕获正则 Unicode 感知；单段/两段式行为不变",
+        "测试：select-columns.test.ts +4 例（端到端中文别名、兜底管道中文别名并先断言 parser 返回 null 证明走兜底、中文裸列/隐式别名/全角尾缀/四种引号、放宽后不产碎片）；govio-canvas-extension.test.ts +1 例（outputColumns 与 title 端到端、QUALIFY 兜底不退化、SELECT * 才回退 fact_sales.*）",
+        "文档：docs/tasks/BUGFIX-sql-columns-unicode-and-table-segment.md（根因两条 + 修复前后实测对照表 + 影响面与遗留 5 条）"
+      ],
+      "acceptance": [
+        "中文别名在 parser 主路径与兜底路径都出真实列名，不退化成 tableName.*",
+        "三段式 FROM 的节点标题为 Q: <表名>（不再 Q: <schema>）；SELECT * 兜底为 <表名>.*",
+        "旧坏例零回归：函数内逗号不切碎（amount)/0) 不出现）、CAST(x AS DECIMAL(18,2)) 不产列名、带 -- 注释的 SELECT 两列全出",
+        "npm run build/lint/verify 全绿；脚本断言 671 不变、vitest 20 文件 273→278 例、UI 4 文件 37 例不变；verify 后 git status 干净",
+        "走 GitHub PR（用户合并）"
+      ],
+      "outputDir": "docs/tasks/BUGFIX-sql-columns-unicode-and-table-segment.md",
+      "history": [
+        {
+          "status": "done",
+          "at": "2026-11-14T21:57:25+08:00",
+          "by": "main-session",
+          "note": "主会话亲自实现（用户裁决 B）：三门槛全 0，脚本断言 671 不变、vitest 273→278（+5）、UI 37 不变，verify 后工作区干净。实测对照：中文别名+QUALIFY 修复前 [] → 修复后 [国家,销售额]；extractTableName 三段式修复前 Q: chocolate → 修复后 Q: fact_sales。含 cherry-pick 17ab411（X18 裁决文档）。"
         }
       ]
     }

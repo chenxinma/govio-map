@@ -12,7 +12,7 @@
   2. **语义边悬停显示共用指标**：紫虚线 tooltip「口径沿袭：销售额」（涉及 ReactFlow edge label/tooltip）
   3. **新增"指标/口径节点"类型**（最大）：引用的指标/标准作为节点上画布，SQL ─ ╌▶ 指标节点连语义边，口径溯源成为可见的图；涉及节点类型、dagre 布局、导出三处扩展，属新功能需立项走 PR
 - **状态**：✅ **已裁决并落地**（2026-11-14 用户选定**方案 1**；X18 已实现）→ 计划 `docs/task-plan.json → crossCutting[X18]`，交付物 `docs/tasks/X18-sql-node-semantic-badges/`。SQL 节点卡片新增「口径」徽标区：`semanticRefs` 里 `code ?? name` 有值的引用直接可见（Metric 优先、默认前 3 条可折叠、hover 给类型/编码/名称/图谱 ID），导出 HTML 同步为 sqlQuery 卡片的「口径引用」表；展示模型唯一来源 `src/utils/semantic-refs-ui.ts`，配色走 green-deck token（紫 = 语义层），`code`/`name` 都缺的引用整条跳过、无 refs 时整节不渲染。方案 2（语义边悬停显示共用指标）与方案 3（新增指标/口径节点类型）**不做**；若将来要升级到方案 3 须单独立项（涉及节点类型、dagre/方案B 布局、导出三处扩展）。
-- **待定**：无（原「做到哪一档」已定并已落地：方案 1；与 T2.3 警示的视觉分工按 X18 scope 实现——警示在标题行优先呈现，黄色仍只由 `caliberNodeAppearance` 给出，徽标区独立成行、不借警示色、互不遮挡）。徽标短名当前按契约取 `code ?? name`（如 `m_gmv`）；若产品上更想直接看中文名，改 `semanticRefLabel` 一处即可，见 X18 design.md 遗留问题。
+- **待定**：无（原「做到哪一档」已定并已落地：方案 1；与 T2.3 警示的视觉分工按 X18 scope 实现——警示在标题行优先呈现，黄色仍只由 `caliberNodeAppearance` 给出，徽标区独立成行、不借警示色、互不遮挡）。徽标短名按契约取 `code ?? name`，并已按用户裁决（2026-11-14「暂时不用中文显示，保留 code」）定稿——中文名放 hover 与导出表，不再作为待确认项。
 
 ## PD-2 口径检测的别名感知与存疑噪声
 
