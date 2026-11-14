@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T11:32:49+08:00",
+  "updatedAt": "2026-11-14T12:23:35+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1077,7 +1077,7 @@
     {
       "id": "X16",
       "title": "CI 维护小修包（actions 升级/pin、runner 钉版、断言数看板、windows nightly 腿、并发组）",
-      "status": "in_progress",
+      "status": "done",
       "kr": null,
       "dependsOn": [
         "X14"
@@ -1111,13 +1111,19 @@
           "at": "2026-11-14T11:32:49+08:00",
           "by": "main-session",
           "note": "2026-11-14 用户决策：actions 升级走 pin commit SHA。concurrency 维持现状 + workflow/design.md 注释说明（主会话建议默认）。windows nightly 腿本轮不做（省额度），design.md 记录评估与取舍，用户要加可后补。派发 W2。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-14T12:23:35+08:00",
+          "by": "main-session",
+          "note": "主会话独立复跑验收通过（7403607）：build/lint/verify 全 0、624/194/31 零回归、SHA 经 git ls-remote 独立核验、看板恒 exit0+continue-on-error 双保险、required check 名未动。PR #36 已建（用户合并）。nightly 腿未实现（design §6 评估）；遗留 5 条含基线迁 task-plan 字段待主会话做。"
         }
       ]
     },
     {
       "id": "X17",
       "title": "表间关系匹配精确化（全限定名全等优先 / 可选图谱 PhysicalTable id）——解 X10 遗留①跨库同名表误配",
-      "status": "in_progress",
+      "status": "done",
       "kr": null,
       "dependsOn": [],
       "note": "起因：用户 2026-11-14 就 X10 遗留①（同名表跨 catalog/schema 时点号后缀变体匹配可能误配）提问「是否可以通过 PhysicalTable 的 ID 进行判断？」。**主会话取证结论（2026-11-14，只读查询 + schema.md 核对）**：① `schema.md` 明确 `PhysicalTable` 的 `primary_key = id`，属性含 `id / node_id / full_table_name / schema / table_name / name / database_name`；② live 图谱实测 id 形如 `PT11B596C1` 且与 `node_id` 同值、每表唯一（chocolate 4 表 + sales 若干表逐行确认）；③ **当前图谱不存在重名**：`MATCH (t:PhysicalTable) WITH t.full_table_name AS ftn, count(*) AS c WHERE c>1 RETURN ftn,c` 返回 `Data not found.`，裸 `table_name` 亦全部 count=1 → 误配目前是**潜在风险而非现实缺陷**；④ 现有 `buildRelatesToCypher`（server/table-relations.ts:114-122）**已经 RETURN `b.full_table_name AS target`**，只是前端匹配没有用它做全等优先（`src/utils/table-relations.ts` 一律走点号后缀变体集合求交）。**结论**：id 方案可行（id 唯一且是主键），但画布 sourceTable 节点当前不携带图谱 id，要用 id 匹配必须新增「表键 → PhysicalTable.id」解析（新增图谱查询或复用注入链路）+ 新可选字段 + 旧节点回退逻辑；而**档 A（用已有的 target 全限定名做全等优先匹配）零新增查询即可消掉主要误配场景**。故本任务默认做档 A，档 B（id）列为可选增强，需用户点头再做。",
@@ -1150,6 +1156,12 @@
           "at": "2026-11-14T11:32:49+08:00",
           "by": "main-session",
           "note": "2026-11-14 用户裁决：只做档 A（全限定名全等优先），档 B（PhysicalTable id 匹配）暂不实施、保持可选待后续立项。派发 W3。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-14T12:23:35+08:00",
+          "by": "main-session",
+          "note": "主会话独立复跑验收通过（e6ff262）：624/194→210(+16 新用例)/31 零回归。取舍裁决：任务书 §4.2 与 acceptance「27 例不修改即通过」冲突（table-relations.test.ts:147 严格 toEqual），采纳落键放取数层 withGraphQualifiedNames（仅 target 列归因、原值），relationsFromGraphRows 保持纯函数。PR #37 已建（用户合并）。档 B 未做（用户裁决）。"
         }
       ]
     },
