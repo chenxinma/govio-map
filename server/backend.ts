@@ -1,6 +1,7 @@
 import { createServer } from "http";
 import { setupWebSocket } from "./ws-handler.js";
 import { handleParquetApi } from "./parquet-api.js";
+import { handleShareApi } from "./share-api.js";
 import { agentSetup } from "./agent.js";
 import { ensureModelsConfig } from "./models-config.js";
 import { LOOPBACK_HOST } from "./security.js";
@@ -31,6 +32,7 @@ export async function completeAgentSetup(): Promise<void> {
 export async function startBackend(port = 5174) {
   const httpServer = createServer(async (req, res) => {
     if (await handleParquetApi(req, res)) return;
+    if (await handleShareApi(req, res)) return;
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));
   });

@@ -2,6 +2,8 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
 import { getOrCreateSession, resetSession, openSessionFile, runGovioCli } from "./agent.js";
 import { listSessions, deleteSession, saveCanvas, loadCanvas, buildTranscript, assertValidSessionPath } from "./session-history.js";
+import { refreshCanvasFromRemote } from "./storage/canvas-storage.js";
+import { consumeStagedFork, readStagedFork } from "./share.js";
 import { buildInjectionContext, composePrompt, buildTraceEntry, recordInjectionTrace } from "./prompt-injection.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
 import { setSessionSemanticRefs, setSessionCaliberMetrics, clearSessionSemanticRefs, toSemanticRefs } from "./semantic-context.js";
@@ -158,11 +160,15 @@ export function setupWebSocket(server: import("http").Server) {
     }
   }
 
-  function pushSessionState(ws: WebSocket, session: SessionInstance) {
+  async function pushSessionState(ws: WebSocket, session: SessionInstance) {
     sendMsg(ws, { type: "session_ready", sessionId: session.sessionId });
     try {
       const file = session.sessionManager.getSessionFile();
       if (!file) return;
+      // T3.1：绑定 S3 的画布在打开前拉取远端最新（无绑定 = no-op；失败降级本地缓存，
+      // 错误只进日志，不阻塞会话打开）。
+      const refresh = await refreshCanvasFromRemote(file);
+      if (refresh.error) console.warn(`[ws] canvas remote refresh failed: ${refresh.error}`);
       const canvas = loadCanvas(file);
       if (canvas) {
         sendMsg(ws, { type: "canvas_restore", nodes: canvas.nodes, edges: canvas.edges });
@@ -424,6 +430,34 @@ export function setupWebSocket(server: import("http").Server) {
           } catch (err) {
             console.error("[ws] canvas_save failed:", err);
           }
+        }
+        break;
+      }
+      case "canvas_fork_apply": {
+        // T3.2 fork 续写：把分享 fork 的暂存副本应用到当前（本地新）会话，
+        // 画布级血缘 forkFrom 进 canvas.json 顶层；只读分享视图不走本通道，
+        // 因此不存在写回源画布的路径。
+        const file = ctx.session.sessionManager.getSessionFile();
+        if (!file) {
+          sendMsg(ws, { type: "error", message: "canvas_fork_apply requires an active session" });
+          break;
+        }
+        if (!msg.forkId) {
+          sendMsg(ws, { type: "error", message: "canvas_fork_apply requires forkId" });
+          break;
+        }
+        const staged = readStagedFork(msg.forkId);
+        if (!staged) {
+          sendMsg(ws, { type: "error", message: `unknown or expired fork: ${msg.forkId}` });
+          break;
+        }
+        try {
+          saveCanvas(file, staged.canvas.nodes, staged.canvas.edges, { forkFrom: staged.forkFrom });
+          consumeStagedFork(staged.forkId);
+          sendMsg(ws, { type: "fork_applied", forkId: staged.forkId, forkFrom: staged.forkFrom });
+          sendMsg(ws, { type: "canvas_restore", nodes: staged.canvas.nodes, edges: staged.canvas.edges });
+        } catch (err) {
+          sendMsg(ws, { type: "error", message: `canvas_fork_apply failed: ${err instanceof Error ? err.message : String(err)}` });
         }
         break;
       }

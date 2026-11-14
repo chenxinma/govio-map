@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { History, Trash2, Loader2, Maximize2, Minimize2 } from "lucide-react";
+import { History, Trash2, Loader2, Maximize2, Minimize2, Share2 } from "lucide-react";
 import { useChatContext } from "../../hooks/useChatContext";
 import type { ChatMessage as ChatMessageType } from "../../hooks/useChat";
 import { useCanvasStore } from "../../store/canvas-store";
@@ -64,6 +64,32 @@ export default function ChatPanel({ width }: ChatPanelProps) {
     });
   }, [fetchSessions]);
 
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const handleShare = useCallback(async () => {
+    const apiPort = parseInt(window.location.port, 10) + 1;
+    const base = `${window.location.protocol}//${window.location.hostname}:${apiPort}`;
+    if (shareUrl) {
+      try { await navigator.clipboard.writeText(`${base}${shareUrl}`); } catch { /* 剪贴板不可用：链接已在对话框文案中 */ }
+      return;
+    }
+    setShareBusy(true);
+    try {
+      const res = await fetch(`${base}/api/shares`, { method: "POST" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((body as { error?: string })?.error || `分享失败（HTTP ${res.status}）`);
+      const url = (body as { url?: string }).url ?? null;
+      if (!url) throw new Error("分享响应缺少 url");
+      setShareUrl(url);
+      try { await navigator.clipboard.writeText(`${base}${url}`); } catch { /* ignore */ }
+    } catch (err) {
+      console.warn("[share]", err);
+      window.alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setShareBusy(false);
+    }
+  }, [shareUrl]);
+
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -114,6 +140,14 @@ export default function ChatPanel({ width }: ChatPanelProps) {
             title={expanded ? "收回侧栏 (Esc)" : "展开对话"}
           >
             {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+          <button
+            onClick={() => void handleShare()}
+            className={`p-1 rounded hover:bg-bg-primary ${shareUrl ? "text-brand" : "text-text-muted hover:text-text-primary"}`}
+            title={shareUrl ? "再次复制只读分享链接" : shareBusy ? "生成中…" : "生成只读分享链接（含复跑与 fork 续写）"}
+            disabled={shareBusy || !isConnected}
+          >
+            <Share2 size={14} />
           </button>
           <button
             onClick={toggleSessions}

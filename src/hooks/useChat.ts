@@ -78,6 +78,21 @@ function nextMsgId(): string {
 }
 
 /** /ws 出站消息统一出口：编译期对齐 WSClientMessage 契约（X2） */
+/** T3.2 fork 续写：/?fork=<forkId> 是分享视图的接力参数，读取即消费（replaceState 防重复应用）。 */
+function readPendingForkFromUrl(): string | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const forkId = params.get("fork");
+    if (!forkId) return null;
+    params.delete("fork");
+    const qs = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    return /^[a-f0-9]{32}$/.test(forkId) ? forkId : null;
+  } catch {
+    return null;
+  }
+}
+
 function sendClientMessage(ws: WebSocket, msg: WSClientMessage): void {
   ws.send(JSON.stringify(msg));
 }
@@ -134,6 +149,7 @@ export function useChat() {
   const reusableThinkingId = useRef<string | null>(null);
   const disposedRef = useRef(false);
   const connectRef = useRef<() => void>(() => {});
+  const pendingForkRef = useRef<string | null>(readPendingForkFromUrl());
 
   const sendSetModel = useCallback((opt: ModelOption) => {
     const ws = wsRef.current;
@@ -256,6 +272,13 @@ export function useChat() {
             }
             if (ws.readyState === WebSocket.OPEN) {
               sendClientMessage(ws, { type: "get_models_config" });
+            }
+            // T3.2 fork 续写：首帧会话就绪即应用分享 fork 暂存副本（服务端随后
+            // canvas_restore 水合可写画布，血缘 forkFrom 已在服务端 sidecar 落定）。
+            if (pendingForkRef.current && ws.readyState === WebSocket.OPEN) {
+              const forkId = pendingForkRef.current;
+              pendingForkRef.current = null;
+              sendClientMessage(ws, { type: "canvas_fork_apply", forkId });
             }
             break;
 
