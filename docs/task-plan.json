@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T01:35:00+08:00",
+  "updatedAt": "2026-11-14T08:45:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -914,6 +914,12 @@
           "at": "2026-11-13T14:05:00+08:00",
           "by": "main-session",
           "note": "验收通过（PR #33 已由用户合并，merge 9783b92）。① 合并态独立复跑（本机 Windows，main=ab42d46）：build/lint/verify 均 exit 0，脚本断言 612 → 623 项 0 失败（+11 全在 verify:export 126→137；其余 8 个脚本一字不差，verify:semantic-lineage 仍 48 项 → 边形状/Handle/sidecar 往返零回归），vitest 14 文件 155 例 → 15 文件 193 例，UI 子集 4 文件 21 例 → 4 文件 31 例，verify 后工作树干净。② 合并态 CI 复核（run 43373860168，ubuntu，push main）：脚本 616（=623-7 SKIP）、vitest 193 例 + UI 31 例全绿 → X13 新增用例在 Linux 上同样通过，与 X14 门禁无交互问题。③ 范围与纪律核对：diff 16 文件 +1345/-25，未触碰 .github/、task-plan.json、server/table-relations.ts（取数层）、package.json/lockfile、src/utils/layout.ts（方案B）、src/utils/lineage.ts（APPEARANCE）；tests/integration/table-relations.test.ts（server 27 例）与 canvas-store.test.ts（X10 星型/去重用例）未修改即通过 → 匹配与去重语义对外不变。④ 源码抽查通过：tableRelationsHint 判定表符合「不打扰」（graph 正常态与无关系态静默、fields/error 才亮灯、画布截断 60 字 + title 全文、导出全文）；relationEdgeLabel 为边 label 唯一来源（type · 列映射，多条附 +N）；canvas-store 仅在 lineageEdge 工厂产出的边上 spread data.tableRelations + label，不覆盖 data.lineageKind；导出关系文本全部经 esc() 转义；组件层零硬编码色值。⑤ 已审阅偏差（非阻断）：(a) tableSemanticEdgeCandidates 去重内部由单 seen 拆为 blocked+byPair（旧实现吞掉同节点对第二条关系），对外语义不变、由未改的既有测试证明；(b) TABLE_RELATIONS_HINT_COLOR '#F59B23' 与 caliber.ts 的 CALIBER_WARNING_COLOR 同值分处两模块 → P2 建议抽共享 token 常量。⑥ 清理：Orca worktree x13-table-relations-ui 已 rm --delete-branch，远端分支已删。遗留（design.md §8 七条，待用户/产品裁决是否立项）：最关键两条=边上只显示首条关系摘要（要全量需自定义 edge 组件，须先解 edge.type 断言与 withSemanticHandles 幂等）、dim 侧无入向关系视图（tableRelations 本身是出向）；另**人工目视项**（jsdom 无布局引擎，清单见 verification.md §7）需用户在真实画布上确认：边 label 低缩放可读性、节点增高后方案B 同列堆叠间距/对齐、警示黄对比度、description truncate、折叠按钮不误触拖拽、导出表格列宽与 SVG 悬停。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-14T08:45:00+08:00",
+          "by": "main-session",
+          "note": "用户裁决（2026-11-14）：design.md §8 遗留 1「边上只显示首条关系摘要 + `+N`」= **保持现状，不立项**（要边上全量可见需自定义 edge 组件，并先解 verify-semantic-lineage 的 edge.type 断言与 withSemanticHandles 幂等约束，成本不划算；完整信息已在节点小节与导出报告里可见）。遗留 2「dim 侧只有出向视图、看不到被谁引用」**本次未表态 → 继续待裁决**（若要做属前端按匹配键反向聚合的 UI 扩展）。遗留 5「X10 遗留① 同名表跨 catalog/schema 变体匹配可能误配」已按用户提问立项为 **X17**（表间关系匹配精确化）。遗留 3（description 换行/限长）已被 X15.1 的 hover 方案实质解决；遗留 4/6/7 继续挂着（jsdom 无布局引擎、mock 路径不产出关系、关系多于 3 条时节点变高）。"
         }
       ],
       "scope": [
@@ -1044,6 +1050,147 @@
           "at": "2026-11-14T01:35:00+08:00",
           "by": "main-session",
           "note": "验收通过（PR #34 已由用户合并，merge a54360e；配套文档记账 PR #35 merge a88a22a）。① 合并态独立复跑（本机 Windows，main=586792f）：build/lint/verify 全 exit 0，脚本断言 **624 项 0 失败**（manifest 92/rerun 71/audit 119/**export 138**/source-table 39/**semantic-lineage 48**/caliber 46/cwd 13/prompt-injection 58），vitest **15 文件 194 例**、UI **4 文件 31 例**，verify 后 git status --porcelain 干净 → 相对 X13/X14 基线（623 项 / 15 文件 193 例 / UI 31 例）为 +1 脚本断言 +1 vitest 例，无回归。② CI 实证：PR #34 两次 run 均 success（43456216218 pull_request 54s、43460257999 synchronize 1m7s），ubuntu 脚本 617（=624−verify:cwd caseDrift SKIP 7）、194+31 例全绿；合并后 main 的 push run 43461778446 success（1m9s）、文档直推 run 43462139558 success。③ 抽查关键实现：relationEdgeLabel 只出列映射且用 find() 取首条有列映射的关系；relationRowTitle 三段（目标表全限定名/字段关联/说明）缺项自动省略且**不拼 relationshipType**；canvas-store 仅在 lineageEdge 工厂产出的边上 spread data.tableRelations + 非空 label；SourceTableNode 关系行子节点 3→2、行级 title 生效；export-report 关系表三列（目标表/列映射/说明）且全文不含类型值。④ 反向验证（两次，均实测）：把类型拼回 label → vitest 4 failed | 24 passed；把 description 行加回组件 → tests/ui 1 failed | 15 passed；还原后 2 文件 45 例全绿 → 新断言能抓住回退。⑤ 用户三项裁决已全部落地并留痕：导出报告保持现状（画布 hover / 导出说明列的不对称为最终形态）、触屏无 hover 暂忽略（已知取舍）、ruleset 加 admin bypass 供文档直推（代码仍走 PR）。⑥ 清理：远端与本地的 chenxinma/x15-relation-columns-only、chore/plan-x151-bookkeeping 均已删除。遗留（design.md §6，均不阻断）：+N 在混合缺列时的近似语义、类型信息 UI 可发现性归零（要恢复只需在 relationRowTitle 加一行）、TABLE_RELATIONS_HINT_COLOR 与 CALIBER_WARNING_COLOR 同值分处两模块（P2 抽共享 token）、X13 两条产品裁决未解（边只显首条关系摘要、dim 侧无入向视图）。**新基线：脚本 624 项（Windows）/ 617（ubuntu CI）、vitest 15 文件 194 例、UI 4 文件 31 例。**"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-14T08:45:00+08:00",
+          "by": "main-session",
+          "note": "用户裁决（2026-11-14）：design.md §6 遗留 5「TABLE_RELATIONS_HINT_COLOR 与 CALIBER_WARNING_COLOR 同值分处两模块」= **保持分开设定，不抽共享 token**——两者是不同语义的提示信息（表间关系来源/降级 vs 口径冲突），当前同用 green-deck warning 黄只是配色巧合，将来任一方调色不应牵连另一方。该 P2 项就此关闭，不再排期。"
+        }
+      ]
+    },
+    {
+      "id": "X16",
+      "title": "CI 维护小修包（actions 升级/pin、runner 钉版、断言数看板、windows nightly 腿、并发组）",
+      "status": "pending",
+      "kr": null,
+      "dependsOn": [
+        "X14"
+      ],
+      "note": "用户裁决 2026-11-14「X14 小修打包 OK」→ 把 X14 design.md §8 的遗留 1/2/6 与主会话验收时补录的两条 CI 注解归口成一个低成本维护任务。触发证据：① 首次真实 run 的注解「Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4」（GitHub 2025-09-19 起弃用 Node 20）；② 注解「The ubuntu-latest label will migrate to Ubuntu 26 beginning October 19, 2026」（actions/runner-images#14748）；③ 主会话观察（X14 history 2026-11-14）：concurrency 组按 `workflow + ref` 分组，连续 push main 时前一个 run 被 cancel-in-progress 取消（#34 合并的 run 43461685410 被 #35 推送取消），最终态由后续 run 覆盖验证，暂不构成风险但需明确取舍。范围纪律：只动 .github/workflows/ 与三件套，不改业务代码、不削弱任何断言、不改 required check 名（改名必须同步告知用户更新分支保护 ruleset）。",
+      "scope": [
+        "actions 升级或 pin：`actions/checkout@v4` / `actions/setup-node@v4` → v5，或 pin 到 commit SHA（两种取舍写进 design.md：pin SHA 供应链更安全但升级需手工、major tag 省事但有行为变更风险；X14 §8 遗留 6 建议 pin）；目标是消除 run 注解里的 Node 20 弃用警告",
+        "runner 钉版：`ubuntu-latest` → `ubuntu-24.04`（规避 2026-10-19 起 ubuntu-latest 迁 Ubuntu 26 带来的不可预期变化），并在 design.md 写清升级策略（何时、如何试 26、需要重跑哪些对照）",
+        "断言数看板（**非门禁**，不得阻断合并）：解析 verify 输出的四种小结格式（`共 N 项断言，失败 0 项` / `N/N checks passed` / `N/N 通过` / vitest `Test Files`+`Tests`），与基线比对后只写 `$GITHUB_STEP_SUMMARY`；必须显式建模平台差值（ubuntu 上 `verify:cwd` 的 caseDrift 闸门固定 SKIP 7 项 → 基线 617 而非 624），不得把 SKIP 报成漂移；基线来源建议读 `docs/task-plan.json`（避免第二处硬编码）",
+        "可选 windows nightly 腿：`schedule` 触发的 `windows-latest` job 只跑 `npm run verify:cwd`（覆盖 ubuntu 永久 SKIP 的那 7 项大小写断言），**不设必需检查**；先评估分钟数额度，若用户嫌贵可只做前 3 项（design.md 记录取舍）",
+        "concurrency 取舍：若要求「每个 main commit 都有 completed run」，把并发组按 commit sha 分组或对 `push` 事件关闭 `cancel-in-progress`（PR 侧保留取消以省额度）；若接受现状则在 workflow 注释与 design.md 里写明「连续合并时中间 commit 可能无 completed run，最终态由后续 run 覆盖」",
+        "三件套落盘 docs/tasks/X16-ci-maintenance/（design.md 含每项取舍与「遗留问题」小节、CHANGES.md、verification.md 附改动前后的真实 run 链接与注解对比）"
+      ],
+      "acceptance": [
+        "改动后的 CI 在真实 PR 上跑绿，且 run 的 ANNOTATIONS 里**不再出现 Node.js 20 弃用警告**（贴改动前后两次 run 的注解对比）",
+        "required check 名保持 `build + lint + verify` 不变（若确需改名，先在 design.md 写明并提示用户同步更新 ruleset 27209918，不得擅自改）",
+        "断言数看板若落地：输出与实际一致（ubuntu 617 / windows 624 口径分清），且**看板失败不阻断**（用一次故意的基线不符验证它只出 warning/summary 不红）",
+        "ubuntu 上脚本断言仍为 617（=624−7 SKIP）、vitest 15 文件 194 例 + UI 4 文件 31 例零回归；不改业务代码与既有 verify 脚本断言；不引入运行时依赖",
+        "走 GitHub PR（用户合并）；合并后主会话在真实 run 上复核注解消失与断言数"
+      ],
+      "outputDir": "docs/tasks/X16-ci-maintenance/",
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-11-14T08:45:00+08:00",
+          "by": "main-session",
+          "note": "按用户裁决「X14 小修打包 OK」立项，归口 X14 的 3 条遗留 + 2 条 CI 注解 + 1 条 concurrency 观察。无前置阻塞（dependsOn X14 已 accepted）。用户指令「先不要做实际开发」→ 本条目仅完成立项与 scope/acceptance 定稿，暂不派发。"
+        }
+      ]
+    },
+    {
+      "id": "X17",
+      "title": "表间关系匹配精确化（全限定名全等优先 / 可选图谱 PhysicalTable id）——解 X10 遗留①跨库同名表误配",
+      "status": "pending",
+      "kr": null,
+      "dependsOn": [],
+      "note": "起因：用户 2026-11-14 就 X10 遗留①（同名表跨 catalog/schema 时点号后缀变体匹配可能误配）提问「是否可以通过 PhysicalTable 的 ID 进行判断？」。**主会话取证结论（2026-11-14，只读查询 + schema.md 核对）**：① `schema.md` 明确 `PhysicalTable` 的 `primary_key = id`，属性含 `id / node_id / full_table_name / schema / table_name / name / database_name`；② live 图谱实测 id 形如 `PT11B596C1` 且与 `node_id` 同值、每表唯一（chocolate 4 表 + sales 若干表逐行确认）；③ **当前图谱不存在重名**：`MATCH (t:PhysicalTable) WITH t.full_table_name AS ftn, count(*) AS c WHERE c>1 RETURN ftn,c` 返回 `Data not found.`，裸 `table_name` 亦全部 count=1 → 误配目前是**潜在风险而非现实缺陷**；④ 现有 `buildRelatesToCypher`（server/table-relations.ts:114-122）**已经 RETURN `b.full_table_name AS target`**，只是前端匹配没有用它做全等优先（`src/utils/table-relations.ts` 一律走点号后缀变体集合求交）。**结论**：id 方案可行（id 唯一且是主键），但画布 sourceTable 节点当前不携带图谱 id，要用 id 匹配必须新增「表键 → PhysicalTable.id」解析（新增图谱查询或复用注入链路）+ 新可选字段 + 旧节点回退逻辑；而**档 A（用已有的 target 全限定名做全等优先匹配）零新增查询即可消掉主要误配场景**。故本任务默认做档 A，档 B（id）列为可选增强，需用户点头再做。",
+      "scope": [
+        "**档 A（默认实施）**：`TableRelation` 增可选键 `targetQualifiedName`（取图谱 `b.full_table_name` 原值，缺失不建键、禁止猜测）；`server/table-relations.ts` 的 `relationsFromGraphRows` 落该键（字段级降级路径没有全限定名 → 不建键，行为不变）；`src/utils/table-relations.ts` 的匹配改为**三级**：① `targetQualifiedName` 与既有节点 `qualifiedName` 全等（大小写归一）→ 命中即止；② 未命中才退到现有 `tableKeyVariants` 点号后缀变体求交；③ 都不中不建边。既有去重（无向 pairKey、① 优先于 ②、自环丢弃、既有语义边不重建）语义一字不改",
+        "**档 B（可选，须用户明确同意才做）**：`buildRelatesToCypher` 加 `RETURN b.id AS target_id`（属性名严格取自 schema.md），`TableRelation` 增可选 `targetGraphId`；sourceTable 节点增可选 `graphNodeId`（在 `govio_create_source_table` 里按表键查一次 `PhysicalTable.id`，走 `runGraphQuery` 缓存；查不到不写键）；匹配升级为「id 全等 → 全限定名全等 → 变体兜底」。必须评估新增查询对节点创建延迟的影响（X10 遗留⑤：冷启动实测 2.5~4.3s、最坏 8s 本地超时闸），优先考虑把 id 并入既有 RELATES_TO 查询（`a.id`/`b.id` 同批返回）而不是新增一次查询",
+        "断言（不靠人工）：构造 fake runner 灌**同名跨库**两行（如 `sales.a.dim_product` 与 `sales.b.dim_product`，各自不同 id/全限定名），验证边连到正确的那一个；另覆盖「只有裸表名可匹配时退回变体兜底」「全等命中时不再误配同名表」「字段级降级路径（无 targetQualifiedName）行为不变」；既有 `tests/integration/table-relations.test.ts`（server 27 例）、`canvas-store.test.ts`（X10 星型/双向/去重）、`table-relations-ui.test.ts`（X13/X15 展示与边 label）**零回归、不修改即通过**",
+        "不改展示层口径（X15/X15.1 已定：不显示关系类型、description 只在 hover、导出保留说明列）；不改 `lineage.ts` APPEARANCE 与 `layout.ts` 方案B；不改 `PROTOCOL_VERSION`（新字段走 `Type.Unknown()` 载荷）",
+        "文档：`docs/specs/02-nodes.md`（`TableRelation` 新键 + 匹配优先级）、`docs/specs/06-backend.md`（tableRelations 事件字段）、`docs/tasks/X10-table-semantic-edges/design.md` §8 遗留 1 与 `docs/tasks/X13-table-relations-ui/design.md` §8 遗留 5 标注「已由 X17 解决」；三件套落盘 docs/tasks/X17-relation-match-exact/",
+        "若做档 B：Cypher 执行前必读 `.agents/skills/govio/assets/schema.md`（属性名不得凭记忆构造），只读查询、禁止任何写图/清图命令"
+      ],
+      "acceptance": [
+        "构造的跨库同名表场景下，边连到**正确**的表（自动化断言，附测试输出）；档 B 若做，则 id 全等优先于全限定名、全限定名优先于变体，三级顺序各有断言",
+        "现有 live 图谱行为不变：chocolate 星型 4 表仍出 3 条 fact→dim 语义边，`tableRelationsSource`/`tableRelationsError` 留痕与字段级降级路径照旧",
+        "npm run build / lint / verify 全绿；基线（脚本 624 项 / vitest 15 文件 194 例 / UI 4 文件 31 例；ubuntu CI 617）零回归 + 新增用例，新增断言数与覆盖点在 verification.md 逐项列出；verify 后 git status 干净",
+        "新增字段全部可选、旧节点/旧 sidecar 回退不报错；不改展示层、不改 PROTOCOL_VERSION、不引入新依赖",
+        "档 B 未获用户同意前**不得实施**（只做档 A）；实施档 B 时须在 design.md 给出延迟评估实测数据",
+        "走 GitHub PR（用户合并）"
+      ],
+      "outputDir": "docs/tasks/X17-relation-match-exact/",
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-11-14T08:45:00+08:00",
+          "by": "main-session",
+          "note": "按用户提问立项，附主会话取证（图谱 id 唯一且为 primary_key、当前图谱无重名、现有查询已返回 b.full_table_name）。建议档 A 先做（近零成本消主要风险），档 B（id）待用户点头。用户指令「先不要做实际开发」→ 仅立项定稿，暂不派发。"
+        }
+      ]
+    },
+    {
+      "id": "X18",
+      "title": "SQL 节点卡片渲染 semanticRefs 徽标（PD-1 方案 1：口径/指标在画布可见）",
+      "status": "pending",
+      "kr": null,
+      "dependsOn": [],
+      "note": "用户裁决 2026-11-14：PD-1「指标在画布的体现」选 **方案 1（最小档）——在 SQL 节点卡片渲染 refs 徽标**（方案 2 语义边悬停显示共用指标、方案 3 新增独立指标/口径节点类型均不做）。背景：T2.2 已让 sqlQuery 节点携带 `semanticRefs`（引用的图谱 Metric/Dimension/字段标准），血缘边也能区分数据/语义血缘，但**指标本身在画布上不可见**——只存在于节点属性里（T2.2 design.md 遗留 3、PD-1 记录 2026-11-06）。现状取证（2026-11-14）：`src/components/Nodes/SQLQueryNode.tsx` 只渲染 T2.3 的口径警示（`caliberNodeAppearance`，第 55/105/109-117/170-175 行），**没有任何 semanticRefs 渲染**；`SemanticRef = { entityType, id, code?, name? }`（`src/types/semantic.ts:15-21`，entityType 取值见同文件）。",
+      "scope": [
+        "`SQLQueryNode.tsx` 新增「口径」徽标区：按 `semanticRefs` 渲染 `code ?? name`（两者都缺则跳过该条，**禁止渲染 undefined/空徽标**）；建议 Metric 优先且默认只展示前 N 条（沿用关系小节的折叠范式，N 与是否折叠在 design.md 定），Dimension / 字段标准是否同排展示给取舍（避免节点过长挤压画布密度）",
+        "与 T2.3 口径警示的视觉分工：警示（`caliberNodeAppearance` 唯一来源，warning 黄 `#F59B23`）优先级高于徽标，冲突态下徽标不得削弱警示可读性；沿用既有 green-deck token class，不写死新色值、不新增第二套徽标样式（复用 sourceTable 关系小节/PK-FK 徽标的视觉语言）",
+        "hover `title` 给完整信息（entityType + code + name + 图谱 id），与 X15.1 的取舍一致：画布轻、详情按需；触屏无 hover 的局限按 X15.1 同款处理（已知取舍，暂不做点击弹层）",
+        "无 `semanticRefs`（旧节点 / 未命中图谱实体 / 图谱降级 / 手动建的 SQL 节点）时**整个徽标区不渲染**（不打扰、不出现空壳行）",
+        "导出 HTML 是否同步渲染 refs 徽标 → design.md 给取舍（建议同步，风格与 Manifest 附录一致；若同步则 `scripts/verify-export-report.ts` 补断言）",
+        "测试：`tests/ui/sql-query-node.test.tsx` 扩用例（徽标渲染、code 优先/name 回退/两者都缺跳过、无 refs 不渲染、与口径警示共存、折叠交互若有）；如涉及节点形状或导出则同步补 `scripts/verify-semantic-lineage.ts` / `verify-export-report.ts` 断言（**只增不削**）",
+        "文档：`docs/specs/02-nodes.md`（sqlQuery 节点结构新增徽标区）、`docs/PENDING-DISCUSSION.md` PD-1 标注已裁决并落地、`docs/demo/video-script-chocolate.md` 若涉及口径可见性的措辞同步；三件套落盘 docs/tasks/X18-sql-node-semantic-badges/"
+      ],
+      "acceptance": [
+        "引用了图谱指标的 SQL 节点在画布上可见口径徽标（如「销售额」），自动化 UI 断言 + 人工目视各一次（截图或文字描述记入 verification.md）",
+        "旧节点 / 无注入 / 图谱降级 / 手动 SQL 节点时无徽标、无空行、无 `undefined` 文案",
+        "与 T2.3 口径警示共存不互相遮挡；`caliberNodeAppearance` 仍是警示配色与文案的唯一来源（不在组件里写死色值）",
+        "npm run build / lint / verify 全绿；基线（脚本 624 项 / vitest 15 文件 194 例 / UI 4 文件 31 例）零回归 + 新增用例；verify 后 git status 干净",
+        "不新增节点类型（明确排除 PD-1 方案 3）、不改边语义与 `lineage.ts`、不改 PROTOCOL_VERSION、不引入新依赖",
+        "界面交互改动 → 走 GitHub PR（用户合并）"
+      ],
+      "outputDir": "docs/tasks/X18-sql-node-semantic-badges/",
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-11-14T08:45:00+08:00",
+          "by": "main-session",
+          "note": "按用户裁决立项（PD-1 方案 1）。方案 2（语义边悬停显示共用指标）与方案 3（新增指标/口径节点类型）明确不做；若将来要升级到方案 3 须单独立项（涉及节点类型、dagre/方案B 布局、导出三处扩展）。用户指令「先不要做实际开发」→ 仅立项定稿，暂不派发。"
+        }
+      ]
+    },
+    {
+      "id": "X19",
+      "title": "口径判定升级：维度限定条件的实质比对（PD-2 定调落地，跨仓 govio + govio-map）",
+      "status": "pending",
+      "kr": null,
+      "dependsOn": [],
+      "note": "用户裁决 2026-11-14：PD-2「以**计算表达式**和**维度限定条件**作为实质判断依据」（取代「列名是否在 SQL 里出现过」的粗判与别名启发式）。**主会话取证（2026-11-14，只读 `D:/Work/gov-io/govio/src/govio/metadata/caliber.py`）**：① 计算表达式部分**已落地**——`_canonical_expr`(406) 剥 ROUND/CAST/`::type` 展示包装、去表限定、压空白、小写；`_compare_aggregation`(424) 已按归一后的**聚合参数表达式**比对（docstring 明写「旧实现只比 (func, distinct)，这类『列在但表达式被扭曲』漏判」），即 PD-2 方案 1 已由 govio `33080fd` / map `625260e` 交付；② **维度限定条件是缺口**——`_compare_filter`(522) 目前只做「指标定义里的**剔除类**词是否出现在 SQL WHERE 段」的子串包含 + 否定算子检查，且 docstring 明写「全部存疑：只给 unknown，不判 conflict」；没有把 WHERE/GROUP BY 里的维度限定（列 + 算子 + 值集合，如 `country_id IN (...)`、`channel='online'`）与指标侧维度声明（`Metric.statistical_scope`、`DIMENSION_USED`、`REFERS_COLUMN role=dimension` 及 `Dimension.values_example` 枚举码值）做结构化比对；`_compare_time_scope`(559) 需同批核查深度；③ `_compare_columns`(597) 已改 measure-first（PD-2 方案 2 已落地，dimension_ref 缺失不再产存疑噪声）。**故本任务实质工作 = 维度限定条件的结构化实质比对，核心代码在 govio 仓**；map 侧只消费 `caliberCheck`（`src/utils/caliber.ts` 的 `CALIBER_ASPECT_LABELS`、`scripts/verify-caliber-conflict.ts` 46 项 stub 断言、SQLQueryNode 警示区）。**PD-2 的方案 C（别名归一 + 声称判定）用户本次未表态 → 不在本任务内**，继续挂 PENDING-DISCUSSION（其启发式词典与本任务「实质依据」纪律相冲突，须单独裁决）。",
+      "scope": [
+        "（govio 仓，核心）把维度限定从「剔除词子串包含」升级为**结构化比对**：从 SQL 解析维度限定三元组（列 / 算子 / 值集合，复用 sqlparse 分词与 `_canonical_expr` 归一口径），与指标侧维度声明对齐（`Metric.statistical_scope` 文本 + `DIMENSION_USED` 关联的 `Dimension`（含 `values_example` 枚举码值）+ `REFERS_COLUMN role=dimension`），产出 `consistent` / `conflict` / `unknown` **三态**而不是一律 unknown",
+        "（govio 仓）判定纪律：**宁可 unknown 不误报**（沿用既有取舍）——只有「SQL 的维度限定与指标声明实质矛盾」才判 conflict（例：指标限「华东区」而 SQL 无任何区域限定、或限定了别的区域）；「SQL 多了指标未声明的限定」按存疑处理并在 reason 里说明；**禁止引入别名同义词典一类启发式**（那是未获授权的方案 C）",
+        "（govio 仓）`_compare_time_scope` 同批核查：时间窗是否也应按「实质比对」升级（如指标声明月度而 SQL 取年度），或明确维持现状并在 design.md 说明理由",
+        "（map 仓）`scripts/verify-caliber-conflict.ts` 补 stub 断言覆盖维度维度的三态、CLI 失败/非 JSON/空输入的降级（仍省略 `caliberCheck` 键、不抛错不阻断）；`src/utils/caliber.ts` 的 `CALIBER_ASPECT_LABELS` 若新增 aspect 则同步展示名（`filter` 已有）；SQLQueryNode 警示区展示维度差异时沿用 X15.1 的「画布轻、详情 hover/展开」取舍",
+        "跨仓协同纪律：govio 侧改动走 **govio 仓自己的任务/PR 流程**（该仓有独立 worktree 与 setup hook `uv sync`），map 侧任务书须写明依赖的 govio 版本（当前 runtime 0.7.2）与 CLI 输出契约（`caliber` 子命令 JSON 形状若不变，map 侧无需改解析；若要加字段则先改 map 的 `parseCaliberOutput` 容错再改 CLI）；两仓改动**不得互相假设对方已合并**，先合 govio 再合 map 或反之都要能独立跑绿",
+        "回归样本：把 PD-2 补充里的 8 档 SQL（s1-s4 / t1-t4）固化为用例集，逐档记录改动前后判定——预期 s2/t2「正确口径」由 `unknown` → `consistent`，t4「算术修饰」保持 `conflict`，s1/s3/s4/t1/t3 的 conflict 不回归",
+        "文档：map 侧三件套落盘 docs/tasks/X19-caliber-dimension-substance/（design.md 含判定矩阵、三态边界、与方案 C 的界限、「遗留问题」小节）；`docs/PENDING-DISCUSSION.md` PD-2 标注已定调并立项；若涉及指标元数据字段补充（如「输出列名」声明）须在 design.md 单列并说明是否需 govio 元数据侧配合"
+      ],
+      "acceptance": [
+        "8 档样本判定符合预期表（逐档贴 CLI 输出）：正确口径可达 `consistent`（不再被 dimension_ref 噪声稀释）、算术修饰仍 `conflict`、既有 conflict 档零回归",
+        "维度限定的 conflict 判定每条都能对应到「实质依据」（指标声明的维度/范围 vs SQL 的维度限定三元组），reason 文案可读；无维度声明的指标不因维度维度产出存疑噪声",
+        "未引入别名同义词典/启发式改名归一（方案 C 未获授权）；判定纪律「宁可 unknown 不误报」在 design.md 有明确条目与反例",
+        "map 侧 `npm run build/lint/verify` 全绿：`verify-caliber-conflict` 46 项零回归 + 新增断言；CLI 不可用/超时/输出不可解析时仍降级省略 `caliberCheck`；基线（脚本 624 / vitest 15 文件 194 例 / UI 4 文件 31 例）零回归",
+        "govio 侧按其仓约定交付（测试 + 文档），并在 map 侧 verification.md 记录所用 govio 版本与 commit",
+        "两仓各自走 PR（用户合并）；合并顺序与独立性在 design.md 写明"
+      ],
+      "outputDir": "docs/tasks/X19-caliber-dimension-substance/",
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-11-14T08:45:00+08:00",
+          "by": "main-session",
+          "note": "按用户裁决立项（PD-2 定调：计算表达式 + 维度限定条件为实质判据）。取证确认表达式部分已落地（govio 33080fd / map 625260e），本任务聚焦维度限定条件的结构化比对；核心代码在 govio 仓，属**跨仓任务**，派发前需确认在哪个仓起 worker（建议 govio 仓为主、map 仓跟随一个小 PR）。方案 C（别名归一）未获授权，不在范围内。用户指令「先不要做实际开发」→ 仅立项定稿，暂不派发。"
         }
       ]
     }
