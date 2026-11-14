@@ -17,6 +17,9 @@
  *  6. 往返：saveCanvas -> loadCanvas -> hydrateSession 深度相等
  *  7. UI 状态映射：caliberNodeAppearance（conflict 亮警示、consistent/unknown/旧节点
  *     不打扰）+ 警示色与 aspect 展示名常量
+ *  8. X19-W5b 维度限定三态：govio W5a 结构化比对产物（aspect 仍为 filter/time_scope、
+ *     条目形状与三态取值不变）从 CLI JSON -> 事件 -> node.data -> UI 映射全链路透传
+ *     （含 reason 文案），并补强 CLI 空输出/空 results 两类降级输入
  *
  * 不调 govio-cli、不调模型、不碰 `.govio/`。任一断言失败退出码为 1。
  */
@@ -50,6 +53,11 @@ function check(label: string, cond: boolean, detail?: string): void {
     failures.push(label);
     console.log(`  ✗ ${label}${detail ? ` — ${detail}` : ""}`);
   }
+}
+
+/** 维度差异 reason 是否含线索词（核对文案随条目透传，map 侧不改写文案本体） */
+function caliberReasonHas(cliJson: string, needle: string): boolean {
+  return (parseCaliberOutput(cliJson)?.differences ?? []).some((d) => (d.detail ?? "").includes(needle));
 }
 
 const REFS: SemanticRef[] = [
@@ -99,6 +107,113 @@ const CLI_MIXED = JSON.stringify({
 });
 
 const CLI_CONSISTENT = JSON.stringify({ results: [{ metric: { code: "gmv" }, status: "consistent", differences: [] }] });
+
+// ── X19-W5b 维度限定三元组比对产物（govio c621de9 `_compare_dimensions`/`_compare_time_grain`）──
+// 契约未变：三态取值与 differences 条目形状同旧，维度差异复用既有 filter/time_scope aspect。
+
+/** 判定矩阵 #3：同维度被限定到指标未选取的声明枚举值 → 实质矛盾（conflict） */
+const CLI_DIM_CONFLICT = JSON.stringify({
+  results: [
+    {
+      metric: { id: "ME00000123", code: "m_sales_amount", name: "销售额" },
+      status: "conflict",
+      differences: [
+        {
+          aspect: "filter",
+          expected: "'中国'",
+          found: "c.country_name = '德国'",
+          detail: "SQL 把维度 国家 限定到指标未选取的声明取值（实质矛盾）",
+        },
+      ],
+    },
+  ],
+});
+
+const CHECK_DIM_CONFLICT: CaliberCheck = {
+  status: "conflict",
+  differences: [
+    {
+      metricCode: "m_sales_amount",
+      metricName: "销售额",
+      aspect: "filter",
+      expected: "'中国'",
+      found: "c.country_name = '德国'",
+      detail: "SQL 把维度 国家 限定到指标未选取的声明取值（实质矛盾）",
+    },
+  ],
+};
+
+/** 判定矩阵 #4/#11：取值不可枚举 + 附加未声明限定 → 存疑（unknown，不误报 conflict） */
+const CLI_DIM_UNKNOWN = JSON.stringify({
+  results: [
+    {
+      metric: { code: "m_sales_amount", name: "销售额" },
+      status: "unknown",
+      differences: [
+        {
+          aspect: "filter",
+          expected: "'中国'",
+          found: "f.country_id IS NOT NULL",
+          detail: "SQL 限定了维度 国家 所在列，但取值无法与声明枚举比对",
+        },
+        {
+          aspect: "filter",
+          expected: "指标声明的维度限定",
+          found: "ch.channel_name = 'online'",
+          detail: "SQL 附加了指标未声明的维度限定，可能收窄口径（存疑，不判冲突）",
+        },
+      ],
+    },
+  ],
+});
+
+/** 判定矩阵 #10：无维度声明 → 不产 filter 条目，正确口径可达 consistent */
+const CLI_DIM_CONSISTENT = JSON.stringify({
+  results: [{ metric: { code: "m_sales_amount" }, status: "consistent", differences: [] }],
+});
+
+/** 时间粒度（`_compare_time_grain`）：指标声明月度、SQL 取年度，aspect 仍为 time_scope */
+const CLI_GRAIN_CONFLICT = JSON.stringify({
+  results: [
+    {
+      metric: { code: "m_sales_amount" },
+      status: "conflict",
+      differences: [
+        {
+          aspect: "time_scope",
+          expected: "时间粒度 month",
+          found: "时间粒度 year",
+          detail: "SQL 时间粒度与指标声明不一致",
+        },
+      ],
+    },
+  ],
+});
+
+/** 维度存疑与聚合冲突共存（多指标汇总：conflict 优先于 unknown） */
+const CLI_DIM_MIXED = JSON.stringify({
+  results: [
+    {
+      metric: { code: "m_sales_amount" },
+      status: "unknown",
+      differences: [
+        {
+          aspect: "filter",
+          expected: "'中国'",
+          found: "GROUP BY country_id",
+          detail: "SQL 按维度 国家 分组而非限定，取值范围无法确认",
+        },
+      ],
+    },
+    {
+      metric: { code: "m_revenue" },
+      status: "conflict",
+      differences: [
+        { aspect: "aggregation", expected: "sum(amount)", found: "AVG(amount)", detail: "聚合函数与 formula 不一致" },
+      ],
+    },
+  ],
+});
 
 // ── 1. 调用参数 ───────────────────────────────────────────────────────────
 
@@ -151,6 +266,60 @@ console.log("\n[2] parseCaliberOutput：汇总 status + differences 扁平化 + 
     parseCaliberOutput('{"results":[{"status":"conflict","differences":[{"aspect":"x"}]}]}') === undefined);
 }
 
+// ── 2b. 维度限定三态透传（X19-W5b）────────────────────────────────────────
+
+console.log("\n[2b] 维度差异（filter/time_scope）三态：consistent / conflict / unknown 逐条透传");
+{
+  const dimConflict = parseCaliberOutput(CLI_DIM_CONFLICT);
+  check("维度实质矛盾 → 汇总 status conflict", dimConflict?.status === "conflict");
+  check("维度差异解析后深度相等（含指标归属与 reason）",
+    JSON.stringify(dimConflict) === JSON.stringify(CHECK_DIM_CONFLICT));
+  check("维度条目 aspect 复用既有 filter（map 解析面无需改动）",
+    dimConflict?.differences.length === 1 && dimConflict.differences[0].aspect === "filter");
+  check("维度三元组取值逐字透传（expected=声明取值 / found=SQL 限定原文）",
+    dimConflict?.differences[0].expected === "'中国'"
+    && dimConflict.differences[0].found === "c.country_name = '德国'");
+  check("维度 conflict 的 reason（detail）原样保留、不被改写",
+    dimConflict?.differences[0].detail === "SQL 把维度 国家 限定到指标未选取的声明取值（实质矛盾）");
+
+  const dimUnknown = parseCaliberOutput(CLI_DIM_UNKNOWN);
+  check("维度存疑不误报：只有存疑条目 → 汇总 unknown", dimUnknown?.status === "unknown");
+  check("unknown 下维度条目不丢、不合并（两条全保留且顺序不变）",
+    dimUnknown?.differences.length === 2
+    && dimUnknown.differences[0].found === "f.country_id IS NOT NULL"
+    && dimUnknown.differences[1].found === "ch.channel_name = 'online'");
+
+  const dimConsistent = parseCaliberOutput(CLI_DIM_CONSISTENT);
+  check("无维度声明不产条目：consistent 且 differences 空（降噪边界）",
+    dimConsistent?.status === "consistent" && dimConsistent.differences.length === 0);
+
+  const grain = parseCaliberOutput(CLI_GRAIN_CONFLICT);
+  check("时间粒度差异走既有 time_scope aspect 且判 conflict",
+    grain?.status === "conflict" && grain.differences[0].aspect === "time_scope");
+
+  const dimMixed = parseCaliberOutput(CLI_DIM_MIXED);
+  check("维度存疑 + 聚合冲突共存 → conflict 优先，两类条目共存",
+    dimMixed?.status === "conflict"
+    && dimMixed.differences.length === 2
+    && dimMixed.differences[0].aspect === "filter"
+    && dimMixed.differences[1].aspect === "aggregation");
+
+  const dimShapeBroken = JSON.stringify({
+    results: [
+      { metric: { code: "m_sales_amount" }, status: "conflict", differences: [{ aspect: "filter", expected: "'中国'" }] },
+    ],
+  });
+  check("维度条目同样受形状纪律约束（缺 found → undefined 省略键）",
+    parseCaliberOutput(dimShapeBroken) === undefined);
+  check("维度差异 reason 可读性：全部条目 detail 非空",
+    [CLI_DIM_CONFLICT, CLI_DIM_UNKNOWN, CLI_GRAIN_CONFLICT, CLI_DIM_MIXED]
+      .flatMap((out) => parseCaliberOutput(out)?.differences ?? [])
+      .every((d) => typeof d.detail === "string" && d.detail.trim().length > 0));
+  check("conflict 与存疑的 reason 可区分（实质矛盾 vs 存疑/无法确认）",
+    caliberReasonHas(CLI_DIM_CONFLICT, "实质矛盾")
+    && !caliberReasonHas(CLI_DIM_UNKNOWN, "实质矛盾"));
+}
+
 // ── 3. runCaliberCheck 降级纪律 ───────────────────────────────────────────
 
 console.log("\n[3] runCaliberCheck：成功透传；失败/非 JSON/空输入 → undefined（不抛错不重试）");
@@ -173,6 +342,19 @@ console.log("\n[3] runCaliberCheck：成功透传；失败/非 JSON/空输入 �
     await runCaliberCheck("", ["gmv"], () => { throw new Error("must not call"); }) === undefined);
   check("无指标 → undefined 且不调 CLI",
     await runCaliberCheck("SELECT 1", [], () => { throw new Error("must not call"); }) === undefined);
+
+  // 降级输入补强（X19-W5b）：CLI 进程成功但输出不可用时同样省略键
+  check("维度实质矛盾 → 成功透传（含 reason 逐字）",
+    JSON.stringify(await runCaliberCheck("SELECT 1", ["m_sales_amount"], () => Promise.resolve(CLI_DIM_CONFLICT)))
+    === JSON.stringify(CHECK_DIM_CONFLICT));
+  check("维度存疑 → 透传 unknown（不升级为 conflict）",
+    (await runCaliberCheck("SELECT 1", ["m_sales_amount"], () => Promise.resolve(CLI_DIM_UNKNOWN)))?.status === "unknown");
+  check("空输出 → undefined（不抛错不阻断）",
+    await runCaliberCheck("SELECT 1", ["gmv"], () => Promise.resolve("")) === undefined);
+  check("空 results 输出 → undefined（不建空 caliberCheck）",
+    await runCaliberCheck("SELECT 1", ["gmv"], () => Promise.resolve('{"results":[]}')) === undefined);
+  check("维度差异形状非法 → undefined（不猜补全）",
+    await runCaliberCheck("SELECT 1", ["gmv"], () => Promise.resolve('{"results":[{"status":"conflict","differences":[{}]}]}')) === undefined);
 }
 
 // ── 4. message_end 钩子（stub pi + stub CLI）──────────────────────────────
@@ -256,6 +438,37 @@ console.log("\n[4] message_end：semanticRefs 含 Metric → 事件带 caliberCh
   check("非 JSON 输出 → 省略键", !("caliberCheck" in (nonJson[0] as object)));
 
   cliCalls.length = 0;
+  cliBehavior = () => Promise.resolve(CLI_DIM_CONFLICT);
+  const dimEvent = await runMessageEnd("sess-1", SQL_TEXT);
+  check("维度实质矛盾 → 事件 caliberCheck 深度相等（含 reason）",
+    JSON.stringify(dimEvent[0]?.caliberCheck) === JSON.stringify(CHECK_DIM_CONFLICT));
+
+  cliBehavior = () => Promise.resolve(CLI_DIM_UNKNOWN);
+  const dimUnknownEvent = await runMessageEnd("sess-1", SQL_TEXT);
+  check("维度存疑 → 事件仍带 caliberCheck（unknown 数据可追溯，条目未丢）",
+    dimUnknownEvent[0]?.caliberCheck?.status === "unknown"
+    && dimUnknownEvent[0].caliberCheck.differences.length === 2
+    && dimUnknownEvent[0].caliberCheck.differences.every((d) => d.aspect === "filter" && !!d.detail));
+
+  cliBehavior = () => Promise.resolve(CLI_DIM_CONSISTENT);
+  const dimConsistentEvent = await runMessageEnd("sess-1", SQL_TEXT);
+  check("维度无声明（consistent）→ 建键但零条目（不被维度噪声稀释）",
+    dimConsistentEvent[0]?.caliberCheck?.status === "consistent"
+    && dimConsistentEvent[0].caliberCheck.differences.length === 0);
+
+  cliCalls.length = 0;
+  cliBehavior = () => Promise.resolve("");
+  const emptyOutEvent = await runMessageEnd("sess-1", SQL_TEXT);
+  check("空输出 → 省略键且不阻断建节点",
+    emptyOutEvent.length === 1 && !("caliberCheck" in (emptyOutEvent[0] as object)));
+
+  cliCalls.length = 0;
+  cliBehavior = () => Promise.resolve('{"results":[]}');
+  const emptyResultsEvent = await runMessageEnd("sess-1", SQL_TEXT);
+  check("空 results → 省略键且不阻断建节点",
+    emptyResultsEvent.length === 1 && !("caliberCheck" in (emptyResultsEvent[0] as object)));
+
+  cliCalls.length = 0;
   setSessionSemanticRefs("sess-1", [{ entityType: "Col", id: "c1" }]);
   setSessionCaliberMetrics("sess-1", []);
   const noMetrics = await runMessageEnd("sess-1", SQL_TEXT);
@@ -325,17 +538,30 @@ const legacyJson = JSON.stringify({
   sql: "SELECT 1",
   outputColumns: ["1"],
 });
+const dimWireJson = JSON.stringify({
+  type: "govio_node_create",
+  nodeType: "sqlQuery",
+  title: "Q: dimension",
+  sql: "SELECT SUM(f.amount) FROM fact_sales f WHERE c.country_name = '德国'",
+  outputColumns: ["sales_amount"],
+  caliberCheck: CHECK_DIM_CONFLICT,
+} satisfies CanvasEvent);
 try {
   useCanvasStore.getState().clearCanvas();
   useCanvasStore.getState().createGovioNode(JSON.parse(wireJson) as CanvasEvent);
+  useCanvasStore.getState().createGovioNode(JSON.parse(dimWireJson) as CanvasEvent);
   useCanvasStore.getState().createGovioNode(JSON.parse(legacyJson) as CanvasEvent);
   const saved = useCanvasStore.getState();
   const annotated = saved.nodes.find((n) => (n.data as { title?: string }).title === "Q: caliber");
+  const dimAnnotated = saved.nodes.find((n) => (n.data as { title?: string }).title === "Q: dimension");
   const legacy = saved.nodes.find((n) => (n.data as { title?: string }).title === "Q: legacy");
   check("node.data 写入 caliberCheck（深度相等）",
     JSON.stringify((annotated?.data as Record<string, unknown>).caliberCheck) === JSON.stringify(CHECK_CONFLICT));
   check("旧事件节点不建键（旧节点形状不变）",
     legacy !== undefined && !("caliberCheck" in (legacy.data as object)));
+
+  check("维度差异事件 -> node.data.caliberCheck 透传（WS JSON 往返后深度相等）",
+    JSON.stringify((dimAnnotated?.data as Record<string, unknown>).caliberCheck) === JSON.stringify(CHECK_DIM_CONFLICT));
 
   // ── 6. sidecar 往返 + hydrateSession ────────────────────────────────────
 
@@ -350,6 +576,9 @@ try {
     const loadedAnnotated = loadedNodes.find((n) => (n.data as { title?: string }).title === "Q: caliber");
     check("往返后 caliberCheck 深度相等",
       JSON.stringify((loadedAnnotated?.data as Record<string, unknown>).caliberCheck) === JSON.stringify(CHECK_CONFLICT));
+    const loadedDim = loadedNodes.find((n) => (n.data as { title?: string }).title === "Q: dimension");
+    check("往返后维度差异条目与 reason 完整保留",
+      JSON.stringify((loadedDim?.data as Record<string, unknown>).caliberCheck) === JSON.stringify(CHECK_DIM_CONFLICT));
     const loadedLegacy = loadedNodes.find((n) => (n.data as { title?: string }).title === "Q: legacy");
     check("往返后旧节点仍无 caliberCheck 键（历史 sidecar 兼容）",
       loadedLegacy !== undefined && !("caliberCheck" in (loadedLegacy.data as object)));
@@ -386,6 +615,25 @@ console.log("\n[7] UI 状态映射（caliberNodeAppearance）");
 
   check("aspect 展示名覆盖 CLI 全部维度",
     ["aggregation", "filter", "time_scope", "column", "metric", "sql"].every((a) => CALIBER_ASPECT_LABELS[a]));
+
+  // X19-W5b：govio W5a 实测产出的 aspect 集合（aggregation/column/filter/sql/time_scope）
+  // 全部落在既有展示名里；`metric` 无产出但保留（历史契约），故展示名零新增。
+  check("W5a 实际产出 aspect 全部已有展示名（无需新增条目）",
+    ["aggregation", "column", "filter", "sql", "time_scope"].every((a) => CALIBER_ASPECT_LABELS[a] !== undefined));
+  check("维度差异展示名：filter=过滤/统计范围、time_scope=时间窗",
+    CALIBER_ASPECT_LABELS.filter === "过滤/统计范围" && CALIBER_ASPECT_LABELS.time_scope === "时间窗");
+
+  const dimConflictView = caliberNodeAppearance(CHECK_DIM_CONFLICT);
+  check("维度实质矛盾 → 亮警示 + 徽标（与聚合冲突同一配色取舍）",
+    dimConflictView.showWarning && dimConflictView.badgeLabel === "口径冲突"
+    && dimConflictView.warningColor === CALIBER_WARNING_COLOR);
+  check("维度存疑 → 不打扰（宁可 unknown 不误报）",
+    !caliberNodeAppearance(parseCaliberOutput(CLI_DIM_UNKNOWN)).showWarning);
+  check("维度无声明 consistent → 不打扰",
+    !caliberNodeAppearance(parseCaliberOutput(CLI_DIM_CONSISTENT)).showWarning);
+  check("维度差异明细可渲染字段齐全（aspect 标签 + expected/found/reason）",
+    CHECK_DIM_CONFLICT.differences.every((d) => !!CALIBER_ASPECT_LABELS[d.aspect]
+      && d.expected.length > 0 && d.found.length > 0 && !!d.detail));
 }
 
 // ── 汇总 ─────────────────────────────────────────────────────────────────
