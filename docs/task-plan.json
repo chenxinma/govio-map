@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T14:12:48+08:00",
+  "updatedAt": "2026-11-14T14:16:39+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -418,6 +418,12 @@
               "at": "2026-11-14T12:39:57+08:00",
               "by": "main-session",
               "note": "主会话独立复跑验收通过（de82151，与 T3.2 合并单 commit）：build/lint/verify 全 0、624/215(+21)/31 零回归、package.json 零依赖变化（S3 后端零依赖 SigV4）、LocalBackend 逐字节不变有断言、凭据安全断言锁定。PR #38 已建（用户合并）。补录待办：真实 S3 端到端与浏览器冒烟（verification.md 有步骤）；遗留 7 条（真实 S3 未验、ListObjectsV2 未翻页最重）。"
+            },
+            {
+              "status": "done",
+              "at": "2026-11-14T14:16:39+08:00",
+              "by": "main-session",
+              "note": "真实 S3 端到端补录完成（0731a61，已推 PR #38）：RustFS 15/15 PASS（SigV4 反证 403、If-Match→LWW、跨实例 profile 发现、载荷无凭据、513ms 满足秒级约束）；剩余待补录仅浏览器 UI 冒烟与双实例互拉，virtual-host/翻页维持遗留。"
             }
           ]
         },
