@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T20:11:56+08:00",
+  "updatedAt": "2026-11-14T20:41:08+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1372,6 +1372,12 @@
           "at": "2026-11-14T20:11:56+08:00",
           "by": "main-session",
           "note": "PR #41 用户合并（merge 60c1506）；package.json=0.7.2 落 main，release-v0.7.2.md 含 X16-X21 全部变更与 0.7.1 跳过说明。本轮（govio-map 0.7.2）全部任务 accepted。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-14T20:41:08+08:00",
+          "by": "main-session",
+          "note": "GitHub Release v0.7.2 已发布（tag→f98c94c，latest，target main），附件改为 npm tgz 包 govio-map-0.7.2.tgz（2,459,730 B；此前 v0.7.0 附件是 Govio.Map.Setup.0.7.0.exe 134MB）。主会话端到端复核已上传资产：53 条目 = .agents 40（govio/assets 泄漏 0，按环境生成的图谱快照不随包分发）+ .pi/APPEND_SYSTEM.md + dist/dist-server 9 + package.json/README×2；包内 version=0.7.2、bin govio-map→dist-server/cli.mjs、cli.mjs node --check 通过、X21 懒加载 chunk 在位。files 字段无需改动（7b7c0a9 内置 .agents/.pi、65d540a 排除 govio/assets）。release notes 由 docs/release-v0.7.2.md 定稿（X21 归位、基线 671/273/37、安装与播种说明）。"
         }
       ]
     },
