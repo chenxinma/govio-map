@@ -22,6 +22,8 @@
  *  8. 确认门徽标区分（人工/自动放行）/ 审计截断告知 / 空 decisionIds 形态
  *  9. 表间关系详情（X13）：sourceTable 卡片的关系小节 + 来源/降级原因 + 边悬停说明，
  *     线型与图例仍按 lineageKind 泛化（自包含性质不变）
+ * 10. 口径引用（X18）：sqlQuery 卡片的 semanticRefs 小节——Metric 优先、code/name 都缺
+ *     的引用整条跳过、重复注入去重、注入内容转义、无引用时整节不渲染
  *
  * 不调 govio-cli、不调模型、不读任何数据内容、不碰 `.govio/`。任一断言失败退出码 1。
  */
@@ -240,6 +242,16 @@ const SQL_NODE: SQLQueryNodeData = {
   createdAt: "2026-10-30T22:09:00.000Z",
   sql: SQL_MONTHLY,
   outputColumns: ["月份", "区域", "销售额"],
+  // X18 口径徽标：Metric 优先 / code 优先 / name 回退 / code+name 都缺（Col）整条跳过 /
+  // 同一实体重复注入只留一条 / 名称里的注入内容必须转义
+  semanticRefs: [
+    { entityType: "Dimension", id: "d-region", code: "region", name: "区域" },
+    { entityType: "Metric", id: "m-gmv", code: "m_gmv", name: "销售额" },
+    { entityType: "Metric", id: "m-orders", name: "订单数" },
+    { entityType: "Col", id: "col-skipped-no-label" },
+    { entityType: "Metric", id: "m-gmv", code: "m_gmv", name: "销售额" },
+    { entityType: "Metric", id: "m-evil", code: "m_evil", name: `毛利 ${XSS_SENTINEL}` },
+  ],
   manifest: { ...MANIFEST_MONTHLY, dfName: undefined, rowCount: undefined, columnCount: undefined, checksum: undefined, origin: "assistant-sql", permissionDecisionId: null },
 };
 
@@ -573,6 +585,50 @@ console.log("\n[3b] 表间关系（X13）：血缘 SVG 悬停说明 + 边线型/
     && relHtml.includes('marker-end="url(#govio-arrow-sem)"') && relHtml.includes(semApp.label));
   check("X13 新增内容不破坏自包含（无 script、无外部引用）",
     !relHtml.includes("<script") && !/https?:\/\//.test(relHtml.replace(/xmlns(:xlink)?="[^"]*"/g, "")));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\n[3c] 口径引用（X18，PD-1 方案 1）：sqlQuery 卡片渲染 semanticRefs");
+{
+  check("X18：口径引用小节进卡片，计数只算可展示徽标（4 条：3 指标 + 1 维度）",
+    HTML.includes("口径引用（4）"));
+  check("X18：Metric 排在 Dimension 前（表格行序 = 画布徽标序）",
+    HTML.indexOf("<code>m_gmv</code>") >= 0 && HTML.indexOf("<code>region</code>") >= 0
+    && HTML.indexOf("<code>m_gmv</code>") < HTML.indexOf("<code>region</code>"));
+  check("X18：code 缺失时回落 name 呈现", HTML.includes("<td>订单数</td>"));
+  check("X18：code/name 都缺的引用整条跳过（图谱 ID 也不进产物）",
+    !HTML.includes("col-skipped-no-label"));
+  check("X18：同一实体重复注入只渲染一条（去重口径与语义边一致）",
+    HTML.split("<code>m-gmv</code>").length - 1 === 1);
+  check("X18：口径引用里的注入内容被转义（不变成脚本）",
+    HTML.includes("毛利 &lt;script&gt;") && !HTML.includes("毛利 <script>"));
+
+  // 旧节点 / 手动建的 SQL 节点 / refs 只有 Col：整节不渲染，卡片形状不变
+  const bareSql: SQLQueryNodeData = {
+    type: "sqlQuery",
+    title: "手动 SQL（无口径归因）",
+    createdAt: "2026-10-30T22:09:00.000Z",
+    sql: "SELECT 1",
+    outputColumns: ["1"],
+  };
+  const bareHtml = buildDeliveryReportHtml({
+    nodes: [node("bare-1", "sqlQuery", bareSql)],
+    edges: [],
+    exportedAt: FIXED_EXPORTED_AT,
+    audit: null,
+  });
+  check("X18：无 semanticRefs 的 SQL 节点不渲染口径小节（不留空壳行）",
+    !bareHtml.includes("口径引用") && bareHtml.includes("手动 SQL（无口径归因）"));
+  const colOnlyHtml = buildDeliveryReportHtml({
+    nodes: [node("bare-2", "sqlQuery", { ...bareSql, semanticRefs: [{ entityType: "Col", id: "col-no-label-x18" }] })],
+    edges: [],
+    exportedAt: FIXED_EXPORTED_AT,
+    audit: null,
+  });
+  check("X18：refs 只有无短名的 Col 时同样整节不渲染",
+    !colOnlyHtml.includes("口径引用") && !colOnlyHtml.includes("col-no-label-x18"));
+  check("X18：新增内容不破坏自包含（无 script、无外部引用）",
+    !bareHtml.includes("<script") && !/https?:\/\//.test(bareHtml.replace(/xmlns(:xlink)?="[^"]*"/g, "")));
 }
 
 // ---------------------------------------------------------------------------

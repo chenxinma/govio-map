@@ -16,6 +16,8 @@
  *  5. 边分类：semanticRefs 交集建语义边（id 加 -sem 后缀，与数据边并存不冲突）、
  *     无交集不建；旧边/手动连线回退 "data"；lineageKind -> 样式映射可断言
  *  6. 导出区分：LineageEdgeView 按 lineageKind 分类，导出 HTML 两种边样式可观测
+ *  7. X18 口径徽标：同一份 semanticRefs 的展示模型（Metric 优先 / code 优先 name 回退 /
+ *     无短名跳过 / 去重 / hover 全文）与导出 HTML 的「口径引用」小节
  *
  * 不调 govio-cli、不调模型、不碰 `.govio/`。任一断言失败退出码为 1。
  */
@@ -32,6 +34,7 @@ import {
 } from "../server/semantic-context.js";
 import { canvasPathFor, loadCanvas, saveCanvas } from "../server/session-history.js";
 import { lineageEdgeAppearance, lineageKindOf, SEMANTIC_SOURCE_HANDLE, SEMANTIC_TARGET_HANDLE } from "../src/utils/lineage.js";
+import { semanticRefBadges } from "../src/utils/semantic-refs-ui.js";
 import { buildDeliveryReportHtml, layoutLineage } from "../src/utils/export-report.js";
 import type { CanvasEvent } from "../src/services/canvas-service.js";
 import type { SemanticRef } from "../src/types/index.js";
@@ -336,6 +339,43 @@ const EXPORT_EDGES: Edge[] = [
   check("数据边：绿色实线样式维持现状",
     HTML.includes('stroke="#1db954"') && HTML.includes('marker-end="url(#govio-arrow)"'));
   check("血缘图图例含两种边说明", HTML.includes("数据血缘") && HTML.includes("语义血缘"));
+}
+
+// ── 7. X18 口径徽标（semanticRefs 的展示模型 + 导出出口）──────────────────
+
+console.log("\n[7] X18 口径徽标：同一份 semanticRefs 在画布与导出都可见");
+{
+  // 用贯穿本脚本的 REFS（归因链路写入 node.data 的同一份数据）验展示模型
+  const badges = semanticRefBadges(REFS);
+  check("徽标取值：Metric 产出徽标（code 优先），Col 无 code/name 整条跳过",
+    badges.length === 1 && badges[0].label === "gmv" && badges[0].text === "gmv"
+    && badges[0].typeLabel === "指标", JSON.stringify(badges));
+  check("徽标 hover 全文含类型 / 编码 / 名称 / 图谱 ID（多行，缺项省略）",
+    badges[0]?.title === "类型：指标\n编码：gmv\n名称：销售额\n图谱 ID：m1", badges[0]?.title);
+  check("Metric 优先排序 + code 缺失回落 name（非指标前缀类型名）",
+    semanticRefBadges([
+      { entityType: "Dimension", id: "d1", code: "region" },
+      { entityType: "Metric", id: "m2", name: "订单数" },
+    ]).map((b) => b.text).join(",") === "订单数,维度·region");
+  check("同一实体重复注入只留一条（去重口径与语义边一致）",
+    semanticRefBadges([...REFS, ...REFS]).length === 1);
+  check("无 semanticRefs / 空数组 → 徽标为空（整节不渲染的前提）",
+    semanticRefBadges(undefined).length === 0 && semanticRefBadges([]).length === 0);
+
+  const badgeHtml = buildDeliveryReportHtml({
+    nodes: [{
+      id: "n1",
+      type: "sqlQuery",
+      position: { x: 0, y: 0 },
+      data: { type: "sqlQuery", title: "Q: one", createdAt: "2026-11-06T10:00:00Z", sql: "SELECT 1", outputColumns: ["1"], semanticRefs: REFS },
+    }],
+    edges: [],
+    exportedAt: "2026-11-06T12:00:00+08:00",
+    audit: null,
+  });
+  check("导出 HTML 同步渲染口径引用（计数只算可展示徽标，Col 不进产物）",
+    badgeHtml.includes("口径引用（1）") && badgeHtml.includes("<code>gmv</code>")
+    && badgeHtml.includes("<td>销售额</td>") && !badgeHtml.includes("<code>c1</code>"));
 }
 
 console.log(`\n共 ${checks} 项断言，失败 ${failures.length} 项`);

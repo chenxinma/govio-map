@@ -1,9 +1,10 @@
 import { memo, useState, useCallback, useRef, useEffect } from 'react';
 import { Handle, Position, type NodeProps, type Edge } from '@xyflow/react';
-import { AlertTriangle, ChevronDown, Maximize2, Quote, Trash2, ScrollText } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, Maximize2, Quote, Trash2, ScrollText, Tag } from 'lucide-react';
 import type { SQLQueryNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
 import { caliberNodeAppearance, CALIBER_ASPECT_LABELS } from '../../utils/caliber';
+import { MAX_VISIBLE_SEMANTIC_REFS, semanticRefBadges } from '../../utils/semantic-refs-ui';
 import { SEMANTIC_SOURCE_HANDLE, SEMANTIC_TARGET_HANDLE } from '../../utils/lineage';
 import SQLModal from './SQLModal';
 import ManifestDetails from './ManifestDetails';
@@ -49,11 +50,22 @@ function SQLNode({ data, id }: NodeProps) {
   const [showModal, setShowModal] = useState(false);
   const [showManifest, setShowManifest] = useState(false);
   const [showCaliber, setShowCaliber] = useState(false);
+  const [refsExpanded, setRefsExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // T2.3 口径冲突检测：仅 conflict 亮黄色警示（consistent/unknown 不打扰）
   const caliber = caliberNodeAppearance(nodeData.caliberCheck);
   const caliberDifferences = nodeData.caliberCheck?.differences ?? [];
+
+  // X18 口径徽标（PD-1 方案 1）：过滤 / 去重 / Metric 优先排序全部取 semanticRefBadges，
+  // 组件内不重复实现；结果为空（旧节点、手动建的 SQL 节点、图谱降级、refs 只有 Col）时
+  // 整节不渲染，画布上不留空壳行。折叠基准与字段区 / 关系小节同款：按上限固定计算剩余
+  // 条数，展开后仍能收起。
+  const semanticBadges = semanticRefBadges(nodeData.semanticRefs);
+  const visibleSemanticBadges = refsExpanded
+    ? semanticBadges
+    : semanticBadges.slice(0, MAX_VISIBLE_SEMANTIC_REFS);
+  const remainingSemanticBadges = semanticBadges.length - MAX_VISIBLE_SEMANTIC_REFS;
 
   // Auto-resize textarea
   useEffect(() => {
@@ -149,6 +161,50 @@ function SQLNode({ data, id }: NodeProps) {
           </pre>
         )}
       </div>
+
+      {/* 口径徽标（X18，PD-1 方案 1）：本次 SQL 引用的图谱指标 / 维度在画布上直接可见。
+          取值与排序唯一来源 semanticRefBadges；配色走 green-deck token（紫 = 语义层，与语义
+          血缘边同色系），组件内不写死色值。与 T2.3 警示的分工：警示永远在标题行、黄色只由
+          caliberNodeAppearance 给出，本节独立成行，冲突态下互不遮挡、不借用警示色。
+          完整信息（类型 / 编码 / 名称 / 图谱 ID）按 X15.1 取舍放 hover title。 */}
+      {semanticBadges.length > 0 && (
+        <div className="border-t border-border-subtle px-4 py-2">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Tag size={11} className="text-node-source flex-shrink-0" />
+            <span className="text-[10px] font-mono uppercase tracking-[1.2px] text-text-muted">口径</span>
+            <span className="ml-auto text-[10px] font-mono text-text-dim">{semanticBadges.length}</span>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {visibleSemanticBadges.map((badge) => (
+              <span
+                key={badge.key}
+                title={badge.title}
+                className="max-w-full truncate text-[11px] px-1.5 py-0.5 rounded bg-node-source/10 text-node-source font-mono"
+              >
+                {badge.text}
+              </span>
+            ))}
+          </div>
+          {remainingSemanticBadges > 0 && !refsExpanded && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setRefsExpanded(true); }}
+              className="flex items-center gap-1 text-[11px] text-text-muted hover:text-brand transition-colors mt-1"
+            >
+              <ChevronDown size={12} />
+              <span>+{remainingSemanticBadges} more refs</span>
+            </button>
+          )}
+          {refsExpanded && remainingSemanticBadges > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setRefsExpanded(false); }}
+              className="flex items-center gap-1 text-[11px] text-text-muted hover:text-brand transition-colors mt-1"
+            >
+              <ChevronUp size={12} />
+              <span>Collapse</span>
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="border-t border-border-subtle px-4 py-2">
         <div className="text-[10px] font-mono uppercase tracking-[1.2px] text-text-muted mb-1.5">输出列</div>
