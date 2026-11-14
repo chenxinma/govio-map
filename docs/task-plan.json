@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T08:45:00+08:00",
+  "updatedAt": "2026-11-14T11:32:49+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -394,24 +394,32 @@
           "id": "T3.1",
           "title": "画布团队存储抽象",
           "kr": "KR1",
-          "status": "pending",
+          "status": "in_progress",
           "dependsOn": [
             "P2.accepted",
             "X2"
           ],
           "outputDir": "docs/tasks/T3.1-canvas-team-storage/",
-          "scope": "session-history 存储层抽象：本地文件 → 可插拔后端（文件服务器/对象存储）。",
+          "scope": "session-history 存储层抽象：本地文件 → 可插拔后端。用户决策 2026-11-14：原则上不新作文件服务后端；技术方案改为「逐个画布配置 S3 存储地址」实现画布协作（每个画布可配置独立 S3 bucket/prefix/凭据，多端指向同一地址共享画布数据）。须先做技术可行性评估（pi SessionManager 本地 jsonl 写入边界、sidecar 生命周期、S3 客户端/依赖取舍、并发写冲突与一致性、凭据安全）写入 design.md，再实施存储接口化 + 本地后端（行为不回归）+ S3 后端。与 T3.2 合并为单 worker 串行两阶段（存储抽象 → 分享/fork）。",
           "acceptance": [
-            "存储接口化",
-            "本地后端行为不回归"
+            "存储接口化，本地后端行为不回归",
+            "S3 后端按画布配置可用；design.md 含技术可行性评估结论与延迟/一致性/凭据取舍",
+            "T3.2 验收一并达成：只读链接可打开含 Manifest、fork 血缘可追溯"
           ],
-          "history": []
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-11-14T11:32:49+08:00",
+              "by": "main-session",
+              "note": "2026-11-14 用户决策：与 T3.2 合并单 worker；存储后端定为逐画布 S3 地址方案（不新作文件服务后端），先评估技术可行性再实施。本轮派发 W1。"
+            }
+          ]
         },
         {
           "id": "T3.2",
           "title": "只读分享与 fork 续写",
           "kr": "KR2",
-          "status": "pending",
+          "status": "in_progress",
           "dependsOn": [
             "T3.1"
           ],
@@ -421,7 +429,14 @@
             "只读链接可打开含 Manifest",
             "fork 血缘可追溯"
           ],
-          "history": []
+          "history": [
+            {
+              "status": "in_progress",
+              "at": "2026-11-14T11:32:49+08:00",
+              "by": "main-session",
+              "note": "2026-11-14 用户决策：与 T3.1 合并为单 worker（内部两阶段串行：T3.1 存储抽象/S3 → T3.2 分享/fork）。"
+            }
+          ]
         },
         {
           "id": "T3.3",
@@ -1062,7 +1077,7 @@
     {
       "id": "X16",
       "title": "CI 维护小修包（actions 升级/pin、runner 钉版、断言数看板、windows nightly 腿、并发组）",
-      "status": "pending",
+      "status": "in_progress",
       "kr": null,
       "dependsOn": [
         "X14"
@@ -1090,13 +1105,19 @@
           "at": "2026-11-14T08:45:00+08:00",
           "by": "main-session",
           "note": "按用户裁决「X14 小修打包 OK」立项，归口 X14 的 3 条遗留 + 2 条 CI 注解 + 1 条 concurrency 观察。无前置阻塞（dependsOn X14 已 accepted）。用户指令「先不要做实际开发」→ 本条目仅完成立项与 scope/acceptance 定稿，暂不派发。"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-14T11:32:49+08:00",
+          "by": "main-session",
+          "note": "2026-11-14 用户决策：actions 升级走 pin commit SHA。concurrency 维持现状 + workflow/design.md 注释说明（主会话建议默认）。windows nightly 腿本轮不做（省额度），design.md 记录评估与取舍，用户要加可后补。派发 W2。"
         }
       ]
     },
     {
       "id": "X17",
       "title": "表间关系匹配精确化（全限定名全等优先 / 可选图谱 PhysicalTable id）——解 X10 遗留①跨库同名表误配",
-      "status": "pending",
+      "status": "in_progress",
       "kr": null,
       "dependsOn": [],
       "note": "起因：用户 2026-11-14 就 X10 遗留①（同名表跨 catalog/schema 时点号后缀变体匹配可能误配）提问「是否可以通过 PhysicalTable 的 ID 进行判断？」。**主会话取证结论（2026-11-14，只读查询 + schema.md 核对）**：① `schema.md` 明确 `PhysicalTable` 的 `primary_key = id`，属性含 `id / node_id / full_table_name / schema / table_name / name / database_name`；② live 图谱实测 id 形如 `PT11B596C1` 且与 `node_id` 同值、每表唯一（chocolate 4 表 + sales 若干表逐行确认）；③ **当前图谱不存在重名**：`MATCH (t:PhysicalTable) WITH t.full_table_name AS ftn, count(*) AS c WHERE c>1 RETURN ftn,c` 返回 `Data not found.`，裸 `table_name` 亦全部 count=1 → 误配目前是**潜在风险而非现实缺陷**；④ 现有 `buildRelatesToCypher`（server/table-relations.ts:114-122）**已经 RETURN `b.full_table_name AS target`**，只是前端匹配没有用它做全等优先（`src/utils/table-relations.ts` 一律走点号后缀变体集合求交）。**结论**：id 方案可行（id 唯一且是主键），但画布 sourceTable 节点当前不携带图谱 id，要用 id 匹配必须新增「表键 → PhysicalTable.id」解析（新增图谱查询或复用注入链路）+ 新可选字段 + 旧节点回退逻辑；而**档 A（用已有的 target 全限定名做全等优先匹配）零新增查询即可消掉主要误配场景**。故本任务默认做档 A，档 B（id）列为可选增强，需用户点头再做。",
@@ -1123,13 +1144,19 @@
           "at": "2026-11-14T08:45:00+08:00",
           "by": "main-session",
           "note": "按用户提问立项，附主会话取证（图谱 id 唯一且为 primary_key、当前图谱无重名、现有查询已返回 b.full_table_name）。建议档 A 先做（近零成本消主要风险），档 B（id）待用户点头。用户指令「先不要做实际开发」→ 仅立项定稿，暂不派发。"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-14T11:32:49+08:00",
+          "by": "main-session",
+          "note": "2026-11-14 用户裁决：只做档 A（全限定名全等优先），档 B（PhysicalTable id 匹配）暂不实施、保持可选待后续立项。派发 W3。"
         }
       ]
     },
     {
       "id": "X18",
       "title": "SQL 节点卡片渲染 semanticRefs 徽标（PD-1 方案 1：口径/指标在画布可见）",
-      "status": "pending",
+      "status": "in_progress",
       "kr": null,
       "dependsOn": [],
       "note": "用户裁决 2026-11-14：PD-1「指标在画布的体现」选 **方案 1（最小档）——在 SQL 节点卡片渲染 refs 徽标**（方案 2 语义边悬停显示共用指标、方案 3 新增独立指标/口径节点类型均不做）。背景：T2.2 已让 sqlQuery 节点携带 `semanticRefs`（引用的图谱 Metric/Dimension/字段标准），血缘边也能区分数据/语义血缘，但**指标本身在画布上不可见**——只存在于节点属性里（T2.2 design.md 遗留 3、PD-1 记录 2026-11-06）。现状取证（2026-11-14）：`src/components/Nodes/SQLQueryNode.tsx` 只渲染 T2.3 的口径警示（`caliberNodeAppearance`，第 55/105/109-117/170-175 行），**没有任何 semanticRefs 渲染**；`SemanticRef = { entityType, id, code?, name? }`（`src/types/semantic.ts:15-21`，entityType 取值见同文件）。",
@@ -1157,13 +1184,19 @@
           "at": "2026-11-14T08:45:00+08:00",
           "by": "main-session",
           "note": "按用户裁决立项（PD-1 方案 1）。方案 2（语义边悬停显示共用指标）与方案 3（新增指标/口径节点类型）明确不做；若将来要升级到方案 3 须单独立项（涉及节点类型、dagre/方案B 布局、导出三处扩展）。用户指令「先不要做实际开发」→ 仅立项定稿，暂不派发。"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-14T11:32:49+08:00",
+          "by": "main-session",
+          "note": "2026-11-14 派发 W4（PD-1 方案 1 按既定 scope/acceptance 执行）。"
         }
       ]
     },
     {
       "id": "X19",
       "title": "口径判定升级：维度限定条件的实质比对（PD-2 定调落地，跨仓 govio + govio-map）",
-      "status": "pending",
+      "status": "in_progress",
       "kr": null,
       "dependsOn": [],
       "note": "用户裁决 2026-11-14：PD-2「以**计算表达式**和**维度限定条件**作为实质判断依据」（取代「列名是否在 SQL 里出现过」的粗判与别名启发式）。**主会话取证（2026-11-14，只读 `D:/Work/gov-io/govio/src/govio/metadata/caliber.py`）**：① 计算表达式部分**已落地**——`_canonical_expr`(406) 剥 ROUND/CAST/`::type` 展示包装、去表限定、压空白、小写；`_compare_aggregation`(424) 已按归一后的**聚合参数表达式**比对（docstring 明写「旧实现只比 (func, distinct)，这类『列在但表达式被扭曲』漏判」），即 PD-2 方案 1 已由 govio `33080fd` / map `625260e` 交付；② **维度限定条件是缺口**——`_compare_filter`(522) 目前只做「指标定义里的**剔除类**词是否出现在 SQL WHERE 段」的子串包含 + 否定算子检查，且 docstring 明写「全部存疑：只给 unknown，不判 conflict」；没有把 WHERE/GROUP BY 里的维度限定（列 + 算子 + 值集合，如 `country_id IN (...)`、`channel='online'`）与指标侧维度声明（`Metric.statistical_scope`、`DIMENSION_USED`、`REFERS_COLUMN role=dimension` 及 `Dimension.values_example` 枚举码值）做结构化比对；`_compare_time_scope`(559) 需同批核查深度；③ `_compare_columns`(597) 已改 measure-first（PD-2 方案 2 已落地，dimension_ref 缺失不再产存疑噪声）。**故本任务实质工作 = 维度限定条件的结构化实质比对，核心代码在 govio 仓**；map 侧只消费 `caliberCheck`（`src/utils/caliber.ts` 的 `CALIBER_ASPECT_LABELS`、`scripts/verify-caliber-conflict.ts` 46 项 stub 断言、SQLQueryNode 警示区）。**PD-2 的方案 C（别名归一 + 声称判定）用户本次未表态 → 不在本任务内**，继续挂 PENDING-DISCUSSION（其启发式词典与本任务「实质依据」纪律相冲突，须单独裁决）。",
@@ -1191,6 +1224,46 @@
           "at": "2026-11-14T08:45:00+08:00",
           "by": "main-session",
           "note": "按用户裁决立项（PD-2 定调：计算表达式 + 维度限定条件为实质判据）。取证确认表达式部分已落地（govio 33080fd / map 625260e），本任务聚焦维度限定条件的结构化比对；核心代码在 govio 仓，属**跨仓任务**，派发前需确认在哪个仓起 worker（建议 govio 仓为主、map 仓跟随一个小 PR）。方案 C（别名归一）未获授权，不在范围内。用户指令「先不要做实际开发」→ 仅立项定稿，暂不派发。"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-14T11:32:49+08:00",
+          "by": "main-session",
+          "note": "2026-11-14 用户裁决：先合并 govio。本轮先派发 W5a（govio 仓）；map 侧 W5b 待 govio 合并后派发。"
+        }
+      ]
+    },
+    {
+      "id": "X20",
+      "title": "govio-map 0.7.2 版本号升级与发版记录（跳过 0.7.1）",
+      "status": "pending",
+      "kr": null,
+      "dependsOn": [
+        "T3.1",
+        "T3.2",
+        "X16",
+        "X17",
+        "X18",
+        "X19"
+      ],
+      "note": "用户决策 2026-11-14：0.7.1 跳过（此前语言关联和排版更新时遗漏版本号更新）；本轮改进合并后独立小 PR 升 package.json 至 0.7.2 并补发版记录，不混进功能 PR。",
+      "scope": [
+        "全部功能 PR 合并后独立 PR：package.json 0.7.0 → 0.7.2",
+        "补 docs/release-v0.7.2.md（沿用 release-v0.7.0.md 格式，覆盖 T3.1/T3.2、X16-X19 变更摘要与 0.7.1 跳过说明）",
+        "纯版本记账，无代码改动"
+      ],
+      "acceptance": [
+        "package.json version=0.7.2，npm run build/lint/verify 全绿",
+        "release notes 覆盖本轮全部合并 PR",
+        "走 GitHub PR（用户合并）"
+      ],
+      "outputDir": "docs/tasks/X20-release-0.7.2/",
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-11-14T11:32:49+08:00",
+          "by": "main-session",
+          "note": "2026-11-14 立项（版本记账任务）。"
         }
       ]
     }
