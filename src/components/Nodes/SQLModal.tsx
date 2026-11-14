@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Play, Loader2, Check, AlertCircle, AlignLeft } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
 import { sql } from '@codemirror/lang-sql';
+import { govioSQLHighlight } from '../../utils/sql-highlight';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { format } from 'sql-formatter';
 import { useCanvasStore } from '../../store/canvas-store';
@@ -189,6 +190,8 @@ export default function SQLModal({ sql: initialSql, title, onSave, onClose, onEx
             height="60vh"
             extensions={[
               sql(),
+              // X21：与节点卡片共用同一套 token 分类与配色（非 fallback 样式，优先于主题自带）
+              govioSQLHighlight,
               customCompletion,
             ]}
             theme={oneDark}
