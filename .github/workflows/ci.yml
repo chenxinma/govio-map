@@ -5,6 +5,12 @@ name: CI
 # wrong -> TS2304 in build, ReferenceError in verify:semantic-lineage; invisible on
 # each individual branch). Runner / Node / registry tradeoffs:
 # docs/tasks/X14-github-actions-ci/design.md
+#
+# X16 maintenance package (docs/tasks/X16-ci-maintenance/design.md):
+#   - actions pinned to commit SHA; Node 20 deprecation annotation removed (§2)
+#   - runner pinned to ubuntu-24.04 instead of the migrating ubuntu-latest tag (§3)
+#   - non-gating assertion-count dashboard, step summary only (§4)
+#   - concurrency tradeoff documented below, behavior unchanged (§5)
 
 on:
   pull_request:
@@ -17,6 +23,17 @@ permissions:
   contents: read
 
 # A new push to the same PR cancels the still-running older attempt.
+# X16 (design.md §5, decision: keep behavior, document the cost):
+#   - PR side: cancelling stale attempts saves quota and prevents an old run's
+#     verdict being read as current. Correct as-is.
+#   - push main side: the group is `workflow + ref`, so back-to-back merges into
+#     main CANCEL the in-flight earlier run (observed: PR #34's run 43461685410
+#     cancelled by the #35 bookkeeping push). Consequence: intermediate main
+#     commits can end with no completed run; the final state of a burst is
+#     always covered by the batch's last run. Accepted for now.
+#   - If "every main commit must have a completed run" ever becomes a rule,
+#     group pushes by `${{ github.sha }}` (or set cancel-in-progress false for
+#     push events) and budget the extra Linux-runner minutes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -24,17 +41,28 @@ concurrency:
 jobs:
   ci:
     name: build + lint + verify
-    runs-on: ubuntu-latest
+    # Required-check name pinned by ruleset 27209918 ("main"). Do NOT rename;
+    # renaming requires the user to update the ruleset first (X16 task book §3).
+    #
+    # X16: pinned to ubuntu-24.04. `ubuntu-latest` migrates to Ubuntu 26 from
+    # 2026-10-19 (actions/runner-images#14748); the tag must not silently move
+    # the gate. Upgrade policy (when/how to try 26): design.md §3.
+    runs-on: ubuntu-24.04
     # Local baseline (2026-11-12, main): build 62s + lint 34s + verify 94s ~= 190s.
     # Headroom covers npm ci and runner cold start.
     timeout-minutes: 20
 
     steps:
+      # X16 (user decision 2026-11-14): actions pinned to the commit SHA each
+      # release tag points at, verified against the official repos. Both pinned
+      # action.yml declare `runs.using: node24`, which removes the GitHub run
+      # annotation "actions target Node.js 20 but are being forced to run on
+      # Node.js 24". Follow-up/verification procedure: design.md §2.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
           cache: npm
@@ -57,8 +85,27 @@ jobs:
       - name: Lint (eslint)
         run: npm run lint
 
+      # X16: the log is teed to $RUNNER_TEMP (outside the workspace, so the
+      # worktree-clean gate below and every tracked file stay untouched) purely
+      # to feed the non-gating dashboard. `set -o pipefail` is what keeps the
+      # gate honest -- without it `npm run verify | tee` would report tee's
+      # exit status and a failing chain would silently pass (X14 design §6
+      # avoided tee for exactly this reason; pipefail is the deliberate fix).
       - name: Verify (11-script aggregate chain)
-        run: npm run verify
+        run: |
+          set -o pipefail
+          npm run verify | tee "$RUNNER_TEMP/verify.log"
+
+      # X16 assertion dashboard: parse the four verify summary formats, compare
+      # against the pinned baseline (platform-adjusted: ubuntu expects 617 =
+      # 624 - 7 caseDrift SKIPs in verify:cwd; windows full 624) and write
+      # $GITHUB_STEP_SUMMARY. NOT A GATE: drift only warns. The script itself
+      # always exits 0 (internal errors included); continue-on-error is the
+      # second safety net so no dashboard defect can ever redden the job.
+      # design.md §4; baseline single source lives at the top of the script.
+      - name: Assertion dashboard (non-gating)
+        continue-on-error: true
+        run: node .github/workflows/scripts/assertion-dashboard.mjs "$RUNNER_TEMP/verify.log"
 
       # Matches the repo definition of done: tracked files untouched after verify
       # (verify:export only rewrites sample-export.html with an explicit --write).
