@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T12:23:35+08:00",
+  "updatedAt": "2026-11-14T12:28:21+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1242,6 +1242,12 @@
           "at": "2026-11-14T11:32:49+08:00",
           "by": "main-session",
           "note": "2026-11-14 用户裁决：先合并 govio。本轮先派发 W5a（govio 仓）；map 侧 W5b 待 govio 合并后派发。"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-14T12:28:21+08:00",
+          "by": "main-session",
+          "note": "W5a（govio 侧）主会话独立复跑验收通过（bb732f8）：ruff check/format 0、pytest 526 passed/18 skipped；8 档样本 s2/t2→consistent、t4 conflict、其余 conflict 零回归（测试表逐档断言核实）；无别名启发式（grep 核实）；输出 JSON 契约未变（aspect 复用 filter/time_scope）。govio PR #24 已建待用户合并（先合并 govio）。W5b（map 侧）待 PR #24 合并后派发。备注：worktree 有 crashpad debug.log 噪声文件（未跟踪，非代码产物）。"
         }
       ]
     },
