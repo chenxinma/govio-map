@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T14:19:35+08:00",
+  "updatedAt": "2026-11-14T14:46:06+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1238,7 +1238,7 @@
     {
       "id": "X19",
       "title": "口径判定升级：维度限定条件的实质比对（PD-2 定调落地，跨仓 govio + govio-map）",
-      "status": "in_progress",
+      "status": "done",
       "kr": null,
       "dependsOn": [],
       "note": "用户裁决 2026-11-14：PD-2「以**计算表达式**和**维度限定条件**作为实质判断依据」（取代「列名是否在 SQL 里出现过」的粗判与别名启发式）。**主会话取证（2026-11-14，只读 `D:/Work/gov-io/govio/src/govio/metadata/caliber.py`）**：① 计算表达式部分**已落地**——`_canonical_expr`(406) 剥 ROUND/CAST/`::type` 展示包装、去表限定、压空白、小写；`_compare_aggregation`(424) 已按归一后的**聚合参数表达式**比对（docstring 明写「旧实现只比 (func, distinct)，这类『列在但表达式被扭曲』漏判」），即 PD-2 方案 1 已由 govio `33080fd` / map `625260e` 交付；② **维度限定条件是缺口**——`_compare_filter`(522) 目前只做「指标定义里的**剔除类**词是否出现在 SQL WHERE 段」的子串包含 + 否定算子检查，且 docstring 明写「全部存疑：只给 unknown，不判 conflict」；没有把 WHERE/GROUP BY 里的维度限定（列 + 算子 + 值集合，如 `country_id IN (...)`、`channel='online'`）与指标侧维度声明（`Metric.statistical_scope`、`DIMENSION_USED`、`REFERS_COLUMN role=dimension` 及 `Dimension.values_example` 枚举码值）做结构化比对；`_compare_time_scope`(559) 需同批核查深度；③ `_compare_columns`(597) 已改 measure-first（PD-2 方案 2 已落地，dimension_ref 缺失不再产存疑噪声）。**故本任务实质工作 = 维度限定条件的结构化实质比对，核心代码在 govio 仓**；map 侧只消费 `caliberCheck`（`src/utils/caliber.ts` 的 `CALIBER_ASPECT_LABELS`、`scripts/verify-caliber-conflict.ts` 46 项 stub 断言、SQLQueryNode 警示区）。**PD-2 的方案 C（别名归一 + 声称判定）用户本次未表态 → 不在本任务内**，继续挂 PENDING-DISCUSSION（其启发式词典与本任务「实质依据」纪律相冲突，须单独裁决）。",
@@ -1290,6 +1290,12 @@
           "at": "2026-11-14T14:12:48+08:00",
           "by": "main-session",
           "note": "govio PR #24 已由用户合并（merge a92a291，2026-11-14）；W5b（map 侧收尾）任务书 DISPATCH-W5b.md 落盘并派发。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-14T14:46:06+08:00",
+          "by": "main-session",
+          "note": "W5b 主会话独立复跑验收通过（406c5d2）：verify-caliber-conflict 46→77（+31，三态透传 22/降级 6/reason 3）、脚本 624→655、vitest/UI 零回归；src/ 三处零改动（契约未变核实）；PD-2 标注落地；三件套含 govio 版本 c621de9/a92a291 与 8 档证据引用。PR #40 已建（用户合并；PENDING-DISCUSSION.md 与 PR #39 同文件不同小节，冲突主会话 rebase）。真实 CLI 8 档输出待 govio 发版补录。"
         }
       ]
     },
