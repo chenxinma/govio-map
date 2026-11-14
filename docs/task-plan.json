@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T12:39:57+08:00",
+  "updatedAt": "2026-11-14T12:56:39+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1180,7 +1180,7 @@
     {
       "id": "X18",
       "title": "SQL 节点卡片渲染 semanticRefs 徽标（PD-1 方案 1：口径/指标在画布可见）",
-      "status": "in_progress",
+      "status": "done",
       "kr": null,
       "dependsOn": [],
       "note": "用户裁决 2026-11-14：PD-1「指标在画布的体现」选 **方案 1（最小档）——在 SQL 节点卡片渲染 refs 徽标**（方案 2 语义边悬停显示共用指标、方案 3 新增独立指标/口径节点类型均不做）。背景：T2.2 已让 sqlQuery 节点携带 `semanticRefs`（引用的图谱 Metric/Dimension/字段标准），血缘边也能区分数据/语义血缘，但**指标本身在画布上不可见**——只存在于节点属性里（T2.2 design.md 遗留 3、PD-1 记录 2026-11-06）。现状取证（2026-11-14）：`src/components/Nodes/SQLQueryNode.tsx` 只渲染 T2.3 的口径警示（`caliberNodeAppearance`，第 55/105/109-117/170-175 行），**没有任何 semanticRefs 渲染**；`SemanticRef = { entityType, id, code?, name? }`（`src/types/semantic.ts:15-21`，entityType 取值见同文件）。",
@@ -1214,6 +1214,12 @@
           "at": "2026-11-14T11:32:49+08:00",
           "by": "main-session",
           "note": "2026-11-14 派发 W4（PD-1 方案 1 按既定 scope/acceptance 执行）。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-14T12:56:39+08:00",
+          "by": "main-session",
+          "note": "主会话独立复跑验收通过（0ec2adb）：624→639（仅 verify:export +9、semantic-lineage +6，只增不削）、vitest 219 例(+25)、UI 37 例(+6)、零内联色值、caliberNodeAppearance 仍为警示配色唯一来源。PR #39 已建（用户合并）。产品取舍待用户裁决：徽标短名 code ?? name 显示 m_sales_amount 而非中文名「销售额」，改 semanticRefLabel 一处可切换（design 遗留）。"
         }
       ]
     },
