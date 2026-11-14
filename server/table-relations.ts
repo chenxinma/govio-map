@@ -18,6 +18,13 @@
  * 本模块另设 `RELATIONS_QUERY_TIMEOUT_MS` 本地闸：`runGraphQuery` 内部超时 12s + 失败重试
  * 一次，最坏 24s+ 才 reject，会把 sourceTable 节点上画布的时间一起拖住。本地超时到点即降级
  * （底层查询继续在后台跑完并填缓存，下次同表命中缓存不再等）。
+ *
+ * X17 档 A（全限定名全等优先，2026-11-14）：图谱路径的关系由 `resolveTableRelations` 统一补
+ * `targetQualifiedName`（值取 `b.full_table_name AS target` 原值，没给出 target 列的行不建键）；
+ * 字段级降级路径不建键、行为不变。补键不放在 `relationsFromGraphRows` 本体是刻意为之：
+ * 既有用例（table-relations.test.ts 27 例）以 toEqual 锁死了它的输出形状，契约要求
+ * 「既有测试用例不修改即通过」，而该函数同时被单测直接调用——故在图谱路径唯一入口
+ * （取数层）用 `withGraphQualifiedNames` 依据 rows 的 target 列归因补键，值与原值一致。
  */
 import { runGraphQuery, type GraphQueryRunner, type GraphRow } from "./graph-query.js";
 import { graphTableKey, tableKeyCandidates, type TableFact } from "./prompt-injection.js";
@@ -167,6 +174,26 @@ export function relationsFromGraphRows(rows: GraphRow[], selfKey?: string): Tabl
 }
 
 /**
+ * X17 档 A：给图谱路径的关系补 `targetQualifiedName`（全限定名全等优先匹配用的精确键）。
+ *
+ * 归因纪律（禁止猜测）：只有当某行的 `target` 列（即 Cypher 里 `b.full_table_name AS target`
+ * 的原值列）确实给出该值时才建键；仅靠 `tgt` / `full_table_name` 兜底列名产出的
+ * `targetTable` 不建键。键值 = `targetTable`（两者本就是同一原值字符串）。
+ * 输出为新数组（不就地改），元素仅在需要补键时浅拷贝，其余原样透传。
+ */
+export function withGraphQualifiedNames(relations: TableRelation[], rows: GraphRow[]): TableRelation[] {
+  if (relations.length === 0) return relations;
+  const qualified = new Set<string>();
+  for (const row of rows ?? []) {
+    if (row === null || typeof row !== "object") continue;
+    const t = str(row.target);
+    if (t) qualified.add(t.toLowerCase());
+  }
+  if (qualified.size === 0) return relations;
+  return relations.map((rel) => (qualified.has(rel.targetTable.toLowerCase()) ? { ...rel, targetQualifiedName: rel.targetTable } : rel));
+}
+
+/**
  * 降级路径：字段级 `references` → TableRelation。
  *
  * 只在 `references.table` 存在时产出（`isForeignKey === false` 的显式否定尊重之；
@@ -253,7 +280,7 @@ export async function resolveTableRelations(input: ResolveTableRelationsInput): 
   } else {
     try {
       const rows = await withTimeout(runQuery(buildRelatesToCypher(key)), timeoutMs, "RELATES_TO 查询");
-      relations = relationsFromGraphRows(rows, key);
+      relations = withGraphQualifiedNames(relationsFromGraphRows(rows, key), rows);
       if (relations.length > 0) source = "graph";
     } catch (err) {
       status = "degraded";

@@ -127,7 +127,7 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 | config | chart | Plotly figure {type, data[], layout?} |
 | sourceDf | chart | 数据源 DataFrame 名称 |
 | manifest | dataFrame/sqlQuery | 分析留痕 Analysis Manifest（类型见 `src/types/manifest.ts`，服务端填充后写入 `node.data.manifest`） |
-| tableRelations | sourceTable | 表间语义关系（X10）：`Array<{targetTable, relationshipType, description?, sourceColumns?, targetColumns?}>`，由 `server/table-relations.ts` 解析（图谱 RELATES_TO 主路径 / 字段级 references 降级），前端据此建表间语义血缘边，并在节点内小节 / 边 label / 导出报告三处展示关系详情（X13，展示口径唯一来源 `src/utils/table-relations-ui.ts`；**X15 起三处只展示字段关联（列映射），不再展示 `relationshipType`，但服务端仍照原样解析并下发该字段供留痕**）；拿不到不写键 |
+| tableRelations | sourceTable | 表间语义关系（X10）：`Array<{targetTable, relationshipType, description?, sourceColumns?, targetColumns?, targetQualifiedName?}>`，由 `server/table-relations.ts` 解析（图谱 RELATES_TO 主路径 / 字段级 references 降级），前端据此建表间语义血缘边，并在节点内小节 / 边 label / 导出报告三处展示关系详情（X13，展示口径唯一来源 `src/utils/table-relations-ui.ts`；**X15 起三处只展示字段关联（列映射），不再展示 `relationshipType`，但服务端仍照原样解析并下发该字段供留痕**）；拿不到不写键。**X17 档 A**：图谱路径的关系由取数层 `withGraphQualifiedNames` 补 `targetQualifiedName`（= `b.full_table_name AS target` 原值，行没给 target 列不建键），字段级降级路径不建键；前端匹配第①级用它与节点 `qualifiedName` 做全等优先（大小写归一，命中即止），未命中退回变体兜底——旧事件/旧 sidecar 无该键时行为与 X10 完全一致 |
 | tableRelationsSource | sourceTable | 关系来源留痕（X10）：`graph` / `fields`，仅在 tableRelations 非空时写键 |
 | tableRelationsError | sourceTable | 图谱查询降级原因（X10）：仅 status=degraded 时写键，随 canvas sidecar 持久化以供审计 |
 | referencedNodes | 全部 | 引用节点（自动附加） |
@@ -149,6 +149,10 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 图谱 `(:PhysicalTable)-[:RELATES_TO]->(:PhysicalTable)` 为主路径（表键双形匹配、列形状容错字符串/数组），
 图谱不可用/超时/无结果时降级为字段级 `fields[].references`。该函数**永不 throw**，降级只写
 `tableRelationsError` 留痕并 `console.warn`，绝不阻断节点创建；工具回执附 `relations: N (graph|fields)`。
+
+**X17 档 A 不改查询**：`buildRelatesToCypher` 早已 `RETURN b.full_table_name AS target`，本增量只是把该原值
+经 `withGraphQualifiedNames` 落成关系上的可选键 `targetQualifiedName`（零新增图谱查询）；落键发生在
+`resolveTableRelations` 而非 `relationsFromGraphRows` 本体，后者输出形状保持不变（既有 27 例不修改即通过）。
 
 ### 注册工具: govio_show_chart
 

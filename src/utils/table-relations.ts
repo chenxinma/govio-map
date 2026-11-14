@@ -11,6 +11,11 @@
  * 更长的变体（qualifiedName 在场时三段式先匹配上），且只在 sourceTable ↔ sourceTable
  * 之间建边，误配面有限。已知局限记录在 docs/tasks/X10-table-semantic-edges/design.md。
  *
+ * X17 档 A（全限定名全等优先）：关系带 `targetQualifiedName`（图谱 `b.full_table_name` 原值）时，
+ * 先与节点 `qualifiedName` **全等（大小写归一）**比较——命中即止（该关系不再进变体求交，
+ * 杜绝同名跨库误配）；未命中才退回上述变体匹配（段数不一致 / 旧数据没有全限定名时的兜底）；
+ * 都不中不建边。关系不带该键（字段级降级 / 旧数据）时行为与 X10 完全一致。
+ *
  * 纯函数、无副作用：canvas-store 负责把候选转成 ReactFlow Edge（样式/去重/id 规则），
  * 本模块不依赖 @xyflow/react，便于 node 环境单测。
  */
@@ -109,6 +114,7 @@ export function nodeTableRelations(node: TableNodeLike): TableRelation[] {
     out.push({
       targetTable,
       relationshipType: str(rel.relationshipType) ?? '',
+      ...(str(rel.targetQualifiedName) ? { targetQualifiedName: str(rel.targetQualifiedName)! } : {}),
       ...(str(rel.description) ? { description: str(rel.description) } : {}),
       ...(Array.isArray(rel.sourceColumns) ? { sourceColumns: rel.sourceColumns.filter((c): c is string => typeof c === 'string') } : {}),
       ...(Array.isArray(rel.targetColumns) ? { targetColumns: rel.targetColumns.filter((c): c is string => typeof c === 'string') } : {}),
@@ -120,6 +126,26 @@ export function nodeTableRelations(node: TableNodeLike): TableRelation[] {
 /** 关系目标表的匹配键集合（图谱三段式原值 / 字段级裸表名都能对上） */
 export function relationTargetKeys(targetTable: string): Set<string> {
   return new Set(tableKeyVariants(targetTable));
+}
+
+/**
+ * 关系目标全限定名的归一全等键（X17 档 A 匹配第①级）。
+ * 无键 / 空串 / 非字符串 → undefined（该关系走第②级变体兜底，行为同 X10）。
+ */
+export function relationExactTargetKey(rel: TableRelation): string | undefined {
+  const q = str(rel.targetQualifiedName);
+  return q ? normalizeTableKey(q) : undefined;
+}
+
+/**
+ * sourceTable 节点归一后的 `qualifiedName`（X17 档 A 第①级匹配主体）。
+ * 非 sourceTable / 缺失 / 空白 → undefined（节点不可能被第①级命中，只能接住第②级变体匹配）。
+ */
+export function sourceTableQualifiedNameKey(node: TableNodeLike): string | undefined {
+  const d = dataOf(node);
+  if (!d || d.type !== 'sourceTable') return undefined;
+  const q = str(d.qualifiedName);
+  return q ? normalizeTableKey(q) : undefined;
 }
 
 function intersects(a: Set<string>, b: Set<string>): boolean {
@@ -138,6 +164,13 @@ function pairKey(a: string, b: string): string {
  * ① 新节点的 `tableRelations.targetTable` 指向既有节点 → 边 新 → 既有；
  * ② 既有节点的 `tableRelations.targetTable` 指向新节点 → 边 既有 → 新
  *    （星型模型里 dim 表可能后上画布，此时关系挂在先落地的 fact 节点上）。
+ *
+ * 匹配优先级（X17 档 A，两个方向同规则）：
+ * 第①级 关系的 `targetQualifiedName` 与节点 `qualifiedName` 全等（大小写归一）→ 命中即止，
+ *        该关系不再走第②级（同名表跨 catalog/schema 时边只会连到全限定名一致的那个节点）；
+ * 第②级 第①级未命中（关系无全限定名、节点无 qualifiedName、或全限定名对不上）→
+ *        退回 `tableKeyVariants` 点号后缀变体集合求交（既有行为，一字不改）；
+ * 第③级 都不中 → 不建边。
  *
  * 去重规则：**同一对节点只保留一条**（无向去重——图谱里 a→b 与 b→a 同时存在时也只画一条，
  * 先产出的候选胜出，① 优先于 ②）；自环丢弃；`existingEdges` 中已存在的语义边（按
@@ -188,11 +221,22 @@ export function tableSemanticEdgeCandidates(
 
   const existingTables = (existingNodes ?? [])
     .filter((n) => n && n.id !== newNode.id)
-    .map((n) => ({ node: n, keys: sourceTableMatchKeys(n) }))
+    .map((n) => ({ node: n, keys: sourceTableMatchKeys(n), qualified: sourceTableQualifiedNameKey(n) }))
     .filter((e) => e.keys.size > 0);
+  const newQualified = sourceTableQualifiedNameKey(newNode);
 
   // ① 新节点的关系指向既有节点（关系原文随候选一起带出，供边侧 UI 消费）
   for (const rel of nodeTableRelations(newNode)) {
+    const exact = relationExactTargetKey(rel);
+    if (exact) {
+      const hits = existingTables.filter((e) => e.qualified === exact);
+      if (hits.length > 0) {
+        // 第①级命中即止：同名跨库的其余节点不再进入变体求交
+        for (const hit of hits) push(newNode.id, hit.node.id, rel);
+        continue;
+      }
+    }
+    // 第②级兜底：变体集合求交（第①级未命中 / 关系无全限定名）
     const targetKeys = relationTargetKeys(rel.targetTable);
     for (const { node, keys } of existingTables) {
       if (intersects(targetKeys, keys)) push(newNode.id, node.id, rel);
@@ -202,6 +246,12 @@ export function tableSemanticEdgeCandidates(
   // ② 既有节点的关系指向新节点
   for (const { node } of existingTables) {
     for (const rel of nodeTableRelations(node)) {
+      const exact = relationExactTargetKey(rel);
+      if (exact && newQualified === exact) {
+        // 第①级命中即止（新节点是唯一目标主体，全等命中后不再对该关系做变体兜底）
+        push(node.id, newNode.id, rel);
+        continue;
+      }
       if (intersects(relationTargetKeys(rel.targetTable), newKeys)) push(node.id, newNode.id, rel);
     }
   }

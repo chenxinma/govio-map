@@ -56,7 +56,7 @@ const nodeTypes: NodeTypes = {
 | datasourceType? | DatasourceType | 数据源类型（duckdb/postgres/mysql/oracle/hive/trino/sqlalchemy-generic/unknown），决定 SQL 表引用段式，T2.0 |
 | schema? | string | 所属 schema（取图谱 PhysicalTable.schema），T2.0 |
 | qualifiedName? | string | SQL 中应使用的全限定表名（duckdb 三段式 catalog.schema.table 等），T2.0 |
-| tableRelations? | TableRelation[] | 表间语义关系（X10）：本表的出向关系，元素为 `{targetTable, relationshipType, description?, sourceColumns?, targetColumns?}`；`relationshipType` 取图谱原值（如 `many_to_one`），字段降级路径为 `foreign_key`。**X15 起该类型只落盘留痕（sidecar 可追溯），画布与导出报告均不展示** |
+| tableRelations? | TableRelation[] | 表间语义关系（X10）：本表的出向关系，元素为 `{targetTable, relationshipType, description?, sourceColumns?, targetColumns?, targetQualifiedName?}`；`relationshipType` 取图谱原值（如 `many_to_one`），字段降级路径为 `foreign_key`；`targetQualifiedName`（X17 档 A，可选）为图谱 `b.full_table_name` 原值——仅图谱路径给出 target 列的关系携带，字段级降级/缺列行**不建键、禁止猜测**。**X15 起该类型只落盘留痕（sidecar 可追溯），画布与导出报告均不展示** |
 | tableRelationsSource? | 'graph' \| 'fields' | 关系来源留痕（X10）：图谱 `RELATES_TO` / 字段级 `references` 降级；仅在 tableRelations 非空时写键 |
 | tableRelationsError? | string | 图谱查询降级原因（X10）：仅图谱失败/超时/无可用表键时写键（即使降级路径拿到了关系） |
 
@@ -66,8 +66,13 @@ const nodeTypes: NodeTypes = {
 三个 X10 字段同样全部可选，由服务端 `server/table-relations.ts` 在 `govio_create_source_table`
 执行时解析（agent 不传、也不得口头复述外键）：图谱不可用时降级到字段级 `references`，两者都
 拿不到就**不建键、不建边**。前端据 `tableRelations` 在 sourceTable 之间连紫虚线语义血缘边
-（`Edge.data.lineageKind = "semantic"`，样式唯一来源 `src/utils/lineage.ts`），匹配容忍三段式/
-两段式/裸表名差异（`src/utils/table-relations.ts` 的后缀变体集合），建边规则见 `docs/specs/05-store.md`。
+（`Edge.data.lineageKind = "semantic"`，样式唯一来源 `src/utils/lineage.ts`）。匹配走 **X17 档 A 三级**
+（两个方向同规则，实现 `src/utils/table-relations.ts`）：① 关系带 `targetQualifiedName` 且与既有节点
+`qualifiedName` **全等**（两侧 `normalizeTableKey` 去空白+小写归一）→ **命中即止**，该关系不再进变体求交
+（同名表跨 catalog/schema 时边只连全限定名一致的那个节点，消 X10 遗留①误配）；② 第①级未命中（关系无
+该键、节点无 `qualifiedName`、或全限定名对不上但段数不同本就配不上）→ 退回点号后缀变体集合求交
+（容忍三段式/两段式/裸表名差异，既有行为一字不改）；③ 都不中不建边。既有去重（无向 pairKey、
+① 优先于 ②、自环丢弃、既有语义边不重建）语义不变。建边规则见 `docs/specs/05-store.md`。
 
 **X13 关系详情出口**：同一份关系数据在 UI 有三处可见——① sourceTable 节点内「表间关系」小节（目标表裸名 +
 列映射，缺失的键不渲染，默认 3 条后折叠；**X15.1 起图谱 `description` 不再单独占行，改为随整行 hover 的
