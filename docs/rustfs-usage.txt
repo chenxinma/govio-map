@@ -1,0 +1,11 @@
+# RustFS 本地 S3 兼容服务启动流程（T3.1 真实 S3 端到端验证用，见 docs/tasks/T3.1-canvas-team-storage/verification.md）
+# 凭据走环境变量 RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY（自选）；API 端口 9000、控制台 9001。
+# 数据/日志目录落在启动时的工作目录，容器 stopped 后可复用。
+# Create data and logs directories
+mkdir -p data logs
+
+# Change the owner of these directories
+chown -R 10001:10001 data logs
+
+# Using latest version
+wslc run -d -p 9000:9000 -p 9001:9001 -v $(pwd)/data:/data -v $(pwd)/logs:/logs rustfs/rustfs:latest
