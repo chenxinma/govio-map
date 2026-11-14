@@ -1,9 +1,15 @@
 # Govio Map v0.7.2 — 画布可交接、口径见真章
 
-> 覆盖 v0.7.0 之后的全部演进（**Phase 3 前两项 + 横切改进 X16–X19**）。
+> 覆盖 v0.7.0 之后的全部演进（**Phase 3 前两项 + 横切改进 X16–X21**）。
 > **v0.7.1 跳过**：此前「语言关联与排版更新」一轮遗漏了版本号更新，按用户裁决（2026-11-14）
 > 本轮直接升至 0.7.2，0.7.1 号不再使用。govio-cli 与 Govio Map 独立发版（口径判定增强在
 > govio 侧，见 govio PR #24）。
+>
+> **发布产物变更**：自本版起 Release 附件由 Windows 安装包（`.exe`）改为 **npm tgz 包**
+> （`npm pack` 产物 `govio-map-0.7.2.tgz`，约 2.4 MB）。包内含 `dist` / `dist-server` /
+> `.agents`（govio skills 源文档）/ `.pi`（`APPEND_SYSTEM.md` 运行时硬约束）；
+> **不含** `.agents/skills/govio/assets`——该目录是按环境生成的图谱快照，随包分发会把
+> 目标环境的 live 快照盖掉。
 
 ## 🤝 成果可交接（Phase 3）：画布不再只属于一个人
 
@@ -36,6 +42,14 @@
 - 时间粒度矛盾（声明月度取年度）纳入检测；8 档回归样本逐档锁定判定
 - map 侧消费断言 46 → 77（三态透传/降级/reason 全覆盖），输出契约不变
 
+## 🧾 输出列与 SQL 高亮（X21）
+
+- **输出列抽取升级**：引入 `node-sql-parser` 主解析（失败回落剥注释后的正则兜底，绝不产垃圾列名），
+  修复「SQL 带行内 `--` 注释时输出列显示不全」；函数内逗号、隐式/引号别名、DISTINCT、嵌套等
+  常见形态全覆盖，DuckDB 特有语法（QUALIFY 等）安全回落
+- **编辑跟手**：保存 SQL 后「输出列」自动重抽取，不再与 SQL 文本脱节
+- **SQL 高亮统一**：节点卡片与编辑弹窗同源高亮（token 分类一致、配色单点定义），观感不再两套
+
 ## ⚙️ 工程质量（X16）
 
 - CI 维护包：actions **pin commit SHA**（Node.js 20 弃用警告消除）、runner 钉 `ubuntu-24.04`
@@ -44,22 +58,31 @@
 
 ## 🔢 验证基线演进
 
-脚本断言 624 → **670**；vitest 15 文件 194 例 → **19 文件 256 例**；UI 4 文件 31 → **37 例**；
-合并态三门槛全绿（build/lint/verify 零回归）。
+脚本断言 624 → **671**；vitest 15 文件 194 例 → **20 文件 273 例**；UI 4 文件 31 → **37 例**；
+各 PR 合并态三门槛（build / lint / verify）全绿零回归。
 
 ## 📌 已知取舍与遗留
 
 - 分享链接暂无过期/撤销（遗留跟踪）；S3 ListObjectsV2 未翻页（>1000 key）；virtual-host 风格未覆盖
 - 口径徽标短名取 `code ?? name`（chocolate 图谱下显示 `m_sales_amount`）；切中文名留有一行开关
-- 真实 CLI 的 8 档输出待 govio 发版后补录
+- 提问措辞与图谱指标名不一致（如「订单量」vs「订单数」）时注入不命中、语义归因缺口 → 挂
+  `docs/PENDING-DISCUSSION.md` PD-3 待讨论
+- X21 懒加载 chunk 为 node-sql-parser 全 15 方言打包（改单方言构建可减约 4/5 体积）
+- 真实 CLI 的 8 档口径输出待 govio 发版后补录
 
-> 补记（2026-11-14）：本版同时包含 **X21**（见下节）。
+## 📦 安装与运行
 
-## 🧾 输出列与 SQL 高亮（X21）
+```bash
+# 安装（tgz 来自本 Release 附件）
+npm i -g govio-map-0.7.2.tgz
 
-- **输出列抽取升级**：引入 `node-sql-parser` 主解析（失败回落剥注释后的正则兜底，绝不产垃圾列名），
-  修复「SQL 带行内 `--` 注释时输出列显示不全」；函数内逗号、隐式/引号别名、DISTINCT、嵌套等
-  常见形态全覆盖，DuckDB 特有语法（QUALIFY 等）安全回落
-- **编辑跟手**：保存 SQL 后「输出列」自动重抽取，不再与 SQL 文本脱节
-- **SQL 高亮统一**：节点卡片与编辑弹窗同源高亮（token 分类一致、配色单点定义），
-  观感不再两套
+# 运行：在工作目录启动（HTTP + WS，默认 5173/5174）
+govio-map
+```
+
+前置条件：`govio-cli` 在 PATH（外部 CLI，启动时校验，无 mock 回退）；工作目录 `.env` 至少
+配置一个模型 provider（`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` /
+`MISTRAL_API_KEY`）。首次启动会把包内 `.agents`（govio skills）与 `.pi/APPEND_SYSTEM.md`
+播种到当前工作目录（`.agents` 覆盖式更新；`.pi` 目录不覆盖既有文件，仅
+`APPEND_SYSTEM.md` 强制更新）。图谱快照 `assets/` 由 `govio-cli meta graph` 按环境生成，
+不随包分发。
