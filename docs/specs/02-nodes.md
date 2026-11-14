@@ -93,6 +93,20 @@ const nodeTypes: NodeTypes = {
 | sql | string | SQL 语句 |
 | outputColumns | string[] | 输出列名 |
 | manifest? | AnalysisManifest | 分析留痕：SQL 全文 + 来源（origin/模型/会话/时间），见 `src/types/manifest.ts` |
+| semanticRefs? | SemanticRef[] | 语义引用（T2.2 口径溯源）：生成本 SQL 时注入的图谱实体（Metric / Dimension / Col），渲染为「口径」徽标区（见下）；无注入时缺失不写键，见 `src/types/semantic.ts` |
+
+**口径徽标区（X18，PD-1 方案 1）**：`semanticRefs` 里 `code ?? name` 有值的引用，在卡片上渲染成
+「口径」小节的徽标——Metric 优先，其后 Dimension、Col，同类型保持注入原序；同一 `entityType:id`
+只留一条（与语义血缘边的去重口径一致）。默认前 `MAX_VISIBLE_SEMANTIC_REFS = 3` 条，超出用
+「+N more refs」/「Collapse」展开收起（与字段区、表间关系小节同一交互范式）。`code` 与 `name` 都缺的
+引用（图谱 `Col` 注入行的常态）**整条跳过**；`semanticRefs` 缺失或全部无短名时**整节不渲染**
+（旧节点 / 手动建的 SQL 节点 / 图谱降级都不留空壳行、不出现 `undefined`）。完整信息（类型 / 编码 /
+名称 / 图谱 ID）按 X15.1 取舍放 hover `title`，画布上只留短名。展示模型唯一来源
+`src/utils/semantic-refs-ui.ts`（纯函数，画布与导出共用），配色走 green-deck token class
+（紫 = 语义层，与语义血缘边同色系），组件内不写死色值。与 T2.3 口径冲突警示的分工：警示永远在标题行、
+黄色只由 `caliberNodeAppearance`（`src/utils/caliber.ts`）给出，徽标区独立成行、不借警示色，
+冲突态下两者互不遮挡。导出 HTML 同步渲染为 sqlQuery 卡片的「口径引用」表（类型 / 编码 / 名称 /
+图谱 ID）——静态交付物没有 hover，故直接成列呈现，与表间关系「说明」列同一处理方式。
 
 ### DataFrameNodeData
 

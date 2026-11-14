@@ -41,6 +41,7 @@ import {
   relationEdgeLabel,
   tableRelationsHint,
 } from './table-relations-ui';
+import { semanticRefBadges } from './semantic-refs-ui';
 import { RERUN_OUTCOME_LABELS, formatRerunTime, hasDrift, latestRerun } from './rerun';
 import { manifestModelLabel, manifestOriginLabel } from './manifest-labels';
 import { REPORT_CSS } from './export-report-style';
@@ -717,11 +718,36 @@ function manifestBlock(manifest: AnalysisManifest | undefined, ctx: CardContext,
   );
 }
 
+/**
+ * 口径引用（X18，PD-1 方案 1）：本 SQL 引用的图谱指标 / 维度。
+ *
+ * 与画布同一取值来源（`semanticRefBadges`：Metric 优先、`code`/`name` 都缺的引用已过滤）；
+ * 画布上按 X15.1 取舍收进 hover 的完整信息（类型 / 编码 / 名称 / 图谱 ID），在静态交付物里
+ * **直接成列呈现**——导出 HTML 没有 hover，与表间关系「说明」列同一处理方式。
+ * 无引用时返回空串（整节不渲染，旧节点卡片形状不变）。
+ */
+function semanticRefsBlock(d: SQLQueryNodeData): string {
+  const badges = semanticRefBadges(d.semanticRefs);
+  if (badges.length === 0) return '';
+  const dash = '<span class="note">—</span>';
+  const rows = badges.map((badge) => [
+    badge.typeLabel ? esc(badge.typeLabel) : dash,
+    badge.code ? `<code>${esc(badge.code)}</code>` : dash,
+    badge.name ? esc(badge.name) : dash,
+    badge.id ? `<code>${esc(badge.id)}</code>` : dash,
+  ]);
+  return (
+    label(`口径引用（${badges.length}）`) +
+    `<div class="scroll">${table(['类型', '编码', '名称', '图谱 ID'], rows)}</div>`
+  );
+}
+
 function sqlQueryBody(d: SQLQueryNodeData, ctx: CardContext): string {
   return (
     label('SQL') +
     (d.sql ? codeBlock(d.sql) : '<p class="note">（空 SQL：双击节点可在画布里编辑）</p>') +
     (d.outputColumns?.length ? label('输出列') + chips(d.outputColumns) : '') +
+    semanticRefsBlock(d) +
     manifestBlock(d.manifest, ctx, false)
   );
 }
