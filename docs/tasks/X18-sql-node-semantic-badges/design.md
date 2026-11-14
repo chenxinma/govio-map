@@ -69,13 +69,17 @@
   `scripts/verify-semantic-lineage.ts` 的 `REFS`（`[{Metric m1 gmv 销售额}, {Col c1}]`）就是这一真实形态，
   新增断言直接钉住「Col 不产徽标」。
 
-### 3.3 短名取 `code` 优先（契约）—— 与 PD-1 示例文案的差异（见遗留 1）
+### 3.3 短名取 `code` 优先（契约 + 用户裁决：暂时保留 code）
 
 按 X18 scope 的硬规则实现 `code ?? name`。实际效果需要点明：chocolate 图谱里指标 code 形如
 `m_sales_amount`，所以画布徽标显示的是 **code**（`m_sales_amount`），而 PD-1 记录举的例子是中文名
 「销售额」；中文名在 hover 的 `名称：` 行与导出表的「名称」列里。若产品上更希望画布直接显示中文名，
 只需把 `semanticRefLabel` 的优先级换成 `name ?? code`（一处、纯函数、画布与导出同时生效）。
-本任务**不擅自改契约**，按 scope 实现并把选择权留给用户。
+本任务**不擅自改契约**，按 scope 实现并把选择权交给用户。
+
+**用户裁决（2026-11-14，派发后追问）：「暂时不用中文显示，保留 code」**——维持 `code ?? name`，
+本任务不改。裁决同时记入 `semanticRefLabel` 的 docblock、PD-1 与本文件遗留 1（已关闭），
+避免后来者把它当未定项"顺手"改掉。中文名在 hover 与导出表里仍可见，追溯链没有变短。
 
 ### 3.4 与 T2.3 口径警示的视觉分工（警示优先）
 
@@ -143,9 +147,10 @@
 
 ## 6. 遗留问题
 
-1. **徽标短名 code vs 中文名（产品口径待确认）**：现按契约 `code ?? name`，chocolate 图谱下画布显示
-   `m_sales_amount` 而非「销售额」（中文名在 hover 与导出表里）。若用户更想直接看中文名，
-   改 `semanticRefLabel` 一处即可（画布 + 导出同步生效），并同步 3 条 UI 用例与 2 条脚本断言的期望值。
+1. **（已裁决关闭 2026-11-14）徽标短名 code vs 中文名**：用户裁决「暂时不用中文显示，保留 code」，
+   故维持 `code ?? name`（chocolate 图谱下画布显示 `m_sales_amount`，中文名在 hover 与导出表里）。
+   裁决已写进 `semanticRefLabel` docblock 与 §3.3，不再作为待确认项；若将来重开，改一处优先级即可
+   （画布 + 导出同步生效），并同步 3 条 UI 用例与 2 条脚本断言的期望值。
 2. **受跟踪样例 `docs/tasks/T1.4-canvas-export/sample-export.html` 未刷新**：本次改了导出内容，
    但该样例本就早于 X13/X15（不含「字段关联」列），已经陈旧；`verify:export` 默认**不**比对它
    （只有追加 `--write` 才重写）。刷新会产生跨任务目录的大 diff，留给主会话决定是否单独跑一次

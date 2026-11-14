@@ -129,7 +129,7 @@ $ git status --porcelain
    `+N more relations` 同一视觉语言）；点开后 4 条全显并变成「⌃ Collapse」（该交互由 UI 用例断言）。
 5. **hover**：鼠标停在 `m_sales_amount` 上，浏览器原生 tooltip 分四行显示
    「类型：指标 / 编码：m_sales_amount / 名称：销售额 / 图谱 ID：m_sales_amount」——**中文名在 hover 里可见**
-   （画布上显示 code 是契约 `code ?? name` 的结果，见 design.md §3.3 与遗留 1）。
+   （画布上显示 code 是契约 `code ?? name` 的结果，且用户已裁决 2026-11-14「暂时保留 code」，见 design.md §3.3）。
 6. **无口径的节点**（旧节点 / 手动建的 SQL 节点 / 只注入 Col）：整节消失，卡片从 SQL 正文直接接「输出列」，
    **没有空壳行、没有计数 0、没有 `undefined` 文案**（UI 用例 + 导出脚本双向断言）。
 7. **导出 HTML**：sqlQuery 卡片在「输出列」之后多出「**口径引用（4）**」表，四列
