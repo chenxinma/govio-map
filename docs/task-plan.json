@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-14T18:10:03+08:00",
+  "updatedAt": "2026-11-14T19:13:26+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1366,6 +1366,38 @@
           "at": "2026-11-14T18:10:03+08:00",
           "by": "main-session",
           "note": "主会话亲自执行（纯版本记账）：package.json 0.7.0→0.7.2 + docs/release-v0.7.2.md（沿用 0.7.0 格式，含 0.7.1 跳过说明与已知取舍）；build/lint/verify 全 0。PR #41 已建（用户合并后置 accepted）。"
+        }
+      ]
+    },
+    {
+      "id": "X21",
+      "title": "输出列抽取升级（node-sql-parser）+ SQL 高亮统一",
+      "status": "in_progress",
+      "kr": null,
+      "dependsOn": [],
+      "note": "用户实测案例 2026-11-14：SQL 带行内 -- 注释时 SQLQuery 节点输出列只显示第一列。主会话实证复现（带注释 [m_sales_amount]、去注释两列齐全），根因=extractSelectColumns 不剥注释 + columnNameOf 别名正则锚定串尾被注释尾巴顶掉。另一问题：SQLQuery 卡片（自写 regex highlightSQL）与编辑弹窗（CodeMirror lang-sql）两套高亮技术观感不一致。用户裁决 2026-11-14：批准 node-sql-parser 新依赖、高亮统一本轮一起做。",
+      "scope": [
+        "node-sql-parser 主解析抽取 SELECT 列名/别名（注释/CASE/嵌套/DISTINCT），现有正则管道降级兜底，任何输入不得比现状差",
+        "回归用例：本次注释案例 + BUGFIX-sql-columns 旧坏例（函数内逗号垃圾列名）零回归 + 常见形态覆盖（引号/隐式别名、裸列、t.*、无别名跳过、解析失败回落）",
+        "SQLModal 保存编辑后输出列跟手核实，不刷新则最小改动修复（保存时重抽取或显示端派生，design.md 取舍），不改 PROTOCOL_VERSION",
+        "SQL 高亮统一：两端 token 分类（关键词/字符串/注释/数字）观感一致；Lezer 共享或内嵌 CodeMirror 或共享 tokenizer 三选一（design.md 取舍 + bundle 对比，X3 拆分不回退）",
+        "导出 HTML「输出列」chips 同步正确；outputColumns 契约形状不变",
+        "三件套落盘 docs/tasks/X21-sql-output-columns/"
+      ],
+      "acceptance": [
+        "注释案例两列全出；旧坏例零回归；解析失败回落不产垃圾列名",
+        "高亮两端 token 分类一致（自动化断言或 DOM 断言 + 人工目视）；bundle 不显著膨胀（记录主 chunk 前后）",
+        "npm run build/lint/verify 全绿；基线（脚本 670 / vitest 19 文件 256 例 / UI 4 文件 37 例）零回归 + 新增用例，增量 verification.md 逐项列出",
+        "不改 outputColumns 契约、不改 PROTOCOL_VERSION；新依赖仅 node-sql-parser 且 design.md 论证",
+        "走 GitHub PR（用户合并）"
+      ],
+      "outputDir": "docs/tasks/X21-sql-output-columns/",
+      "history": [
+        {
+          "status": "in_progress",
+          "at": "2026-11-14T19:13:26+08:00",
+          "by": "main-session",
+          "note": "2026-11-14 按用户确认立项并派发（批准 node-sql-parser、高亮统一同轮）。"
         }
       ]
     }
