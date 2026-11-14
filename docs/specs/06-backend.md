@@ -367,3 +367,39 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 | -o, --output | 可选，输出写入文件 |
 
 输出格式：NDJSON（每行一个 JSON 对象），包含 text_delta、thinking_delta、tool_start/end、message_start/end 等事件。
+
+## storage/ - 画布团队存储抽象（T3.1）
+
+`server/session-history.ts` 的画布 sidecar 从「写死本地文件」抽象为可插拔后端；默认无配置即纯本地，行为与旧实现逐字节一致。
+
+### 模块与契约
+
+- `backend.ts`：`CanvasStorageBackend`（`read/write/remove/list`，write 支持 `ifMatch` 乐观锁，冲突抛 `StorageConflictError`）。
+  主键是 `canvasId`（会话文件基名去 `.jsonl`），白名单正则拒绝穿越/分隔符——与 `assertValidSessionPath` 等价安全边界。
+- `local-backend.ts`：`LocalCanvasBackend`，etag = 内容 sha256 前 16 位。
+- `config.ts`：S3 profiles 配置文件（`GOVIO_S3_PROFILES_FILE` 覆写，缺省 `.govio/storage-profiles.json`）。
+  **凭据只存环境变量名**（accessKeyIdEnv/secretAccessKeyEnv/sessionTokenEnv），运行时才从 `process.env` 取值；
+  凭据不落画布 JSON、绑定 sidecar、分享记录、日志与分享链接（集成测试全工件深度断言）。
+- `s3-client.ts` / `s3-backend.ts`：零依赖 SigV4 REST 客户端与 `S3CanvasBackend`；
+  key 布局 `<prefix>/<canvasId>/canvas.json`（+ `shares/<shareId>.json`）。多端绑定同一 profile+canvasId 即共享画布。
+- `canvas-storage.ts`：逐画布绑定 sidecar `<session>.storage.json`（`{backend:"s3", profile, canvasId, lastSyncedHash, remoteEtag}`）
+  与同步门面。
+
+### 写入模型与并发
+
+- `saveCanvas` 同步写本地后 fire-and-forget 上传（内容 hash 未变跳过）；会话打开（`pushSessionState`）先
+  `await refreshCanvasFromRemote` 拉对端更新（失败降级本地缓存，不阻塞交互）。
+- 冲突策略：If-Match 探测并发 → 冲突时**最后写入胜出 + warn 留痕**；本地有未同步改动时 refresh 不强覆盖（返回 conflict）。
+- `deleteSession` 级联：远端工件尽力删除 + 本地绑定 sidecar 删除。
+
+## share.ts / share-api.ts - 只读分享与 fork 续写（T3.2）
+
+- `POST /api/shares`：把**活动会话**画布固化为 ShareRecord（canvas 快照 + `manifests[]` 抽取 + `forkFrom` 继承）；
+  本地必写 `.govio/shares/<shareId>.json`，S3 绑定画布同时写远端（跨实例发现）。令牌 = `randomBytes(16).hex`。
+- `GET /api/shares/<token>`：只读视图载荷（剥 profile/originBackend，绝无凭据）；解析顺序 = 本地记录 → 逐配置 profile 查远端。
+- `POST /api/shares/<token>/rerun`：只读态复跑，按快照 Manifest 固化 SQL 走 `rerunDataFrame`（T1.2 语义），
+  结果只进响应——不存在写回源画布的路径。
+- `POST /api/shares/<token>/fork` → 暂存 `.govio/forks/<forkId>.json`（含 forkFrom）；前端跳转 `/?fork=<forkId>` 后
+  WS `canvas_fork_apply` 写入本地新会话（canvas.json 顶层 `forkFrom` 键，`saveCanvas` 无 meta 调用时保留附加键，血缘抗 autosave）。
+- `GET/POST /api/canvas-storage`：活动会话的 S3 绑定查询/设置（`{profile, canvasId?}` / `{clear:true}`）；响应不含凭据。
+- 前端：`/share/<token>` 独立静态页（不建立 /ws 连接）；ChatPanel 头部分享按钮。
