@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-15T16:59:14+08:00",
+  "updatedAt": "2026-11-15T17:25:26+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1548,6 +1548,39 @@
           "note": "2026-11-15 立项归口（用户裁决「暂时不做，先留在任务计划里」）：把 X16 遗留 3 从已验收任务的 design.md 提升为可见待办条目，并附成本更正（公开仓 Actions 免费，原 12–18 小时/月估算作废）、7 项 SKIP 断言的实质内容、以及建议方案（跑全链 + 喂看板验证 windows 671）。**未获用户明确批准前不得实施。**"
         }
       ]
+    },
+    {
+      "id": "X25",
+      "title": "BUGFIX：分享链接指向后端端口导致 404（链接必须用页面 origin，不能用 API 基址）",
+      "status": "done",
+      "kr": null,
+      "dependsOn": [
+        "T3.2"
+      ],
+      "note": "用户实测 2026-11-15：点「生成只读分享链接」后打开是 404 Not found，要求先禁用分享按钮。主会话取证结论：分享功能后端与前端路由都正常，坏的只是链接端口——ChatPanel 用「页面端口 +1」的 API 基址拼了前端路由链接（http://localhost:5174/share/<token>），而后端只提供 /api/*、/ws、/canvas，不托管 SPA。实测对照：5174/share/<真 token> → 404 {\"error\":\"Not found\"}；5173/share/<同 token> → 200；GET /api/shares/<token>（5174 直连与 5173 代理）→ 200；.govio/shares/ 两条记录齐全（POST 与持久化均成功）。用户裁决：方案 A「直接修一行 + 回归断言，按钮保持可用」（不禁用）。详见 docs/tasks/BUGFIX-share-link-port.md。",
+      "scope": [
+        "新增 src/utils/share-link.ts：shareLink(path, pageOrigin) 只用页面 origin 构造分享链接（origin 尾斜杠归一、path 补前导斜杠、origin 空/不可解析退回相对路径、绝不猜端口）；apiBaseFrom(pageOrigin) 保留「页面端口 +1」约定，origin 无端口（生产同源托管）返回 null 让调用方走同源相对路径",
+        "ChatPanel.tsx：两处复制（首次生成 + 再次复制）改用 shareLink(url, window.location.origin)；API 调用改 apiBaseFrom(origin) ?? ''（dev 行为不变仍打 5174，生产单端口自动退回同源）",
+        "回归断言 tests/integration/share-link.test.ts 11 例：主案例 + 反向断言（链接不含 :5174、不等于 apiBase+path）、链接 pathname 能被 main.tsx 分享路由正则匹配、生产无端口场景、归一化、退化输入、query 保留",
+        "文档：docs/tasks/BUGFIX-share-link-port.md（取证表、根因、修复、验证、影响面与遗留 4 条）",
+        "按 X23 约定同步 docs/task-plan.json → verificationBaseline（vitest 20·278 → 21·289）"
+      ],
+      "acceptance": [
+        "分享链接落在托管 SPA 的 origin（dev = 5173），打开渲染 ShareView 而非 404",
+        "反向断言锁死：链接不得由 API 基址（页面端口 +1）拼出",
+        "dev 下 API 调用行为不变（仍走 5174）；生产单端口同源托管时不再 +1 打空",
+        "npm run build/lint/verify 全绿；脚本断言 671 不变、vitest 21 文件 289 例、UI 4 文件 37 例；verificationBaseline 同步后 CI 看板无漂移告警",
+        "走 GitHub PR（用户合并）"
+      ],
+      "outputDir": "docs/tasks/BUGFIX-share-link-port.md",
+      "history": [
+        {
+          "status": "done",
+          "at": "2026-11-15T17:25:26+08:00",
+          "by": "main-session",
+          "note": "主会话亲自实现（用户裁决 A）：build/lint/verify 全 0，脚本 671 不变、vitest 20·278 → 21·289（+11 例 share-link 回归）、UI 37 不变，verify 后工作区仅本任务改动。ShareView 的 fork 回跳本就用相对路径（/?fork=），不受影响。遗留 4 条（最关键：全仓 port+1 约定在生产单端口托管下均不成立，本次只修分享链路，其余留待 T3.4）。"
+        }
+      ]
     }
   ],
   "pullRequests": {
@@ -1594,7 +1627,7 @@
   "verificationBaseline": {
     "updatedAt": "2026-11-15T09:35:53+08:00",
     "source": "唯一事实源：CI 断言数看板（.github/workflows/scripts/assertion-dashboard.mjs）从这里读基线，脚本内不再硬编码数字（X23，解 X16 design.md 遗留 1）。",
-    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。",
+    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：X25（2026-11-15，vitest 20·278 → 21·289，+11 例 share-link 回归）。",
     "scripts": {
       "verify:manifest": 92,
       "verify:rerun": 71,
@@ -1614,8 +1647,8 @@
     },
     "vitest": {
       "verify:integration": {
-        "files": 20,
-        "tests": 278
+        "files": 21,
+        "tests": 289
       },
       "verify:ui": {
         "files": 4,
