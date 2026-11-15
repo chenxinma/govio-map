@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-15T09:46:25+08:00",
+  "updatedAt": "2026-11-15T15:16:04+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1466,7 +1466,7 @@
     {
       "id": "X23",
       "title": "CI 断言数看板基线过期（每 run 6 条 warning）——基线迁 task-plan.json 单一事实源",
-      "status": "done",
+      "status": "accepted",
       "kr": null,
       "dependsOn": [
         "X16",
@@ -1500,6 +1500,12 @@
           "at": "2026-11-15T09:46:25+08:00",
           "by": "main-session",
           "note": "主会话亲自实现（用户裁决「当前会话内现在做修改」）：看板改为从 verificationBaseline 读基线（脚本内零硬编码数字，grep 核实），平台差值数据化为 platformSkip[platform][script]，新增声明总量自检与四条降级路径。本地 9 项矩阵全 exit 0：①仓库基线零告警（原 6 条 warning 消除）②③④⑨降级单 warning 只报实际值 ⑤漂移精确检出仅 warn ⑥自检以 sum(scripts) 为准 ⑦输入缺失安全跳过 ⑧platformSkip 通用算法验证（671−7=664，即 ubuntu 口径）。门槛 build/lint/verify 全 0，断言 671 / vitest 20·278 / UI 4·37 零增删。三件套落盘；X16 design §8 遗留 1 标注已解决。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-15T15:16:04+08:00",
+          "by": "main-session",
+          "note": "PR #44 用户合并（merge a3da5c6）。合并态独立复跑：build/lint/verify 全 0、脚本 671 / vitest 20·278 / UI 4·37 零增删、工作区干净；本地看板跑合并态日志 exit 0 且真实 warning 0 条。真实 run 证据：PR run 43664705420 与 main 合并 run（a3da5c6）annotations 均为 0（修复前 run 9ce7878 为 6 条），ubuntu 逐脚本 92/71/119/148/39/54/77/6/58=664 = 671−7 与 platformSkip 建模吻合。X16 design §8 遗留 1 已标注解决。"
         }
       ]
     }
@@ -1542,7 +1548,8 @@
     "x18-semantic-badges": "https://github.com/chenxinma/govio-map/pull/39",
     "x19-caliber-map": "https://github.com/chenxinma/govio-map/pull/40",
     "x19-caliber-govio": "https://github.com/chenxinma/govio/pull/24",
-    "x22-sql-columns-unicode": "https://github.com/chenxinma/govio-map/pull/43"
+    "x22-sql-columns-unicode": "https://github.com/chenxinma/govio-map/pull/43",
+    "x23-ci-dashboard-baseline": "https://github.com/chenxinma/govio-map/pull/44"
   },
   "verificationBaseline": {
     "updatedAt": "2026-11-15T09:35:53+08:00",
