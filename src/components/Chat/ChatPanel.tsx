@@ -7,6 +7,7 @@ import { useCanvasStore } from "../../store/canvas-store";
 import ChatMessage, { ProcessedGroup } from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import PermissionCard from "./PermissionCard";
+import { apiBaseFrom, shareLink } from "../../utils/share-link";
 
 /**
  * 消息列表：连续的已折叠过程消息（folded）合并为一个「已处理」组渲染，
@@ -67,21 +68,25 @@ export default function ChatPanel({ width }: ChatPanelProps) {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
   const handleShare = useCallback(async () => {
-    const apiPort = parseInt(window.location.port, 10) + 1;
-    const base = `${window.location.protocol}//${window.location.hostname}:${apiPort}`;
+    // X25 BUGFIX：API 基址（dev = 页面端口 +1 → 5174）与**分享链接**（页面 origin → 5173）
+    // 必须分开。/share/<token> 是前端路由（main.tsx 匹配 pathname 渲染 ShareView），由托管 SPA 的
+    // 一侧提供；后端只提供 /api/*、/ws、/canvas，拿 API 基址拼链接必然 404。
+    const pageOrigin = window.location.origin;
+    const apiBase = apiBaseFrom(pageOrigin) ?? "";
+    const linkOf = (path: string) => shareLink(path, pageOrigin);
     if (shareUrl) {
-      try { await navigator.clipboard.writeText(`${base}${shareUrl}`); } catch { /* 剪贴板不可用：链接已在对话框文案中 */ }
+      try { await navigator.clipboard.writeText(linkOf(shareUrl)); } catch { /* 剪贴板不可用：链接已在对话框文案中 */ }
       return;
     }
     setShareBusy(true);
     try {
-      const res = await fetch(`${base}/api/shares`, { method: "POST" });
+      const res = await fetch(`${apiBase}/api/shares`, { method: "POST" });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error((body as { error?: string })?.error || `分享失败（HTTP ${res.status}）`);
       const url = (body as { url?: string }).url ?? null;
       if (!url) throw new Error("分享响应缺少 url");
       setShareUrl(url);
-      try { await navigator.clipboard.writeText(`${base}${url}`); } catch { /* ignore */ }
+      try { await navigator.clipboard.writeText(linkOf(url)); } catch { /* ignore */ }
     } catch (err) {
       console.warn("[share]", err);
       window.alert(err instanceof Error ? err.message : String(err));
