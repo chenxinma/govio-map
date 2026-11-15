@@ -96,13 +96,16 @@ jobs:
           set -o pipefail
           npm run verify | tee "$RUNNER_TEMP/verify.log"
 
-      # X16 assertion dashboard: parse the four verify summary formats, compare
-      # against the pinned baseline (platform-adjusted: ubuntu expects 617 =
-      # 624 - 7 caseDrift SKIPs in verify:cwd; windows full 624) and write
-      # $GITHUB_STEP_SUMMARY. NOT A GATE: drift only warns. The script itself
-      # always exits 0 (internal errors included); continue-on-error is the
-      # second safety net so no dashboard defect can ever redden the job.
-      # design.md §4; baseline single source lives at the top of the script.
+      # Assertion dashboard (X16, non-gating): parse the four verify summary
+      # formats, compare against the baseline, and write $GITHUB_STEP_SUMMARY.
+      # Baseline single source since X23: docs/task-plan.json ->
+      # verificationBaseline (per-script counts + platformSkip + vitest files/tests).
+      # Platform delta is modelled there, not in code: ubuntu expects 664 =
+      # 671 - 7 caseDrift SKIPs in verify:cwd; windows full 671.
+      # NOT A GATE: drift only warns. The script always exits 0 (internal errors
+      # and a missing/unparsable baseline included -> actual values only);
+      # continue-on-error is the second safety net so no dashboard defect can
+      # ever redden the job. X16 design.md §4 / X23 design.md.
       - name: Assertion dashboard (non-gating)
         continue-on-error: true
         run: node .github/workflows/scripts/assertion-dashboard.mjs "$RUNNER_TEMP/verify.log"

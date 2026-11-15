@@ -141,6 +141,9 @@ warning、**exit=0**；缺日志/无参数 → warning + exit=0。真实「不�
 1. **基线迁往 `docs/task-plan.json`**：本任务按任务书允许把基线硬编码在 workflow 脚本顶部（单处、带出处
    注释）。若要「task-plan 单一事实源 + 看板从 JSON 读」，需主会话在 task-plan 加结构化字段（含 per-script
    表 + 平台 skip 数）并改看板加载器——涉及并行 worker 记账时序，本任务不做。
+   → **已由 X23 解决**（2026-11-14，PR 见 `docs/tasks/X23-ci-dashboard-baseline/`）：task-plan 新增
+   `verificationBaseline`（per-script 表 + `platformSkip` + vitest files/tests + 声明总量自检），看板改为
+   从该字段读取，基线不可用时降级为「只报实际值不比对」。
 2. **Dependabot bump 流未裁决**：pin SHA 的跟进现在是纯人工（§2.2）。`.github/dependabot.yml`
    （`package-ecosystem: github-actions`）可自动开 bump PR，但会引入一条常驻 PR 流与合并队列噪音，需用户
    拍板；拍板后单独小任务加文件即可。
