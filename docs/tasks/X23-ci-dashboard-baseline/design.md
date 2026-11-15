@@ -89,7 +89,7 @@ verify:export            expected 138, got 148
 | acceptance | 落地 |
 |---|---|
 | 基线单一事实源为 task-plan（脚本内不再硬编码数字） | §2.1/§2.2；脚本内已无任何断言数常量 |
-| 刷新后真实 run 无基线漂移 warning | 基线刷到 671 / 20·278 / 4·37；本地 9 项矩阵实测（verification.md §1）+ 真实 run 由主会话补录 |
+| 刷新后真实 run 无基线漂移 warning | 基线刷到 671 / 20·278 / 4·37；本地 9 项矩阵实测（verification.md §1）+ **真实 run 43664705420 annotations = 0**（verification.md §3） |
 | 看板失败/基线缺失均不阻断（job 绿） | 降级四路（文件缺失/JSON 损坏/字段缺失/形状非法）实测 exit 0、单条 warning |
 | required check 名不变 | `build + lint + verify` 未动（仅改注释） |
 | build/lint/verify 全绿且断言数与刷新后基线一致 | verification.md §2 |
@@ -98,8 +98,8 @@ verify:export            expected 138, got 148
 
 1. **基线仍需人工同步**：改了断言数的 PR 若忘记更新 `verificationBaseline`，看板会 warn（非门禁）。
    彻底自动化需要「从 verify 输出反写基线」的机器人步骤，涉及写权限与噪音 PR，暂不做。
-2. **ubuntu 侧 664 是推算值**：`671 − 7`（caseDrift SKIP）沿用 X16 已实测的差值，本次未在 ubuntu 上重跑取证；
-   真实 run 的 annotations 为空即为验证（主会话补录）。
+2. ~~**ubuntu 侧 664 是推算值**~~ → **已实测坐实**（2026-11-15，PR #44 的 run 43664705420）：ubuntu 日志逐脚本
+   `92/71/119/148/39/54/77/6/58 = 664`，与 `671 − platformSkip.linux."verify:cwd"(7)` 完全一致，annotations 为 0。
 3. **`ASSERTION_DASHBOARD_BASELINE` 是测试钩子**：CI 不设；若将来有人在 workflow 里设它指向别的文件，
    等于换基线来源——已在脚本头注释写明用途。
 4. **vitest 的 `files` 数对基线敏感**：新增测试文件会同时改 files 与 tests，两处都要更新（已写进 `note`）。

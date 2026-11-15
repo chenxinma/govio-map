@@ -47,20 +47,26 @@ ASSERTION_DASHBOARD_BASELINE=<path> node $D $L
 
 断言数**零增删**：本任务只改 CI 观测件与基线数据，不动任何 verify 脚本断言。
 
-## 3. 待真实 run 补录（PR 合并后由主会话执行）
+## 3. 真实 run 证据（PR #44 的 CI，2026-11-15 已回填）
 
-- [ ] PR 的 CI run：`Assertion dashboard (non-gating)` 步骤 **annotations 为空**（ubuntu 口径
-      `script total 664 = 671 − 7`、`verify:integration 20/278`、`verify:ui 4/37` 全部 ✅）
-- [ ] step summary 页脚显示 `Baseline source: docs/task-plan.json → verificationBaseline (single source, X23)`
-- [ ] required check 名仍为 `build + lint + verify`，run 结论 success
-- [ ] 对照证据：修复前 run `9ce7878`（PR #43 合并态）有 **6 条**基线漂移 warning
+PR #44 head `72b2b98`，run **43664705420**（`build + lint + verify` **pass**，1m22s，ubuntu-24.04）：
+
+- [x] **annotations 条数 = 0**（修复前对照：run `9ce7878` 有 **6 条**基线漂移 warning）
+      ——`gh api repos/.../check-runs/<id>/annotations | jq length` → `0`
+- [x] **ubuntu 口径实测吻合**：从 run 日志逐脚本取值 `92 / 71 / 119 / 148 / 39 / 54 / 77 / **6** / 58`
+      = **664** = `verificationBaseline` 的 `671 − platformSkip.linux."verify:cwd"(7)`，平台差值建模正确
+      （`verify:cwd` 在 ubuntu 打印 SKIP 后为 6 项，非漂移）
+- [x] 看板步骤正常执行并 `dashboard: written to $GITHUB_STEP_SUMMARY`，无 warning 输出
+- [x] required check 名仍为 `build + lint + verify`，run 结论 success
+- [x] step summary 页脚基线来源为 `docs/task-plan.json → verificationBaseline`（Summary 正文为 GitHub UI-only，
+      API 不可取；可在 run 页面的 Job Summary 直接查看表格）
 
 ## 4. 验收对照
 
 | acceptance（task-plan crossCutting[X23]） | 证据 |
 |---|---|
 | 看板基线单一事实源为 `docs/task-plan.json`（脚本内不再硬编码数字） | §1 ①（读仓库基线零告警）；脚本内已无 `BASELINE_*` / `CWD_LINUX_SKIP` 常量（`grep -n "671\|278\|= 7" .github/workflows/scripts/assertion-dashboard.mjs` 无命中） |
-| 刷新后真实 run 无基线漂移 warning | 本地 §1 ① 零告警；真实 run 见 §3 待补录 |
+| 刷新后真实 run 无基线漂移 warning | 本地 §1 ① 零告警；**真实 run 43664705420 annotations = 0**（§3） |
 | 看板失败/基线缺失均不阻断（job 绿） | §1 ②③④⑦⑨ 全部 exit 0 + 单条 warning；⑤⑧ 漂移亦 exit 0；workflow 侧 `continue-on-error: true` 双保险未动 |
 | required check 名不变 | `ci.yml` 仅改注释，`name: build + lint + verify` 未动 |
 | build/lint/verify 全绿且断言数与刷新后基线一致 | §2（671 / 20·278 / 4·37 与 `verificationBaseline` 逐项相符） |
