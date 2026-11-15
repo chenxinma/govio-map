@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-15T15:16:04+08:00",
+  "updatedAt": "2026-11-15T16:59:14+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1153,6 +1153,12 @@
           "at": "2026-11-14T14:19:35+08:00",
           "by": "main-session",
           "note": "PR #36 用户合并（merge 249e840）；合并态真实 run 43565464841 复核：annotations 为零（Node20/ubuntu-latest 警告消失）、ubuntu 断言口径 92/71/119/138/39/48/46/6/58=617 与看板建模一致、看板写 step summary 正常、run 57s 全绿。verification.md §5 已回填。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-15T16:59:14+08:00",
+          "by": "main-session",
+          "note": "2026-11-15 用户就遗留 3（windows nightly 腿）裁决「暂时不做，先留在任务计划里」→ 归口为待办 X24。同批更正 design.md §6 的成本估算：原「12–18 计费小时/月、占 Free 计划 60–90%」前提不成立——本仓是 PUBLIC（gh 实测），GitHub Actions 对公开仓分钟数免费无配额，2000 分钟/月与 Windows 2x 倍率只适用私有仓；且原算术即使按私有仓也高估约 3 倍（应 4–6 小时/月）。实测基准：ubuntu 整条链仅 86s（run 43664705420）。遗留 2（Dependabot bump 流）仍待用户裁决。"
         }
       ]
     },
@@ -1506,6 +1512,40 @@
           "at": "2026-11-15T15:16:04+08:00",
           "by": "main-session",
           "note": "PR #44 用户合并（merge a3da5c6）。合并态独立复跑：build/lint/verify 全 0、脚本 671 / vitest 20·278 / UI 4·37 零增删、工作区干净；本地看板跑合并态日志 exit 0 且真实 warning 0 条。真实 run 证据：PR run 43664705420 与 main 合并 run（a3da5c6）annotations 均为 0（修复前 run 9ce7878 为 6 条），ubuntu 逐脚本 92/71/119/148/39/54/77/6/58=664 = 671−7 与 platformSkip 建模吻合。X16 design §8 遗留 1 已标注解决。"
+        }
+      ]
+    },
+    {
+      "id": "X24",
+      "title": "windows nightly 腿（覆盖 ubuntu 永久 SKIP 的 7 项 caseDrift 断言）——X16 遗留 3 归口，用户暂缓",
+      "status": "pending",
+      "kr": null,
+      "dependsOn": [
+        "X16",
+        "X23"
+      ],
+      "note": "来源：X16 design.md §6 遗留 3。**用户裁决 2026-11-15「暂时不做，先留在任务计划里」** → 本条目只做归口与事实更正，未获批前不得实施。① 覆盖缺口：scripts/verify-cwd-normalize.ts 共 13 项断言，其中 7 项被 caseDrift 闸门挡住——该闸门要求文件系统能构造「同一目录两种大小写写法」（D:/Work/Gov-IO 与 d:/work/gov-io 同指一处），只有 Windows NTFS 可以，Linux 上是两个不同目录、测试无法构造，故 ubuntu 永久 SKIP（这也是 ubuntu 664 = 671 − 7 的来源）。② 被 SKIP 的实质内容 = X7「Windows 会话恢复静默失败」的守卫：[1]×1 大小写错误路径规范为磁盘真实大小写；[2]×3 bug 复现（cwd 大小写与会话头不符 → 历史会话静默落选 → 后端新建空会话，用户丢对话与画布）+ 修复后归一化 cwd 命中历史会话 + cwd 过滤仍生效（不误选其它项目更新会话）；[3]×1 SessionManager.list 大小写不符时会话不可见（列表面板同 bug）；[4]×2 applyCanonicalCwd 错误大小写 chdir 后恢复 + 幂等。③ **成本更正（重要，原估算作废）**：本仓 chenxinma/govio-map 是 PUBLIC（gh repo view --json visibility 实测），GitHub Actions 对公开仓分钟数免费且无配额，「Free 2000 私有分钟/月」「Windows 2x 倍率」只适用私有仓 → 真实计费 ≈ 0；且原「12–18 小时/月」即使按私有仓算也高估约 3 倍（4–6 分钟墙钟 × 2x = 8–12 计费分钟/天 ≈ 4–6 小时/月）。实测基准：ubuntu 整条链（checkout+npm ci+build+lint+verify+看板+干净闸门）仅 86s（run 43664705420，npm ci 11s），windows 全链预计 3–6 分钟。剩余成本只有：多一条 workflow 维护、失败多一封通知、占一个并发 runner 槽位。④ 缓解现状：本仓完成定义要求每次改动在 Windows Git Bash 复跑 verify（人肉覆盖存在），nightly 补的是「合并后无人再跑 Windows」的尾部风险。",
+      "scope": [
+        "新增 .github/workflows/nightly-windows.yml：on.schedule cron（如 30 19 * * * UTC，避开整点池竞争）+ workflow_dispatch 手动触发；job 跑 windows-latest、timeout-minutes 20、复用 X16 已 pin 的 actions SHA 与 registry 两步",
+        "**建议跑完整 verify 链而非只跑 verify:cwd**（成本更正为 ≈0 后两方案差价消失）：除覆盖那 7 项外，还能 ① 首次机器验证 windows 671 口径——X23 的 verificationBaseline windows 侧至今只来自主会话本地复跑、CI 从未验过；② 覆盖其它 Windows 特有路径（路径分隔符、大小写、T3.1 的 .agents/.pi 播种与 S3 sidecar 落盘）",
+        "**不设必需检查**（不得进 ruleset 27209918，不改 required check 名 build + lint + verify）；失败只出注解/通知，绝不阻塞合并",
+        "把 nightly 结果喂给 X23 的看板（读 verificationBaseline，windows 平台不扣 platformSkip）→ 实测 671 口径并作为看板 windows 侧的首个真实证据",
+        "三件套落盘 docs/tasks/X24-nightly-windows/；X16 design.md §6 标注「已由 X24 落地」；若 nightly 暴露 windows 侧断言差值，按 X23 约定更新 verificationBaseline（数据改一处即可）"
+      ],
+      "acceptance": [
+        "nightly job 在 windows-latest 上真实跑通一次（cron 或 workflow_dispatch 触发均可），贴 run 链接",
+        "ubuntu 永久 SKIP 的 7 项 caseDrift 断言在 windows 上实际执行（日志无 SKIP 行）且全过",
+        "看板 windows 侧输出 script total 671（或据实测差值更新 verificationBaseline 并说明）",
+        "required status check 未变（ruleset 27209918 不受影响）；nightly 失败不阻塞任何 PR",
+        "npm run build/lint/verify 全绿、既有断言零回归；走 GitHub PR（用户合并）"
+      ],
+      "outputDir": "docs/tasks/X24-nightly-windows/",
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-11-15T16:59:14+08:00",
+          "by": "main-session",
+          "note": "2026-11-15 立项归口（用户裁决「暂时不做，先留在任务计划里」）：把 X16 遗留 3 从已验收任务的 design.md 提升为可见待办条目，并附成本更正（公开仓 Actions 免费，原 12–18 小时/月估算作废）、7 项 SKIP 断言的实质内容、以及建议方案（跑全链 + 喂看板验证 windows 671）。**未获用户明确批准前不得实施。**"
         }
       ]
     }

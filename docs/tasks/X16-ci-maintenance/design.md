@@ -119,15 +119,28 @@ warning、**exit=0**；缺日志/无参数 → warning + exit=0。真实「不�
 - **价值**：ubuntu 上 `verify:cwd` 的 7 项 caseDrift 断言永久 SKIP（X14 遗留 2）；windows 腿是唯一机器
   覆盖。缓解因素：本仓完成定义要求每次改动在 Windows Git Bash 复跑 verify（人肉覆盖存在），nightly 补的是
   「合并后无人再跑 Windows」的尾部风险。
-- **成本估算（未实测）**：windows-latest 计费 2x；job 内容 = checkout + setup-node + npm ci +
-  `npm run verify:cwd`。墙钟估 4–6 分钟（windows runner 冷启动 + install 明显慢于 ubuntu 的 12s，
-  `verify:cwd` 本体 <5s）。每晚一次 ≈ 24–36 计费分钟/天 ≈ **12–18 小时计费/月**；Free 计划 2000 私有分钟/月
-  时占比 60–90%，不可忽略（组织计划另算）。
+- **成本估算（已更正 2026-11-15）**：~~windows-latest 计费 2x；墙钟估 4–6 分钟，每晚一次 ≈ 24–36 计费分钟/天
+  ≈ 12–18 小时计费/月；Free 计划 2000 私有分钟/月时占比 60–90%~~ —— **此估算前提不成立，作废**：
+  ① 本仓 `chenxinma/govio-map` 是 **PUBLIC**（`gh repo view --json visibility` 实测），而 GitHub Actions
+  对**公开仓库的分钟数免费且无配额**，2000 分钟/月的 Free 额度与 Windows 2x 倍率**只适用于私有仓**；
+  ② 即使按私有仓算，原算术也高估约 3 倍（4–6 分钟墙钟 × 2x = 8–12 计费分钟/天 ≈ **4–6 小时/月**，非 12–18）；
+  ③ 实测基准：ubuntu 上**整条链**（checkout + npm ci + build + lint + verify + 看板 + 干净闸门）仅 **86s**
+  （run 43664705420，其中 npm ci 11s），windows 上跑全链预计 3–6 分钟。
+  ⇒ **真实计费成本 ≈ 0**；剩余成本只有「多一条 workflow 要维护、失败时多一封通知、占一个并发 runner 槽位」。
+- **被 SKIP 的 7 项是什么**（决策时需要知道的实质内容）：X7「Windows 会话恢复静默失败」的守卫——
+  [1]×1 大小写错误路径被规范为磁盘真实大小写；[2]×3 bug 复现（cwd 大小写与会话头不符 → 历史会话静默落选 →
+  后端新建空会话、用户丢对话与画布）+ 修复后归一化 cwd 命中历史会话 + cwd 过滤仍生效（不误选其它项目的更新
+  会话）；[3]×1 `SessionManager.list` 大小写不符时会话不可见（列表面板同 bug）；[4]×2 `applyCanonicalCwd`
+  以错误大小写 chdir 后恢复规范大小写 + 幂等。
 - **可后补清单**（用户点头即可实施，预计半小时内）：`on.schedule` cron（如 `30 19 * * *` UTC，避开整点池
-  竞争）+ `if: github.ref == 'refs/heads/main'` 的独立 job（windows-latest、timeout 15、复用 pin 好的
-  actions 与 registry 两步）；不设必需检查；失败只发注解/通知。nightly 上跑完整 verify 链（624 口径）比只跑
-  verify:cwd 更有信息量，但分钟数×6，默认只跑 `verify:cwd` 或看板全链二选一由用户裁。
+  竞争）+ `workflow_dispatch` 手动触发 + `if: github.ref == 'refs/heads/main'` 的独立 job（windows-latest、
+  timeout 20、复用 pin 好的 actions 与 registry 两步）；不设必需检查；失败只发注解/通知。
+  **建议做全链而非只跑 `verify:cwd`**（成本已更正为 ≈0，A/B 方案差价消失）：全链除覆盖那 7 项外，还能
+  ① **首次机器验证 windows 671 口径**——看板的 windows 基线至今只来自主会话本地复跑，CI 从未验过；
+  ② 覆盖其它 Windows 特有路径（路径分隔符、大小写、T3.1 的 `.agents`/`.pi` 播种与 S3 sidecar 落盘）。
 - **本轮不做的原因**：额度成本未经用户批准（任务书 §4.5）。
+- **2026-11-15 用户裁决：暂不做，留在任务计划里** → 归口为待办条目 `crossCutting[X24]`
+  （含上述成本更正、7 项断言实质内容与建议方案）。同批遗留 2（Dependabot bump 流）仍待用户裁决。
 
 ## 7. 验证策略
 
