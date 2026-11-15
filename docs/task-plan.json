@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-15T07:07:57+08:00",
+  "updatedAt": "2026-11-15T09:46:25+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1466,7 +1466,7 @@
     {
       "id": "X23",
       "title": "CI 断言数看板基线过期（每 run 6 条 warning）——基线迁 task-plan.json 单一事实源",
-      "status": "pending",
+      "status": "done",
       "kr": null,
       "dependsOn": [
         "X16",
@@ -1494,6 +1494,12 @@
           "at": "2026-11-15T07:07:57+08:00",
           "by": "main-session",
           "note": "2026-11-14 立项（X16 遗留 1 落地 + 本轮增量导致的基线过期）。待用户决定何时做、由谁做（主会话直接改或派 worker）。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-15T09:46:25+08:00",
+          "by": "main-session",
+          "note": "主会话亲自实现（用户裁决「当前会话内现在做修改」）：看板改为从 verificationBaseline 读基线（脚本内零硬编码数字，grep 核实），平台差值数据化为 platformSkip[platform][script]，新增声明总量自检与四条降级路径。本地 9 项矩阵全 exit 0：①仓库基线零告警（原 6 条 warning 消除）②③④⑨降级单 warning 只报实际值 ⑤漂移精确检出仅 warn ⑥自检以 sum(scripts) 为准 ⑦输入缺失安全跳过 ⑧platformSkip 通用算法验证（671−7=664，即 ubuntu 口径）。门槛 build/lint/verify 全 0，断言 671 / vitest 20·278 / UI 4·37 零增删。三件套落盘；X16 design §8 遗留 1 标注已解决。"
         }
       ]
     }
@@ -1537,5 +1543,37 @@
     "x19-caliber-map": "https://github.com/chenxinma/govio-map/pull/40",
     "x19-caliber-govio": "https://github.com/chenxinma/govio/pull/24",
     "x22-sql-columns-unicode": "https://github.com/chenxinma/govio-map/pull/43"
+  },
+  "verificationBaseline": {
+    "updatedAt": "2026-11-15T09:35:53+08:00",
+    "source": "唯一事实源：CI 断言数看板（.github/workflows/scripts/assertion-dashboard.mjs）从这里读基线，脚本内不再硬编码数字（X23，解 X16 design.md 遗留 1）。",
+    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。",
+    "scripts": {
+      "verify:manifest": 92,
+      "verify:rerun": 71,
+      "verify:audit": 119,
+      "verify:export": 148,
+      "verify:source-table": 39,
+      "verify:semantic-lineage": 54,
+      "verify:caliber-conflict": 77,
+      "verify:cwd": 13,
+      "verify:prompt-injection": 58
+    },
+    "scriptTotalWindows": 671,
+    "platformSkip": {
+      "linux": {
+        "verify:cwd": 7
+      }
+    },
+    "vitest": {
+      "verify:integration": {
+        "files": 20,
+        "tests": 278
+      },
+      "verify:ui": {
+        "files": 4,
+        "tests": 37
+      }
+    }
   }
 }
