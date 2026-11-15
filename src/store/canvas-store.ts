@@ -5,6 +5,7 @@ import { addEdge, applyNodeChanges, applyEdgeChanges, Position } from '@xyflow/r
 import type { CanvasNodeData, DataFrameNodeData, ReferencedNode, RerunRecord, SemanticRef } from '../types';
 import { lineageEdge, withSemanticHandles } from '../utils/lineage';
 import { tableSemanticEdgeCandidates } from '../utils/table-relations';
+import { relationEdgeLabel } from '../utils/table-relations-ui';
 import { MOCK_TABLES } from '../data/mock-tables';
 import { nextId, syncCountersFromNodes } from '../services/mock-ai';
 import { getLayoutedElements, positionNewNode } from '../utils/layout';
@@ -335,12 +336,22 @@ export const useCanvasStore = create<CanvasStore>()(
     // lineage.ts APPEARANCE），id 加 -sem 后缀，同一对节点只保留一条（与数据血缘边可并存）。
     if (event.nodeType === "sourceTable") {
       const candidates = tableSemanticEdgeCandidates(nodes, { id: nodeId, data: newNode.data }, edges);
-      for (const { sourceId, targetId } of candidates) {
-        newEdges.push(lineageEdge("semantic", {
+      for (const { sourceId, targetId, relations } of candidates) {
+        const edge = lineageEdge("semantic", {
           id: `e-${sourceId}-${targetId}-sem`,
           source: sourceId,
           target: targetId,
-        }));
+        });
+        // X13 关系详情上边：匹配到的关系挂进 edge.data（data.lineageKind 仍由工厂给出、
+        // 不被覆盖），label 取同一份关系的**列映射**摘要（X15 起不含关系类型）。
+        // 形状/样式/Handle 全部来自 lineageEdge 工厂；没匹配到关系（含 sqlQuery 口径沿袭边、
+        // 历史边）时不加 label；关系全部缺列信息时 label 为空串 → 不建 label 键。
+        const label = relations && relations.length > 0 ? relationEdgeLabel(relations) : '';
+        newEdges.push(
+          relations && relations.length > 0
+            ? { ...edge, data: { ...edge.data, tableRelations: relations }, ...(label ? { label } : {}) }
+            : edge,
+        );
       }
     }
 

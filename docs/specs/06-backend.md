@@ -127,7 +127,7 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 | config | chart | Plotly figure {type, data[], layout?} |
 | sourceDf | chart | 数据源 DataFrame 名称 |
 | manifest | dataFrame/sqlQuery | 分析留痕 Analysis Manifest（类型见 `src/types/manifest.ts`，服务端填充后写入 `node.data.manifest`） |
-| tableRelations | sourceTable | 表间语义关系（X10）：`Array<{targetTable, relationshipType, description?, sourceColumns?, targetColumns?}>`，由 `server/table-relations.ts` 解析（图谱 RELATES_TO 主路径 / 字段级 references 降级），前端据此建表间语义血缘边；拿不到不写键 |
+| tableRelations | sourceTable | 表间语义关系（X10）：`Array<{targetTable, relationshipType, description?, sourceColumns?, targetColumns?, targetQualifiedName?}>`，由 `server/table-relations.ts` 解析（图谱 RELATES_TO 主路径 / 字段级 references 降级），前端据此建表间语义血缘边，并在节点内小节 / 边 label / 导出报告三处展示关系详情（X13，展示口径唯一来源 `src/utils/table-relations-ui.ts`；**X15 起三处只展示字段关联（列映射），不再展示 `relationshipType`，但服务端仍照原样解析并下发该字段供留痕**）；拿不到不写键。**X17 档 A**：图谱路径的关系由取数层 `withGraphQualifiedNames` 补 `targetQualifiedName`（= `b.full_table_name AS target` 原值，行没给 target 列不建键），字段级降级路径不建键；前端匹配第①级用它与节点 `qualifiedName` 做全等优先（大小写归一，命中即止），未命中退回变体兜底——旧事件/旧 sidecar 无该键时行为与 X10 完全一致 |
 | tableRelationsSource | sourceTable | 关系来源留痕（X10）：`graph` / `fields`，仅在 tableRelations 非空时写键 |
 | tableRelationsError | sourceTable | 图谱查询降级原因（X10）：仅 status=degraded 时写键，随 canvas sidecar 持久化以供审计 |
 | referencedNodes | 全部 | 引用节点（自动附加） |
@@ -149,6 +149,10 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 图谱 `(:PhysicalTable)-[:RELATES_TO]->(:PhysicalTable)` 为主路径（表键双形匹配、列形状容错字符串/数组），
 图谱不可用/超时/无结果时降级为字段级 `fields[].references`。该函数**永不 throw**，降级只写
 `tableRelationsError` 留痕并 `console.warn`，绝不阻断节点创建；工具回执附 `relations: N (graph|fields)`。
+
+**X17 档 A 不改查询**：`buildRelatesToCypher` 早已 `RETURN b.full_table_name AS target`，本增量只是把该原值
+经 `withGraphQualifiedNames` 落成关系上的可选键 `targetQualifiedName`（零新增图谱查询）；落键发生在
+`resolveTableRelations` 而非 `relationsFromGraphRows` 本体，后者输出形状保持不变（既有 27 例不修改即通过）。
 
 ### 注册工具: govio_show_chart
 
@@ -363,3 +367,39 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 | -o, --output | 可选，输出写入文件 |
 
 输出格式：NDJSON（每行一个 JSON 对象），包含 text_delta、thinking_delta、tool_start/end、message_start/end 等事件。
+
+## storage/ - 画布团队存储抽象（T3.1）
+
+`server/session-history.ts` 的画布 sidecar 从「写死本地文件」抽象为可插拔后端；默认无配置即纯本地，行为与旧实现逐字节一致。
+
+### 模块与契约
+
+- `backend.ts`：`CanvasStorageBackend`（`read/write/remove/list`，write 支持 `ifMatch` 乐观锁，冲突抛 `StorageConflictError`）。
+  主键是 `canvasId`（会话文件基名去 `.jsonl`），白名单正则拒绝穿越/分隔符——与 `assertValidSessionPath` 等价安全边界。
+- `local-backend.ts`：`LocalCanvasBackend`，etag = 内容 sha256 前 16 位。
+- `config.ts`：S3 profiles 配置文件（`GOVIO_S3_PROFILES_FILE` 覆写，缺省 `.govio/storage-profiles.json`）。
+  **凭据只存环境变量名**（accessKeyIdEnv/secretAccessKeyEnv/sessionTokenEnv），运行时才从 `process.env` 取值；
+  凭据不落画布 JSON、绑定 sidecar、分享记录、日志与分享链接（集成测试全工件深度断言）。
+- `s3-client.ts` / `s3-backend.ts`：零依赖 SigV4 REST 客户端与 `S3CanvasBackend`；
+  key 布局 `<prefix>/<canvasId>/canvas.json`（+ `shares/<shareId>.json`）。多端绑定同一 profile+canvasId 即共享画布。
+- `canvas-storage.ts`：逐画布绑定 sidecar `<session>.storage.json`（`{backend:"s3", profile, canvasId, lastSyncedHash, remoteEtag}`）
+  与同步门面。
+
+### 写入模型与并发
+
+- `saveCanvas` 同步写本地后 fire-and-forget 上传（内容 hash 未变跳过）；会话打开（`pushSessionState`）先
+  `await refreshCanvasFromRemote` 拉对端更新（失败降级本地缓存，不阻塞交互）。
+- 冲突策略：If-Match 探测并发 → 冲突时**最后写入胜出 + warn 留痕**；本地有未同步改动时 refresh 不强覆盖（返回 conflict）。
+- `deleteSession` 级联：远端工件尽力删除 + 本地绑定 sidecar 删除。
+
+## share.ts / share-api.ts - 只读分享与 fork 续写（T3.2）
+
+- `POST /api/shares`：把**活动会话**画布固化为 ShareRecord（canvas 快照 + `manifests[]` 抽取 + `forkFrom` 继承）；
+  本地必写 `.govio/shares/<shareId>.json`，S3 绑定画布同时写远端（跨实例发现）。令牌 = `randomBytes(16).hex`。
+- `GET /api/shares/<token>`：只读视图载荷（剥 profile/originBackend，绝无凭据）；解析顺序 = 本地记录 → 逐配置 profile 查远端。
+- `POST /api/shares/<token>/rerun`：只读态复跑，按快照 Manifest 固化 SQL 走 `rerunDataFrame`（T1.2 语义），
+  结果只进响应——不存在写回源画布的路径。
+- `POST /api/shares/<token>/fork` → 暂存 `.govio/forks/<forkId>.json`（含 forkFrom）；前端跳转 `/?fork=<forkId>` 后
+  WS `canvas_fork_apply` 写入本地新会话（canvas.json 顶层 `forkFrom` 键，`saveCanvas` 无 meta 调用时保留附加键，血缘抗 autosave）。
+- `GET/POST /api/canvas-storage`：活动会话的 S3 绑定查询/设置（`{profile, canvasId?}` / `{clear:true}`）；响应不含凭据。
+- 前端：`/share/<token>` 独立静态页（不建立 /ws 连接）；ChatPanel 头部分享按钮。

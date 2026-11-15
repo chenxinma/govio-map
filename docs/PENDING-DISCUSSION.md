@@ -11,8 +11,8 @@
   1. **SQL 节点卡片渲染 refs 徽标**（最小）：节点上显示「口径：销售额、订单数」徽标；与 T2.3 口径警示 UI 合并做的自然候选（T2.2 遗留 3）
   2. **语义边悬停显示共用指标**：紫虚线 tooltip「口径沿袭：销售额」（涉及 ReactFlow edge label/tooltip）
   3. **新增"指标/口径节点"类型**（最大）：引用的指标/标准作为节点上画布，SQL ─ ╌▶ 指标节点连语义边，口径溯源成为可见的图；涉及节点类型、dagre 布局、导出三处扩展，属新功能需立项走 PR
-- **状态**：⏸ 待讨论（暂不列入任务清单）
-- **待定**：做到哪一档；若做 3，挂 P2 还是 crossCutting，与 T2.3 的展示如何分工
+- **状态**：✅ **已裁决并落地**（2026-11-14 用户选定**方案 1**；X18 已实现）→ 计划 `docs/task-plan.json → crossCutting[X18]`，交付物 `docs/tasks/X18-sql-node-semantic-badges/`。SQL 节点卡片新增「口径」徽标区：`semanticRefs` 里 `code ?? name` 有值的引用直接可见（Metric 优先、默认前 3 条可折叠、hover 给类型/编码/名称/图谱 ID），导出 HTML 同步为 sqlQuery 卡片的「口径引用」表；展示模型唯一来源 `src/utils/semantic-refs-ui.ts`，配色走 green-deck token（紫 = 语义层），`code`/`name` 都缺的引用整条跳过、无 refs 时整节不渲染。方案 2（语义边悬停显示共用指标）与方案 3（新增指标/口径节点类型）**不做**；若将来要升级到方案 3 须单独立项（涉及节点类型、dagre/方案B 布局、导出三处扩展）。
+- **待定**：无（原「做到哪一档」已定并已落地：方案 1；与 T2.3 警示的视觉分工按 X18 scope 实现——警示在标题行优先呈现，黄色仍只由 `caliberNodeAppearance` 给出，徽标区独立成行、不借警示色、互不遮挡）。徽标短名按契约取 `code ?? name`，并已按用户裁决（2026-11-14「暂时不用中文显示，保留 code」）定稿——中文名放 hover 与导出表，不再作为待确认项。
 
 ## PD-2 口径检测的别名感知与存疑噪声
 
@@ -26,8 +26,9 @@
   2. **指标按输出列对齐 SPJ 语义**：为指标定义补「输出列名」声明（元数据侧），使比对有明确钩子
   3. **存疑降噪**：dimension_ref 缺失默认不计入 differences（或仅在 role=measure 时产出），让 `consistent` 可达
   4. **unknown 可见性**：UI 完全不显示 unknown（`src/utils/caliber.ts` 设计取舍）——是否给一个更轻的提示（如节点角标小圆点）待定
-- **状态**：⏸ 待讨论（暂不列入任务清单）
-- **待定**：1+3 是否一起做（1 是功能、3 是调判定口径，可能影响既有 45 项 assert）；若做 4 需与「宁可 unknown 不误报」纪律对齐；是否挂 P2 语义层还是 crossCutting
+- **状态**：✅ **已定调并立项**（2026-11-14 用户裁决：「以**计算表达式**和**维度限定条件**作为实质判断依据」）→ `docs/task-plan.json → crossCutting[X19]`（口径判定升级：维度限定条件的实质比对，status=pending，跳仓 govio + govio-map）。取证补充：**计算表达式部分已落地**（govio `src/govio/metadata/caliber.py` 的 `_canonical_expr`(406) + `_compare_aggregation`(424) 已按归一后的聚合参数表达式比对，即上文方案 1；`_compare_columns`(597) 已改 measure-first 即方案 2），**缺口在维度限定**：`_compare_filter`(522) 目前只做「剔除类词是否出现在 WHERE 段」的子串包含 + 否定算子检查，且一律只给 unknown 不判 conflict，未与指标侧维度声明（`statistical_scope` / `DIMENSION_USED` / `REFERS_COLUMN role=dimension`）做结构化比对。
+- **落地状态（2026-11-14 收尾）**：✅ **已定调并落地**——维度限定条件升级为**结构化实质比对**（SQL 侧「列 / 算子 / 值集合」三元组 vs 指标侧维度声明，产出 `consistent`/`conflict`/`unknown` 三态，判定纪律仍是「宁可 unknown 不误报」），随 govio **PR #24** 合并（交付 commit `c621de9`，merge `a92a291`）。CLI 输出契约未变（差异条目仍 `aspect/expected/found/detail`，维度差异复用 `filter`、时间粒度复用 `time_scope`），故 map 解析面与展示名**零改动**，消费侧 stub 断言 46 → 77；map 侧记录见 `docs/tasks/X19-caliber-dimension-substance/`。
+- **待定（已全部回答，2026-11-14）**：① worker 在哪个仓起——按「govio 为主（W5a）+ map 跟随（W5b）」执行，两仓各自走 PR；② `_compare_time_scope` 同批核查结论——时间**窗口**逻辑维持现状（已是双侧归一到天数的实质比对，非子串包含），但补上了原来完全看不到的**时间粒度**比对（声明月度 vs SQL 取年度），aspect 仍为 `time_scope`；③ 指标元数据「输出列名」声明——**未新增字段**，维度判定只用既有 `Dimension.values_example` / `DIMENSION_USED.usage_type` / `REFERS_COLUMN.role`，「限定取值升级为显式字段」留在 govio 侧遗留问题（其 design.md §7-2）。
 
 ### PD-2 补充（2026-11-08，govio 0.7.2 sqlparse 接入后实测）
 
@@ -82,3 +83,24 @@
 - **代价/风险**：同义词典是启发式，可能引入新误报（如 `net_roi` vs `m_marketing_roi`）；`calc_` 修饰剥离会改变「主动改名声明为替代算法」的语义判断
 - **演示期规避**：改用干净措辞「用每箱单价乘发货数量，算一下 2023 年各国家的销售额。」（实测只点名 `m_sales_amount`），无需等 C 落地
 - **状态**：⏸ 待讨论（C 不列入本期；演示按干净措辞录制）
+- **补充（2026-11-14）**：用户定调 PD-2 主体（计算表达式 + 维度限定条件为实质判据）并立项 **X19** 时，**未对方案 C 表态** → C 仍挂起，且 X19 的 acceptance 已明写「未获授权前禁止引入别名同义词典/启发式改名归一」。若要推进 C，需单独裁决（其启发式与 X19 的「实质依据」纪律相冲突）。
+
+## PD-3 注入命中与语义归因口径（「订单量」问不出 m_order_count）
+
+- **案例（2026-11-14，用户实测）**：提问「chocolate数据源，生成一份销售额和订单量的SQL」，chat 正确用了
+  `m_sales_amount` + `m_order_count` 两个指标，但 SQL 节点口径徽标只出现 `m_sales_amount`；改用「订单数」
+  提问后正常显示。
+- **取证结论**（主会话逐层核对会话 sidecar 与 CTX）：
+  1. 该节点 `semanticRefs` 只有 6 条（1 指标 + 5 维度），**不含 `m_order_count`**——徽标区显示无误，缺口在上游；
+  2. 提问的 CTX 注入只命中 `m_sales_amount`：注入按**问题实体匹配**，「销售额」对上指标名，但「订单**量**」
+     对不上图谱里的「订单**数**」（`m_order_count` 的 name=「订单数」）→ 未进注入集；
+  3. chat 里能看到两个指标是因为助手**工具查图谱**拿到了 `m_order_count`（toolResult 有定义），但
+     `semanticRefs` 的归因口径是「注入的 CTX 实体」而非「SQL 实际引用的指标」，工具查到的不回填。
+- **修复方向**（待讨论）：
+  - **A. 归因升级（治本，推荐）**：`semanticRefs` 补充「SQL 实际引用的图谱实体」——message_end 时把工具查到且被
+    SQL 命中的指标/维度并入 refs（服务端归因改动，中等体量）；
+  - **B. 注入命中增强**：「订单量↔订单数」措辞差的匹配——不走别名启发式（PD-2 方案 C 同款纪律）；正路是图谱
+    补「输出列名/别名」元数据字段（X19 遗留已列），需 govio 元数据侧配合；
+  - 建议 A 先行（立即解决归因完整性），B 挂元数据增强长期项。
+- **关联**：PD-1 徽标短名取舍（code vs 中文名）与本项相关，若做 A 可一并定。
+- **状态**：⏸ 待讨论（2026-11-14 用户指示：暂时作为待讨论项）

@@ -56,7 +56,7 @@ const nodeTypes: NodeTypes = {
 | datasourceType? | DatasourceType | 数据源类型（duckdb/postgres/mysql/oracle/hive/trino/sqlalchemy-generic/unknown），决定 SQL 表引用段式，T2.0 |
 | schema? | string | 所属 schema（取图谱 PhysicalTable.schema），T2.0 |
 | qualifiedName? | string | SQL 中应使用的全限定表名（duckdb 三段式 catalog.schema.table 等），T2.0 |
-| tableRelations? | TableRelation[] | 表间语义关系（X10）：本表的出向关系，元素为 `{targetTable, relationshipType, description?, sourceColumns?, targetColumns?}`；`relationshipType` 取图谱原值（如 `many_to_one`），字段降级路径为 `foreign_key` |
+| tableRelations? | TableRelation[] | 表间语义关系（X10）：本表的出向关系，元素为 `{targetTable, relationshipType, description?, sourceColumns?, targetColumns?, targetQualifiedName?}`；`relationshipType` 取图谱原值（如 `many_to_one`），字段降级路径为 `foreign_key`；`targetQualifiedName`（X17 档 A，可选）为图谱 `b.full_table_name` 原值——仅图谱路径给出 target 列的关系携带，字段级降级/缺列行**不建键、禁止猜测**。**X15 起该类型只落盘留痕（sidecar 可追溯），画布与导出报告均不展示** |
 | tableRelationsSource? | 'graph' \| 'fields' | 关系来源留痕（X10）：图谱 `RELATES_TO` / 字段级 `references` 降级；仅在 tableRelations 非空时写键 |
 | tableRelationsError? | string | 图谱查询降级原因（X10）：仅图谱失败/超时/无可用表键时写键（即使降级路径拿到了关系） |
 
@@ -66,8 +66,27 @@ const nodeTypes: NodeTypes = {
 三个 X10 字段同样全部可选，由服务端 `server/table-relations.ts` 在 `govio_create_source_table`
 执行时解析（agent 不传、也不得口头复述外键）：图谱不可用时降级到字段级 `references`，两者都
 拿不到就**不建键、不建边**。前端据 `tableRelations` 在 sourceTable 之间连紫虚线语义血缘边
-（`Edge.data.lineageKind = "semantic"`，样式唯一来源 `src/utils/lineage.ts`），匹配容忍三段式/
-两段式/裸表名差异（`src/utils/table-relations.ts` 的后缀变体集合），建边规则见 `docs/specs/05-store.md`。
+（`Edge.data.lineageKind = "semantic"`，样式唯一来源 `src/utils/lineage.ts`）。匹配走 **X17 档 A 三级**
+（两个方向同规则，实现 `src/utils/table-relations.ts`）：① 关系带 `targetQualifiedName` 且与既有节点
+`qualifiedName` **全等**（两侧 `normalizeTableKey` 去空白+小写归一）→ **命中即止**，该关系不再进变体求交
+（同名表跨 catalog/schema 时边只连全限定名一致的那个节点，消 X10 遗留①误配）；② 第①级未命中（关系无
+该键、节点无 `qualifiedName`、或全限定名对不上但段数不同本就配不上）→ 退回点号后缀变体集合求交
+（容忍三段式/两段式/裸表名差异，既有行为一字不改）；③ 都不中不建边。既有去重（无向 pairKey、
+① 优先于 ②、自环丢弃、既有语义边不重建）语义不变。建边规则见 `docs/specs/05-store.md`。
+
+**X13 关系详情出口**：同一份关系数据在 UI 有三处可见——① sourceTable 节点内「表间关系」小节（目标表裸名 +
+列映射，缺失的键不渲染，默认 3 条后折叠；**X15.1 起图谱 `description` 不再单独占行，改为随整行 hover 的
+`title` 按需查看**，hover 全文 = 目标表全限定名 / 字段关联 / 说明）；② 语义边 `label`
+（`源列 → 目标列`，同节点对多条时末尾 `+N`）与 `edge.data.tableRelations`；③ 导出 HTML 报告
+（节点卡片关系小节「目标表 / 列映射 / 说明」三列 + 「关系来源」行 + 血缘 SVG 边悬停 `<title>`）。
+**X15（用户指令 2026-11-13）：三处出口一律不显示关系类型**——`many_to_one` / `one_to_many` /
+`foreign_key` 对看画布的人是噪声，只留**字段关联**（列映射）；类型原值仍随 `node.data.tableRelations` /
+`edge.data.tableRelations` 落 canvas sidecar，将来要恢复展示只改展示层，不动数据层与取数层。展示口径唯一来源
+`src/utils/table-relations-ui.ts`（纯函数，可在 node 环境单测）：`tableRelationsHint()` 只在
+`tableRelationsSource === 'fields'` 或存在 `tableRelationsError` 时给轻提示（沿袭 `caliber.ts` 的「不打扰」纪律，
+图谱正常态与无关系态静默），`relationTargetLabel` / `relationColumnView` / `relationRowTitle`（行 hover 全文）/ `relationEdgeLabel` /
+`TABLE_RELATIONS_SOURCE_LABELS` 供画布与导出共用，色值不在组件里写死。导出 HTML 是静态交付物（无 hover），
+故说明仍作为「说明」列直接呈现。
 
 ### SQLQueryNodeData
 
@@ -79,6 +98,20 @@ const nodeTypes: NodeTypes = {
 | sql | string | SQL 语句 |
 | outputColumns | string[] | 输出列名 |
 | manifest? | AnalysisManifest | 分析留痕：SQL 全文 + 来源（origin/模型/会话/时间），见 `src/types/manifest.ts` |
+| semanticRefs? | SemanticRef[] | 语义引用（T2.2 口径溯源）：生成本 SQL 时注入的图谱实体（Metric / Dimension / Col），渲染为「口径」徽标区（见下）；无注入时缺失不写键，见 `src/types/semantic.ts` |
+
+**口径徽标区（X18，PD-1 方案 1）**：`semanticRefs` 里 `code ?? name` 有值的引用，在卡片上渲染成
+「口径」小节的徽标——Metric 优先，其后 Dimension、Col，同类型保持注入原序；同一 `entityType:id`
+只留一条（与语义血缘边的去重口径一致）。默认前 `MAX_VISIBLE_SEMANTIC_REFS = 3` 条，超出用
+「+N more refs」/「Collapse」展开收起（与字段区、表间关系小节同一交互范式）。`code` 与 `name` 都缺的
+引用（图谱 `Col` 注入行的常态）**整条跳过**；`semanticRefs` 缺失或全部无短名时**整节不渲染**
+（旧节点 / 手动建的 SQL 节点 / 图谱降级都不留空壳行、不出现 `undefined`）。完整信息（类型 / 编码 /
+名称 / 图谱 ID）按 X15.1 取舍放 hover `title`，画布上只留短名。展示模型唯一来源
+`src/utils/semantic-refs-ui.ts`（纯函数，画布与导出共用），配色走 green-deck token class
+（紫 = 语义层，与语义血缘边同色系），组件内不写死色值。与 T2.3 口径冲突警示的分工：警示永远在标题行、
+黄色只由 `caliberNodeAppearance`（`src/utils/caliber.ts`）给出，徽标区独立成行、不借警示色，
+冲突态下两者互不遮挡。导出 HTML 同步渲染为 sqlQuery 卡片的「口径引用」表（类型 / 编码 / 名称 /
+图谱 ID）——静态交付物没有 hover，故直接成列呈现，与表间关系「说明」列同一处理方式。
 
 ### DataFrameNodeData
 
@@ -159,7 +192,16 @@ type CanvasNodeData = SourceTableNodeData | SQLQueryNodeData | DataFrameNodeData
 1. **头部**：紫色左边框，Database 图标 + 表名，右侧 datasourceType 徽标（node-source/10 紫底，等宽大写，字段缺失时不渲染），数据库 + 行数（等宽大写 + 1.2px 字距）
 2. **全限定名行**（有 qualifiedName 时渲染）：等宽字体展示 SQL 应使用的全限定表名 + 一键复制按钮（复制后短暂显示对勾）；字段缺失时整行不渲染（回退旧显示）
 3. **字段列表**：默认显示前 6 个字段，PK/FK 标签，字段名 + 类型；超出可展开/折叠
-4. **操作栏**：引用按钮 + 删除按钮
+4. **表间关系小节**（X13，`tableRelations` 非空才渲染，旧节点形状不变不出现空壳）：标题行（Link2 图标 +
+   「表间关系」+ 条数）；逐条渲染目标表裸名（`title` 挂全限定名）+ 列映射（`sourceColumns → targetColumns`，
+   任一侧缺失只渲染存在的一侧，两侧都缺省略该行）；**X15.1 起 `description` 不再渲染成独立说明行**，
+   改为挂到整行的 `title`（`relationRowTitle()`：目标表全限定名 / 字段关联 / 说明，缺项自动省略）；
+   **X15 起不再渲染 `relationshipType` 徽标**（只留字段关联，类型原值仍在 `node.data` 里）；默认前 3 条
+   （`MAX_VISIBLE_TABLE_RELATIONS`），超出「+N more relations」展开 /「Collapse」收起，与字段区同一交互范式
+5. **关系来源轻提示**（X13）：判定与配色唯一来源 `tableRelationsHint()`——字段级降级或图谱查询失败时一行
+   警示（warning 黄 + 徽标「字段级关系」/「图谱降级」+ 原因，超 60 字截断、全文放 `title`）；图谱正常态
+   与无关系态不渲染（不打扰）
+6. **操作栏**：引用按钮 + 删除按钮
 
 ### 字段标签
 

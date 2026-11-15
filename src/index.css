@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 @theme {
   --color-bg-primary: #ffffff;
@@ -29,6 +29,16 @@
   --color-node-sql: hsl(152, 58%, 52%);
   --color-node-df: hsl(25, 75%, 55%);
   --color-node-chart: hsl(200, 70%, 55%);
+
+  /* SQL token 配色（X21）：浅底=节点卡片，on-dark=SQL 编辑弹窗（oneDark） */
+  --color-sql-keyword: hsl(270, 60%, 42%);
+  --color-sql-string: hsl(28, 73%, 38%);
+  --color-sql-comment: #7d7d7d;
+  --color-sql-number: hsl(152, 58%, 30%);
+  --color-sql-keyword-on-dark: hsl(270, 75%, 78%);
+  --color-sql-string-on-dark: hsl(28, 88%, 72%);
+  --color-sql-comment-on-dark: #9aa0a6;
+  --color-sql-number-on-dark: hsl(152, 60%, 64%);
 
   --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Menlo', monospace;
@@ -200,3 +210,19 @@ html, body, #root {
   border-top: 1px solid #d4d4d4;
   margin: 0.75em 0;
 }
+
+/* SQL 高亮配色（X21）——唯一一处定义。
+   节点卡片（tokenizeSQL 产 span）与 SQL 编辑弹窗（lang-sql Lezer tag → 同一批 class）
+   共用这套 token 分类：关键词 / 字符串 / 注释 / 数字 / 其余。
+   深底变体只调明度，不改色相，保证两端「同一类 token 同一个颜色」。 */
+.sqltok-keyword { color: var(--color-sql-keyword); font-weight: 600; }
+.sqltok-string { color: var(--color-sql-string); }
+.sqltok-comment { color: var(--color-sql-comment); font-style: italic; }
+.sqltok-number { color: var(--color-sql-number); }
+.sqltok-plain { color: inherit; }
+
+.cm-editor .sqltok-keyword { color: var(--color-sql-keyword-on-dark); }
+.cm-editor .sqltok-string { color: var(--color-sql-string-on-dark); }
+.cm-editor .sqltok-comment { color: var(--color-sql-comment-on-dark); }
+.cm-editor .sqltok-number { color: var(--color-sql-number-on-dark); }
+.cm-editor .sqltok-plain { color: inherit; }

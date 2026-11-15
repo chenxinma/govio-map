@@ -20,6 +20,10 @@
  *  6. 附录 B：权限确认记录（只读通道返回值的解析白名单、关联节点、不可用时如实说明）
  *  7. 转义（画布内容不得变成 HTML/脚本）、确定性、不含数据行内容
  *  8. 确认门徽标区分（人工/自动放行）/ 审计截断告知 / 空 decisionIds 形态
+ *  9. 表间关系详情（X13）：sourceTable 卡片的关系小节 + 来源/降级原因 + 边悬停说明，
+ *     线型与图例仍按 lineageKind 泛化（自包含性质不变）
+ * 10. 口径引用（X18）：sqlQuery 卡片的 semanticRefs 小节——Metric 优先、code/name 都缺
+ *     的引用整条跳过、重复注入去重、注入内容转义、无引用时整节不渲染
  *
  * 不调 govio-cli、不调模型、不读任何数据内容、不碰 `.govio/`。任一断言失败退出码 1。
  */
@@ -44,6 +48,8 @@ import {
   type AuditAppendix,
   type ChartRenderMap,
 } from "../src/utils/export-report.js";
+import { lineageEdgeAppearance } from "../src/utils/lineage.js";
+import { extractSelectColumns } from "../src/utils/sql-columns.js";
 import type { AnalysisManifest } from "../src/types/manifest.js";
 import type { ChartNodeData, DataFrameNodeData, ReportNodeData, RerunRecord, SourceTableNodeData, SQLQueryNodeData } from "../src/types/index.js";
 
@@ -205,6 +211,12 @@ const ORDERS: SourceTableNodeData = {
     { name: "amount", type: "DOUBLE", nullable: true, description: "金额（元）" },
     { name: "created_at", type: "TIMESTAMP", nullable: false },
   ],
+  // X13：表间关系（图谱主路径形状：三段式目标 + many_to_one + 列映射，说明可有可无）
+  tableRelations: [
+    { targetTable: "sales.customers", relationshipType: "many_to_one", description: `客户外键 ${XSS_SENTINEL}`, sourceColumns: ["customer_id"], targetColumns: ["id"] },
+    { targetTable: "sales.warehouse.dim_date", relationshipType: "many_to_one", sourceColumns: ["created_at"], targetColumns: ["date_key"] },
+  ],
+  tableRelationsSource: "graph",
 };
 
 const CUSTOMERS: SourceTableNodeData = {
@@ -219,6 +231,10 @@ const CUSTOMERS: SourceTableNodeData = {
     { name: "区域", type: "VARCHAR", nullable: true, description: "华东/华北/华南/西部" },
     { name: "registered_at", type: "DATE", nullable: true },
   ],
+  // X13：字段级降级 + 图谱失败原因（导出必须同样可见）；列映射只有一侧
+  tableRelations: [{ targetTable: "sales.region", relationshipType: "foreign_key", targetColumns: ["region_code"] }],
+  tableRelationsSource: "fields",
+  tableRelationsError: "spawn govio-cli ENOENT",
 };
 
 const SQL_NODE: SQLQueryNodeData = {
@@ -227,6 +243,16 @@ const SQL_NODE: SQLQueryNodeData = {
   createdAt: "2026-10-30T22:09:00.000Z",
   sql: SQL_MONTHLY,
   outputColumns: ["月份", "区域", "销售额"],
+  // X18 口径徽标：Metric 优先 / code 优先 / name 回退 / code+name 都缺（Col）整条跳过 /
+  // 同一实体重复注入只留一条 / 名称里的注入内容必须转义
+  semanticRefs: [
+    { entityType: "Dimension", id: "d-region", code: "region", name: "区域" },
+    { entityType: "Metric", id: "m-gmv", code: "m_gmv", name: "销售额" },
+    { entityType: "Metric", id: "m-orders", name: "订单数" },
+    { entityType: "Col", id: "col-skipped-no-label" },
+    { entityType: "Metric", id: "m-gmv", code: "m_gmv", name: "销售额" },
+    { entityType: "Metric", id: "m-evil", code: "m_evil", name: `毛利 ${XSS_SENTINEL}` },
+  ],
   manifest: { ...MANIFEST_MONTHLY, dfName: undefined, rowCount: undefined, columnCount: undefined, checksum: undefined, origin: "assistant-sql", permissionDecisionId: null },
 };
 
@@ -499,7 +525,28 @@ console.log("\n[3] 节点卡片：五类静态快照");
 check("sourceTable 卡片含表名/数据源/行数/字段结构",
   HTML.includes("orders") && HTML.includes("128,450") && HTML.includes("字段结构（4）") && HTML.includes("BIGINT"));
 check("sourceTable 标出 PK 与 FK→引用", HTML.includes("PK") && HTML.includes("FK→customers.id"));
+check("X13：sourceTable 卡片导出表间关系小节（目标表 / 列映射 / 说明）",
+  HTML.includes("表间关系（2）") && HTML.includes("sales.warehouse.dim_date")
+  && HTML.includes("customer_id → id") && HTML.includes("created_at → date_key"));
+check("X15：关系类型不再出现在导出报告（无类型列头、无 many_to_one/foreign_key 字样）",
+  !HTML.includes("<th>关系类型</th>") && !HTML.includes("many_to_one") && !HTML.includes("foreign_key"));
+check("X13：关系来源留痕进卡片（图谱 / 字段级两种取值都可见）",
+  HTML.includes("关系来源") && HTML.includes("图谱 RELATES_TO") && HTML.includes("字段级外键"));
+check("X13：字段级降级与图谱原因在报告里如实说明（全文不截断）",
+  HTML.includes("关系来源：字段级外键（图谱查询失败：spawn govio-cli ENOENT）"));
+check("X13：单侧缺失的列映射只渲染存在的一侧",
+  HTML.includes("<td>region_code</td>") && !HTML.includes("→ region_code"));
+check("X13：关系说明里的注入内容同样被转义",
+  HTML.includes("客户外键 &lt;script&gt;") && !HTML.includes("客户外键 <script>"));
+check("X13：图谱正常态（source=graph）不渲染降级警示框（不打扰）",
+  !HTML.includes("图谱降级") && !HTML.includes("本表无表间关系") && HTML.includes("字段级关系"));
 check("sqlQuery 卡片含 SQL 全文与输出列", HTML.includes("GROUP BY 1, 2") && HTML.includes("输出列") && HTML.includes("销售额"));
+// X21：导出 chips 直接消费节点 outputColumns，值来自 src/utils/sql-columns 的同一抽取器。
+// 行内 `--` 注释案例必须两列全出（旧正则管道只剩第一列），导出侧才可能有第二枚 chip。
+const X21_COMMENTED_SQL =
+  "SELECT\n  SUM(amount)     AS m_sales_amount,  -- 销售额：SUM(amount)\n  COUNT(order_id) AS m_order_count    -- 订单数：COUNT(order_id)\nFROM chocolate.chocolate.fact_sales;";
+check("X21：导出侧输出列与抽取器同源（行内注释 SQL 两列全出）",
+  extractSelectColumns(X21_COMMENTED_SQL).join(",") === "m_sales_amount,m_order_count");
 check("dataFrame 卡片含列结构（列名 + dtype + nonNull）",
   HTML.includes("列结构（3）") && HTML.includes("VARCHAR") && HTML.includes("DOUBLE"));
 check("dataFrame 卡片含行 × 列与内存占用", HTML.includes("12 × 3") && HTML.includes("1.2 KB"));
@@ -518,6 +565,78 @@ check("卡片显示创建时间与节点 ID", HTML.includes(`创建于 ${EXPECT_
 check("10 张卡片都在节点章节里", (HTML.match(/<article class="card/g) ?? []).length === 10,
   `actual=${(HTML.match(/<article class="card/g) ?? []).length}`);
 check("摘要区统计节点/连线/DataFrame 数", HTML.includes("<dt>节点</dt><dd>10</dd>") && HTML.includes("<dt>血缘连线</dt><dd>9</dd>") && HTML.includes("<dt>DataFrame</dt><dd>4</dd>"));
+
+// ---------------------------------------------------------------------------
+console.log("\n[3b] 表间关系（X13）：血缘 SVG 悬停说明 + 边线型/图例零回归");
+{
+  const relNodes: Node[] = [node("rel-1", "sourceTable", ORDERS), node("rel-2", "sourceTable", CUSTOMERS)];
+  const relEdges: Edge[] = [{
+    id: "e-rel-1-rel-2-sem",
+    source: "rel-1",
+    target: "rel-2",
+    data: { lineageKind: "semantic", tableRelations: ORDERS.tableRelations?.slice(0, 1) },
+  }];
+  const relLayout = layoutLineage(relNodes, relEdges);
+  check("LineageEdgeView 带出关系原文（有 tableRelations 才建键）",
+    relLayout.edges.length === 1 && relLayout.edges[0].lineageKind === "semantic"
+    && relLayout.edges[0].relations?.length === 1,
+    JSON.stringify(relLayout.edges[0]));
+  const relHtml = buildDeliveryReportHtml({ nodes: relNodes, edges: relEdges, exportedAt: FIXED_EXPORTED_AT, audit: null });
+  check("语义边悬停 title 带出列映射（X15：不含关系类型）",
+    relHtml.includes("<title>rel-1 → rel-2 · customer_id → id</title>") && !relHtml.includes("many_to_one"));
+  check("数据边悬停 title 保持原样（不带关系摘要）",
+    HTML.includes("<title>src-1 → gov-1</title>"));
+  const semApp = lineageEdgeAppearance("semantic");
+  check("边线型仍按 lineageKind 泛化（紫虚线 + 专属箭头 + 图例文案）",
+    relHtml.includes(`stroke="${semApp.stroke}"`) && relHtml.includes(`stroke-dasharray="${semApp.strokeDasharray}"`)
+    && relHtml.includes('marker-end="url(#govio-arrow-sem)"') && relHtml.includes(semApp.label));
+  check("X13 新增内容不破坏自包含（无 script、无外部引用）",
+    !relHtml.includes("<script") && !/https?:\/\//.test(relHtml.replace(/xmlns(:xlink)?="[^"]*"/g, "")));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\n[3c] 口径引用（X18，PD-1 方案 1）：sqlQuery 卡片渲染 semanticRefs");
+{
+  check("X18：口径引用小节进卡片，计数只算可展示徽标（4 条：3 指标 + 1 维度）",
+    HTML.includes("口径引用（4）"));
+  check("X18：Metric 排在 Dimension 前（表格行序 = 画布徽标序）",
+    HTML.indexOf("<code>m_gmv</code>") >= 0 && HTML.indexOf("<code>region</code>") >= 0
+    && HTML.indexOf("<code>m_gmv</code>") < HTML.indexOf("<code>region</code>"));
+  check("X18：code 缺失时回落 name 呈现", HTML.includes("<td>订单数</td>"));
+  check("X18：code/name 都缺的引用整条跳过（图谱 ID 也不进产物）",
+    !HTML.includes("col-skipped-no-label"));
+  check("X18：同一实体重复注入只渲染一条（去重口径与语义边一致）",
+    HTML.split("<code>m-gmv</code>").length - 1 === 1);
+  check("X18：口径引用里的注入内容被转义（不变成脚本）",
+    HTML.includes("毛利 &lt;script&gt;") && !HTML.includes("毛利 <script>"));
+
+  // 旧节点 / 手动建的 SQL 节点 / refs 只有 Col：整节不渲染，卡片形状不变
+  const bareSql: SQLQueryNodeData = {
+    type: "sqlQuery",
+    title: "手动 SQL（无口径归因）",
+    createdAt: "2026-10-30T22:09:00.000Z",
+    sql: "SELECT 1",
+    outputColumns: ["1"],
+  };
+  const bareHtml = buildDeliveryReportHtml({
+    nodes: [node("bare-1", "sqlQuery", bareSql)],
+    edges: [],
+    exportedAt: FIXED_EXPORTED_AT,
+    audit: null,
+  });
+  check("X18：无 semanticRefs 的 SQL 节点不渲染口径小节（不留空壳行）",
+    !bareHtml.includes("口径引用") && bareHtml.includes("手动 SQL（无口径归因）"));
+  const colOnlyHtml = buildDeliveryReportHtml({
+    nodes: [node("bare-2", "sqlQuery", { ...bareSql, semanticRefs: [{ entityType: "Col", id: "col-no-label-x18" }] })],
+    edges: [],
+    exportedAt: FIXED_EXPORTED_AT,
+    audit: null,
+  });
+  check("X18：refs 只有无短名的 Col 时同样整节不渲染",
+    !colOnlyHtml.includes("口径引用") && !colOnlyHtml.includes("col-no-label-x18"));
+  check("X18：新增内容不破坏自包含（无 script、无外部引用）",
+    !bareHtml.includes("<script") && !/https?:\/\//.test(bareHtml.replace(/xmlns(:xlink)?="[^"]*"/g, "")));
+}
 
 // ---------------------------------------------------------------------------
 console.log("\n[4] 漂移告警与复跑记录");

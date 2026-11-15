@@ -3,6 +3,8 @@ import { existsSync, unlinkSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve as resolvePath, sep } from "node:path";
 import { deletePermissionAudit } from "./permission-audit.js";
 import { deleteInjectionTrace } from "./prompt-injection.js";
+import { canvasPathFor, storageBindingPathFor } from "./storage/paths.js";
+import { queueRemoteDelete, queueRemoteSync } from "./storage/canvas-storage.js";
 
 export function getSessionDir(): string {
   return resolvePath(process.cwd(), ".govio", "sessions");
@@ -70,17 +72,41 @@ export function deleteSession(path: string): void {
   // 权限审计 / 注入留痕 sidecar 与会话同生命周期：会话删了，记录一并删。
   deletePermissionAudit(resolved);
   deleteInjectionTrace(resolved);
+  // T3.1 存储绑定 sidecar 同生命周期：先 fire-and-forget 删远端工件，再删本地绑定。
+  queueRemoteDelete(resolved);
+  if (existsSync(storageBindingPathFor(resolved))) unlinkSync(storageBindingPathFor(resolved));
 }
 
 // ---- canvas sidecar ----
 
-/** 画布 sidecar 路径；同目录下还有权限审计 sidecar（`permission-audit.ts` 的 `auditPathFor`） */
-export function canvasPathFor(sessionFile: string): string {
-  return sessionFile + ".canvas.json";
-}
+/** 画布 sidecar 路径（T3.1 起单一来源在 `storage/paths.ts`，此处保持既有公共 API）。
+ * 同目录下还有权限审计 sidecar（`permission-audit.ts` 的 `auditPathFor`）与存储绑定 sidecar。 */
+export { canvasPathFor };
 
-export function saveCanvas(sessionFile: string, nodes: unknown, edges: unknown): void {
-  writeFileSync(canvasPathFor(sessionFile), JSON.stringify({ nodes, edges }));
+/**
+ * 写画布 sidecar（同步本地，行为与旧实现一致）。meta 为可选顶层附加键
+ * （T3.2 fork 血缘 forkFrom 等；不覆盖 nodes/edges）。绑定 S3 的画布在本地写
+ * 成功后 fire-and-forget 上传远端（design.md 写入模型：本地写 + 异步同步）。
+ */
+export function saveCanvas(sessionFile: string, nodes: unknown, edges: unknown, meta?: Record<string, unknown>): void {
+  // meta 未显式给出时保留既有顶层附加键（forkFrom 等血缘/配置元数据不被 autosave 抹掉）。
+  const extras: Record<string, unknown> = {};
+  if (meta === undefined) {
+    const p = canvasPathFor(sessionFile);
+    if (existsSync(p)) {
+      try {
+        const prev = JSON.parse(readFileSync(p, "utf-8")) as Record<string, unknown>;
+        if (prev && typeof prev === "object" && !Array.isArray(prev)) {
+          for (const key of Object.keys(prev)) {
+            if (key !== "nodes" && key !== "edges") extras[key] = prev[key];
+          }
+        }
+      } catch { /* 坏 JSON：不保留任何键，行为与覆盖写一致 */ }
+    }
+  }
+  const payload: Record<string, unknown> = { ...extras, ...(meta ?? {}), nodes, edges };
+  writeFileSync(canvasPathFor(sessionFile), JSON.stringify(payload));
+  queueRemoteSync(sessionFile);
 }
 
 export function loadCanvas(sessionFile: string): { nodes: unknown[]; edges: unknown[] } | null {

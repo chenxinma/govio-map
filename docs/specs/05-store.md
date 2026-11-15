@@ -60,7 +60,12 @@
      边 既有→新，星型模型里 dim 表可能后上画布）；匹配键由 `src/utils/table-relations.ts`
      的 `tableSemanticEdgeCandidates()` 给出，容忍三段式/两段式/裸表名差异（点号后缀变体
      集合，大小写归一）；同一对节点只保留一条（无向去重，①优先于②），自环与非法关系
-     元素丢弃，关系目标不在画布上则不建边也不报错
+     元素丢弃，关系目标不在画布上则不建边也不报错。
+     候选自 X13 起携带命中的关系原文（`TableSemanticEdgeCandidate.relations?: TableRelation[]`，
+     加法可选键，同节点对同方向的多条关系并入同一条边）：建边时写入 `edge.data.tableRelations`
+     并设 `edge.label = relationEdgeLabel(relations)`（唯一取值来源 `src/utils/table-relations-ui.ts`）；
+     `data.lineageKind`、`type`/`style`/`animated`/语义 Handle 仍全部由 `lineageEdge` 工厂派生，
+     关系缺失（历史边、sqlQuery 口径沿袭边）时不写这两个键
 5. 边样式：数据血缘 `smoothstep`, `animated: true`, `stroke: #1db954`, `strokeWidth: 2`；
    语义血缘（含表间边）样式全量取 `lineageEdgeAppearance('semantic')`（紫虚线、不流动），
    edge id 加 `-sem` 后缀防与数据血缘边冲突（两类边可并存）

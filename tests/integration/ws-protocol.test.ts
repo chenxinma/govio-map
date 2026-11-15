@@ -3,7 +3,7 @@
  *
  * 覆盖（对齐 acceptance「契约测试纳入 verify 聚合：合法收发 + 非法/未知消息拒绝路径」）：
  *  1. 契约注册表：版本字段、$id 命名、消息类型全集（与样本清单双向对齐，防漂移）
- *  2. 合法收发：客户端 17 类 / 服务端 25 类样本全部匹配 schema
+ *  2. 合法收发：客户端 17 类 / 服务端 26 类样本全部匹配 schema
  *  3. 拒绝路径：parseWSClientMessage 对非法 JSON / 非对象 / 未知 type / 形状非法的拒绝，
  *     以及附加字段容忍（兼容策略 3）
  *  4. 端到端：真实 setupWebSocket + ws 客户端（mock pi session，复用 X4 链路① harness），
@@ -103,6 +103,7 @@ const clientSamples: WSClientMessage[] = [
   { type: "session_messages", beforeEntryId: "entry-1" },
   { type: "session_delete", path: "C:/app/.govio/sessions/s.jsonl" },
   { type: "canvas_save", nodes: [{ id: "n1" }], edges: [{ id: "e1" }] },
+  { type: "canvas_fork_apply", forkId: "0123456789abcdef0123456789abcdef" },
 ];
 
 const serverSamples: WSServerMessage[] = [
@@ -130,6 +131,7 @@ const serverSamples: WSServerMessage[] = [
   { type: "config_saved" },
   { type: "config_required" },
   { type: "model_set", provider: "anthropic", modelId: "claude-x" },
+  { type: "fork_applied", forkId: "0123456789abcdef0123456789abcdef", forkFrom: { kind: "share", shareId: "0123456789abcdef0123456789abcdef", canvasId: "2026-11-14T00-00-00-000Z_sess-x", sessionName: null, sharedAt: "2026-11-14T00:00:00.000Z", forkedAt: "2026-11-14T01:00:00.000Z" } },
   { type: "error", message: "boom" },
 ];
 
@@ -204,20 +206,20 @@ describe("契约注册表：版本化 schema 与消息全集", () => {
     }
   });
 
-  it("客户端消息全集 17 类、服务端 25 类，与合法样本清单双向对齐（漂移防护）", () => {
+  it("客户端消息全集 18 类、服务端 26 类，与合法样本清单双向对齐（漂移防护）", () => {
     const clientTypes = Object.keys(WS_PROTOCOL.client).sort();
     const serverTypes = Object.keys(WS_PROTOCOL.server).sort();
     expect(clientTypes).toEqual([...new Set(clientSamples.map((s) => s.type))].sort());
     expect(serverTypes).toEqual([...new Set(serverSamples.map((s) => s.type))].sort());
-    expect(clientTypes.length).toBe(17);
-    expect(serverTypes.length).toBe(25);
+    expect(clientTypes.length).toBe(18);
+    expect(serverTypes.length).toBe(26);
   });
 });
 
 // ── 2. 合法收发匹配 schema ──────────────────────────────────────────────────
 
 describe("合法消息匹配 schema（收发两端）", () => {
-  it("客户端 17 类样本全部通过 WSClientMessageSchema（含联合与各成员）", () => {
+  it("客户端 18 类样本全部通过 WSClientMessageSchema（含联合与各成员）", () => {
     for (const sample of clientSamples) {
       expect(Value.Check(WSClientMessageSchema, sample), `${sample.type} 应通过联合校验`).toBe(true);
       const member = WS_PROTOCOL.client[sample.type];

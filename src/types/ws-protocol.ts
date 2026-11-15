@@ -175,7 +175,7 @@ function messageSchema<T extends string, P extends Record<string, TSchema>>(
 }
 
 /**
- * 客户端入站消息（17 种）。字段必需性与改造前 `WSMessage` 内联 interface 一致
+ * 客户端入站消息（18 种）。字段必需性与改造前 `WSMessage` 内联 interface 一致
  * （全部 Optional），schema 拒绝的是形状漂移（类型/字面量不符），不是缺字段——
  * 业务级必填（如 session_open.path）仍由 handler guard 保留原文案拦截。
  */
@@ -228,6 +228,9 @@ export const WSClientMessageSchema = Type.Union([
     nodes: Type.Optional(Type.Array(Type.Unknown())),
     edges: Type.Optional(Type.Array(Type.Unknown())),
   }), "画布快照写入会话 sidecar（前端 debounce 1s）"),
+  messageSchema("canvas_fork_apply", Type.Object({
+    forkId: Type.Optional(Type.String()),
+  }), "T3.2 fork 续写：把分享 fork 暂存副本应用到当前会话（业务必填 forkId 由 handler guard 拦截）"),
 ]);
 
 export type WSClientMessage = Static<typeof WSClientMessageSchema>;
@@ -321,6 +324,11 @@ export const WSServerMessageSchema = Type.Union([
     provider: Type.String(),
     modelId: Type.String(),
   }), "模型切换成功回执"),
+  messageSchema("fork_applied", Type.Object({
+    forkId: Type.String(),
+    /** 派生血缘（server/share.ts CanvasForkFrom 的线上形态；开放载荷容忍字段演进） */
+    forkFrom: Type.Unknown(),
+  }), "T3.2 fork 应用成功回执（canvas_restore 随后到达；只读分享视图不建立本连接）"),
   messageSchema("error", Type.Object({
     message: Type.String(),
   }), "错误（协议拒绝/业务失败统一出口）"),
