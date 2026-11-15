@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-15T16:59:14+08:00",
+  "updatedAt": "2026-11-15T18:49:06+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -465,6 +465,12 @@
               "at": "2026-11-14T18:07:14+08:00",
               "by": "main-session",
               "note": "PR #38 合并（同 T3.1）；分享/fork 验收项在合并态复跑中零回归确认（share-fork 9 例在 256 例内）。"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-11-15T18:46:58+08:00",
+              "by": "main-session",
+              "note": "2026-11-15 用户裁决：只读分享的**快照不可变语义被推翻**，改由 T3.5 重定义为「主 session 活视图」（不做快照、内容与源 session 一致、轮询同步）；不变性改由 T3.6 重做的 /export session 打包承担，并有 T3.7 导入配套。本任务（快照 + fork 续写）已交付 accepted，其 fork 续写与 forkFrom 派生血缘语义**保留**；旧分享记录 .govio/shares/*.json 的处置（兼容保留/迁移/废弃）在 T3.5 内决定。"
             }
           ]
         },
@@ -500,6 +506,93 @@
             "部署文档"
           ],
           "history": []
+        },
+        {
+          "id": "T3.5",
+          "title": "只读分享重定义：基于主 session 指纹 token 的画布活视图（无快照 + 与主画布同渲染 + 轮询）",
+          "kr": "KR2",
+          "status": "pending",
+          "dependsOn": [
+            "T3.2",
+            "X25"
+          ],
+          "outputDir": "docs/tasks/T3.5-live-share-view/",
+          "note": "用户裁决 2026-11-15（原文要点）：① 重新定义只读分享，基于**主 session 指纹 token** 的画布只读展示，**与 session 保持一致、不考虑分享时点的不变性**；② 只读界面的渲染方式**与主 session 画布一致**；③ **不做快照**，只读分享链接的内容随主 session 变化（**轮询**）；④ 不变性改由重做的斜杠命令 /export 承担（→ T3.6）；⑤ 配套导入能力（→ T3.7）。触发案例：用户实测 http://localhost:5173/share/6d6aa27396782536ecad2be1a3ac5597 与主画布「差异太大 / 缺节点」。主会话取证（2026-11-15）：(a) 该链接是 17:06:50 的快照（5 节点 3 边），源画布 18:10 已有 7 节点（新增 gov-6 df_sales_amount_by_channel、gov-7 treemap 图表）；(b) ChatPanel.handleShare 首行 `if (shareUrl) { copy; return; }` 短路——加完节点后再点分享**不会重新生成快照**，只重复复制旧链接（.govio/shares/ 仍只有 2 条记录），除非刷新页面清掉组件 state；(c) 渲染保真度缺口：ShareView 对所有节点类型都用自写简化卡片 ShareNodeCard（w-56，仅类型徽标 + 标题 + SQL 前 3 行 + 「含 Manifest」一行），未复用主画布的 SourceTableNode/SQLQueryNode/DataFrameNode/ChartNode/ReportNode —— **图表完全不渲染**（Plotly 不出现）、无表结构字段、无 X18 口径徽标、无输出列、无边 label 详情；(d) 那 5 个真实节点组件都 `import { useCanvasStore }`，复用需要只读 store 适配层。**风险须用户确认**：活视图意味着源画布**后续新增内容会实时暴露给任何持有链接的人**（快照语义下不会），且现有分享链接无鉴权、无过期/撤销（T3.2 既有遗留）——暴露面显著大于快照方案。",
+          "scope": "1. **token 形态**：改为由主 session 指纹派生（canvasId/sessionId 稳定可推导，如 hash 后 32-hex），同一 session 的分享链接恒定；评估防猜测性（session id 含时间戳 + uuid，本身不可枚举）与是否需要独立开关（分享开/关状态存哪、如何撤销）。旧 .govio/shares/*.json 的处置（只读兼容保留 / 迁移 / 废弃删除）在本任务内决定并写进 design.md\n2. **去快照化**：GET 只读接口直接读**当前** session 画布 sidecar（.canvas.json）与 manifests，不再写 ShareRecord 快照文件；响应带版本指纹（canvas 内容 hash 或 updatedAt）供前端判断是否变化（优先 ETag / If-None-Match → 304）\n3. **轮询同步**：只读页按固定间隔（建议 3-5s，design.md 定）拉取；命中 304/指纹未变则不重渲染；`document.visibilitychange` 隐藏时暂停轮询；失败退避重试并提示「与源画布同步中断」；轮询走 HTTP（若改 WS 推送须评估是否 bump PROTOCOL_VERSION，按 X2 契约走）\n4. **高保真渲染**：只读视图复用主画布 nodeTypes（SourceTableNode / SQLQueryNode / DataFrameNode / ChartNode / ReportNode）与同一套边渲染（语义边样式、X13/X15 关系详情、X18 口径徽标、Plotly 懒加载 chunk）；实现二选一并论证：① 只读 store 适配（把远端画布灌进 useCanvasStore 只读实例 / 独立 store）② 抽展示层（节点组件拆 presentational + container）。**只读纪律**：nodesDraggable/nodesConnectable/elementsSelectable 关闭，不得存在任何写回源 session 的入口\n5. **复跑与 fork 在活视图下的语义**：T1.2 复跑会产生新 DataFrame/写画布 → 只读页**必须禁止**（或明确改为「先 fork 再复跑」）；fork 续写保留（从当前活画布 fork 出可写副本 + forkFrom 派生血缘），并核对 X25 已修的链接 origin 与相对回跳（/?fork=）在新 token 形态下仍正确\n6. **与 T3.1 S3 绑定的关系**：绑定 S3 的画布，活视图读本地缓存还是远端？跨实例分享是否要求绑定 S3（否则只在本机可达）——design.md 给结论\n7. **测试**：只读接口返回当前画布（源改动后立即可见，非旧快照）、304/指纹未变不重渲染、轮询暂停与退避、只读页无任何写回路径（断言无 POST 到源 session）、真实节点组件在只读视图渲染（含 chart 节点出 Plotly 容器）、fork 仍产 forkFrom；既有断言零回归\n8. **文档**：docs/specs/02-nodes.md（只读视图渲染口径）、docs/specs/06-backend.md（只读接口与轮询契约）、docs/USER-MANUAL.md（分享语义变更：**链接内容随源画布变化**，须明确告知隐私影响）、T3.2 交付物标注语义已被 T3.5 取代；三件套落盘 outputDir",
+          "acceptance": [
+            "同一 session 的只读链接内容**随主画布实时变化**（新增节点后无需重新生成链接即可见；自动化断言 + 人工目视各一次）",
+            "只读页渲染与主画布**视觉一致**：五类节点用同一套组件，chart 节点渲染出 Plotly 图（不是文字卡片），口径徽标/输出列/表结构/关系详情均在；人工目视对照（截图或文字描述）记入 verification.md",
+            "轮询生效且有节制：304/指纹未变不重渲染、页面隐藏暂停、断连退避并有提示",
+            "只读纪律：不存在任何写回源 session 的路径（自动化断言）；复跑在只读页被禁止或强制走 fork",
+            "分享开关/撤销有明确机制（design.md 定方案并实现，或明确记为遗留并说明风险）；用户已在 design.md 确认知悉「活视图 = 后续内容实时暴露」的隐私影响",
+            "npm run build/lint/verify 全绿；基线（脚本 671 / vitest 21 文件 289 例 / UI 4 文件 37 例，或届时最新）零回归 + 新增用例；verificationBaseline 按 X23 约定同步更新",
+            "走 GitHub PR（用户合并）"
+          ],
+          "history": [
+            {
+              "status": "pending",
+              "at": "2026-11-15T18:46:58+08:00",
+              "by": "main-session",
+              "note": "2026-11-15 按用户 5 条裁决立项（第 1/2/3 条）。**先补充任务、待用户后续确认再执行**——本轮不派发。执行前需用户确认的开放项：活视图的隐私暴露风险是否接受、是否需要分享开关/过期机制、轮询频率、旧快照记录（.govio/shares/）处置方式。"
+            }
+          ]
+        },
+        {
+          "id": "T3.6",
+          "title": "重做 /export：同一 token 的 session 画布 + 对话等文件打包下载（承担不变性）",
+          "kr": null,
+          "status": "pending",
+          "dependsOn": [
+            "T3.5",
+            "T1.4"
+          ],
+          "outputDir": "docs/tasks/T3.6-export-session-bundle/",
+          "note": "用户裁决 2026-11-15（第 4 条）：「关于不变性，重做斜杠命令 /export，把同一 token 的 session 画布、对话、等文件打包下载」。即：只读分享（T3.5）改为活视图后，**不可变留痕的职责转移到 /export** —— 导出一个与 session token 对应的自包含打包文件（含画布与对话等），供离线归档与交接。现状：/export 是 T1.4 的自包含 HTML 报告（节点 + 血缘图 + Manifest 附录 + 漂移警示；scripts/verify-export-report.ts 现有 148 项断言），与本任务要求的「session 文件打包」不是同一件事——两者关系（并存 / HTML 报告作为包内一个文件 / 替代）需在设计阶段定并**由用户确认**。",
+          "scope": "1. **打包内容清单**（design.md 逐项定并说明取舍）：会话对话 jsonl、画布 sidecar（.canvas.json）、Analysis Manifest、权限审计 sidecar、注入留痕 sidecar、图表 spec、T1.4 的 HTML 报告（建议一并入包作为可读入口）；**明确排除**：凭据/密钥（S3 profile 仅存 env 引用名，仍须复核不入包）、parquet 等大数据文件（按体积取舍，默认排除并在清单中记明）\n2. **token 一致性**：包名与包内元数据都用 T3.5 定义的 session 指纹 token，做到「同一 token → 同一份可归档产物」；包内含 bundle manifest（格式版本号、导出时间、token、文件清单 + 每文件校验和），供 T3.7 导入校验\n3. **打包格式与实现**：zip 或 tar.gz（选一并论证：浏览器端生成 vs 后端生成、流式与体积、Windows 路径分隔符）；新增依赖须论证（能否用 node 内置 zlib + 自写 tar，或复用既有依赖）\n4. **斜杠命令重做**：/export 的交互（当前会话 / 指定会话）、进度反馈与产物落地方式（浏览器下载 vs 写工作目录）、命令帮助文案与 src/commands/ 注册同步；**不得静默破坏** T1.4 既有 HTML 报告能力与其 148 项断言\n5. **安全**：打包路径校验（防 zip-slip / 绝对路径 / .. 穿越）、包体大小上限与超限提示、导出内容不含 .env 与任何凭据\n6. **测试**：包结构断言（清单 + 校验和可验证）、token 一致性、凭据不泄漏（反向断言：包内搜不到 access key 形态字符串）、既有 verify:export 148 项零回归、大画布/空画布边界\n7. **文档**：docs/specs/ 对应篇（导出契约）、docs/USER-MANUAL.md（/export 新语义 + 与只读分享的分工：分享 = 活视图、导出 = 不可变留痕）、T1.4 交付物标注关系；三件套落盘 outputDir",
+          "acceptance": [
+            "/export 产出一个与 session token 对应的自包含打包文件，含画布 + 对话 + Manifest（+ 清单与校验和），可离线打开与校验",
+            "包内**不含任何凭据**（自动化反向断言）；路径穿越被拒（断言）",
+            "T1.4 的 HTML 报告能力不被破坏：verify:export 既有 148 项断言零回归（新增只增不削）",
+            "包结构与 token 一致性有自动化断言；产物可被 T3.7 导入流程读取（格式契约双方对齐）",
+            "npm run build/lint/verify 全绿；基线零回归 + 新增用例；verificationBaseline 按 X23 约定同步",
+            "走 GitHub PR（用户合并）"
+          ],
+          "history": [
+            {
+              "status": "pending",
+              "at": "2026-11-15T18:46:58+08:00",
+              "by": "main-session",
+              "note": "2026-11-15 按用户裁决第 4 条立项。**先补充任务、待确认再执行**。开放项：与 T1.4 HTML 报告的关系（并存/入包/替代）、打包格式（zip vs tar.gz）、parquet 等大数据文件是否入包、产物落地方式（浏览器下载 vs 写工作目录）。"
+            }
+          ]
+        },
+        {
+          "id": "T3.7",
+          "title": "session 打包导入：上传导出包作为历史会话加载到界面",
+          "kr": null,
+          "status": "pending",
+          "dependsOn": [
+            "T3.6"
+          ],
+          "outputDir": "docs/tasks/T3.7-import-session-bundle/",
+          "note": "用户裁决 2026-11-15（第 5 条）：「提供导入功能，上传 session 打包文件作为一个历史会话加载到界面」。即 T3.6 产出的包可被**反向导入**，落地为一个历史会话（出现在会话列表、可打开画布与对话），实现跨人/跨机的成果交接与复用（对齐 P3 north star：画布复用率 ≥30%）。",
+          "scope": "1. **导入入口**：界面上传（拖拽/文件选择）与/或命令入口（design.md 定，至少一条）；导入进度与结果反馈（成功给会话名 + 节点数；失败给具体原因）\n2. **校验先行**：解包前校验 bundle manifest（格式版本号、文件清单、逐文件校验和）；不匹配/缺文件/校验和错 → 拒绝并给出明确原因；**校验通过前不写任何文件**（原子性：先解到临时目录，全部校验通过后再落位）\n3. **落地为历史会话**：写入 .govio/sessions/ 的 jsonl + 各 sidecar（画布 / Manifest / 权限审计 / 注入留痕），使其被 SessionManager.list 正常识别并出现在会话列表；**会话 id 冲突处理**（同 id 已存在 → 生成新 id 或提示覆盖，design.md 定）；标注来源（如 importedFrom: {token, exportedAt, originSessionName}）以区分原生与导入会话\n4. **只读/降级语义**：导入会话的数据源与 DataFrame 大概率不在本机 → 复跑（T1.2）应给明确降级提示而非静默失败；预览（parquet）不可用时的 UI 表现；对话记录只读展示\n5. **安全**：zip-slip / 绝对路径 / .. 穿越防护、包大小与解压后体积上限、文件数上限、内容类型白名单、不执行包内任何可执行内容；导入不得覆盖既有会话文件（除非显式确认）\n6. **与 T3.1 存储抽象的关系**：导入是否可落到 S3 绑定画布（跨实例共享）或只落本地——design.md 给结论\n7. **测试**：往返一致性（T3.6 导出 → T3.7 导入 → 画布节点/边/Manifest 与源一致，自动化断言）、校验和错误/缺文件/版本不符各自被拒、id 冲突处理、穿越攻击样本被拒、超限被拒、导入后会话出现在列表且可打开\n8. **文档**：docs/specs/ 对应篇（导入契约与错误码）、docs/USER-MANUAL.md（导出 → 导入 的交接流程一节）、三件套落盘 outputDir",
+          "acceptance": [
+            "T3.6 导出的包能被导入并作为**历史会话**出现在会话列表，打开后画布节点/边/Manifest 与源一致（往返自动化断言）",
+            "校验失败（校验和/清单/版本）与恶意包（路径穿越、超限）全部被拒且**不落任何文件**（原子性断言）",
+            "会话 id 冲突有确定行为；导入会话带来源标注，可与原生会话区分",
+            "导入会话中数据源/DataFrame 不可用时给出明确降级提示，不静默失败、不抛未捕获异常",
+            "npm run build/lint/verify 全绿；基线零回归 + 新增用例；verificationBaseline 按 X23 约定同步",
+            "走 GitHub PR（用户合并）"
+          ],
+          "history": [
+            {
+              "status": "pending",
+              "at": "2026-11-15T18:46:58+08:00",
+              "by": "main-session",
+              "note": "2026-11-15 按用户裁决第 5 条立项，依赖 T3.6 的包格式契约。**先补充任务、待确认再执行**。开放项：导入入口形态（界面上传 vs 命令）、id 冲突策略（新 id vs 覆盖确认）、是否支持导入到 S3 绑定画布。"
+            }
+          ]
         }
       ]
     }
