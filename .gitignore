@@ -35,3 +35,4 @@ skills
 .mcp.json
 .codegraph/
 data/
+*.tgz
