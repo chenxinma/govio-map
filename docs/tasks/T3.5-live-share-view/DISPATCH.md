@@ -110,7 +110,9 @@ token 由 session 指纹派生 ⇒ **hash 不可逆**，服务端无法从 token
 
 ## 6. 环境与协议
 
-- **第一步（必做）**：`cp -r /d/Work/gov-io/govio-map/.agents ./`（约 350K，被 gitignore，fresh worktree 不含；缺它 govio 技能不可用）
+- **第一步（必做，只读校验即可）**：确认 `.agents/` 已就位——`ls .agents/skills/` 应列出 **9** 个目录（govio / govio-eda / govio-meta / govio-observe / govio-query / govio-reconcile / moli-cdp-server / moli-webfetch / moli-websearch）。它被 gitignore（`.gitignore` 的裸 `skills` 模式命中 `.agents/skills/`，故 `git status` 不显示它属正常），fresh worktree 本不含，**本次已由主会话在 setup 跑完后预置**，所以你只需校验、**不要重复复制**；仅当不足 9 个时才补 `cp -r /d/Work/gov-io/govio-map/.agents ./`（约 350K/44 文件）。
+  背景（避免你误判环境）：2026-11-17 的首次派发（worktree `t35-live-share`）因 Orca 的 setup 完成哨兵 `__ORCA_SETUP_COMPLETE__` 丢失，该 worktree 的 exec helper 对**任何**命令永久报 `helper_unknown_error: setup refresh had errors`（harness 在建进程前就拒绝，命令根本没执行），整轮零进展报废；Orca 无重跑 setup 的动词，只能弃用重建。你现在这个 worktree 的 setup 健康已由主会话预先验证过（`node_modules` 关键 bin 齐全 + `npm ls --depth=0` 干净）。预置 `.agents/` 是为了让你起手即可开工，不必在 setup 刚结束的窗口做大批量 I/O。
+- **`package-lock.json` 若显示 ` M`**：那是 setup hook 把 lockfile 的 `version` 从 `0.7.0` 同步到 `0.7.2`（仓库既有漂移，X20 升版本时漏改 lockfile），**不是你的改动、也超出 T3.5 范围**。开工前执行 `git checkout -- package-lock.json` 还原，让你的 commit 只含 T3.5 改动；并在 `design.md`「遗留问题」记一条（T3.6 引 zip 依赖跑 `npm install` 时会自然吸收这个版本同步）
 - 工作位置：Orca 为你创建的独立 worktree（分支已就绪，repo setup hook 是 `npm install`）。同一 worktree 只有你一个写者；只 `git add` 你自己的改动，**禁止 `git add -A` 之外还顺手 commit 他人文件**
 - **不切分支、不 push**（主会话负责 PR）
 - **Windows Git Bash 约定**：路径统一正斜杠（`D:/Work/...`）、**路径末尾不要以反斜杠结尾**（会吞掉后续引号导致 `unexpected EOF`）；`python` 指向 Windows Store 存根**不可用**（用 `node` / `tsx`）；JSON 解析用 **`jq`**
