@@ -148,3 +148,15 @@ API 变更: 新增=<...>；删除=<...>；PROTOCOL_VERSION=<1 未变 / 变更理
 ```
 
 汇报后用 `orca orchestration send --type worker_done --outcome succeeded --task-id <task_id> --dispatch-id <dispatch_id>` 发信号。未完成也发 `worker_done`（`--outcome failed/blocked`），**禁止虚报验证结果**。
+
+## 9. subagent 执行模式补充（2026-11-17 改派：pi subagent，**覆盖** §6/§8 中的 Orca 专属条目）
+
+本任务改由 **pi subagent（`worker` agent）在主仓 checkout 直接执行**，不走 Orca worktree。§1-§5、§7 全部照旧，以下条目覆盖 §6/§8 的对应表述：
+
+1. **工作位置**：`D:/Work/gov-io/govio-map`（主仓 checkout，非 worktree）。主会话已创建并切到任务分支（分支名见派发 brief），基于含本 §9 的 main。**不切分支、不 push、不建 PR**（PR 由主会话创建、用户合并）。同一时刻只有你一个写者。
+2. **环境已就位，不要重装**：`node_modules/`（`.bin` 102 项）与 `.agents/skills/`（9 个目录）均已存在——**不要跑 `npm install`**、不要复制 `.agents/`，只做一次只读校验（`ls .agents/skills | wc -l` 预期 9）。§6 第 1 条关于 Orca setup 哨兵与 `helper_unknown_error` 的背景与你无关，可整段跳过。
+3. **`package-lock.json`**：§6 第 2 条的 setup hook 漂移在本次不适用（无 setup hook）。开工前 `git status --porcelain` 应为空；若意外出现 `package-lock.json` 改动，`git checkout -- package-lock.json` 还原、**不要提交它**，并在 design.md「遗留问题」记一条。本任务预期**零新增 npm 依赖**（§5 已明）。
+4. **提交纪律**：commit 前用 `git status --porcelain` 逐条核对，只 `git add` 你自己的改动（`.agents/`、`node_modules/`、`.govio/`、`.pi/`、`dist*/` 均已被 `.gitignore` 覆盖，正常不会出现）；**单次 commit**，message 前缀 `T3.5: ...`。
+5. **汇报方式（覆盖 §6 末两条与 §8 结尾）**：**环境里没有任何 orca 命令**——不要执行 `orca orchestration send/ask`。阻塞或遇到未裁决的产品决策时用 `contact_supervisor`（`reason:"need_decision"`，发出后**等回复**再继续）；非阻塞进度用 `reason:"progress_update"`（简短）。完成时把 §8 的 ≤15 行摘要作为**最终回复正文**返回，不要以问题结尾。
+6. **不改 `docs/task-plan.json`**：状态、history、`verificationBaseline` 全部由主会话验收时统一记账（你只在 `verification.md` 报出三组新数字）。
+7. **时间预算照 §7**：150 分钟。harness 会在到期前约 15 分钟投递 checkpoint 提示，收到即按 §7 落 `T3.5: WIP ...` commit（含三件套现状）并如实汇报「已改文件 / 验证状态 / 剩余工作」。
