@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-16T22:24:04+08:00",
+  "updatedAt": "2026-11-17T06:24:29+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -511,7 +511,7 @@
           "id": "T3.5",
           "title": "只读分享重定义：基于主 session 指纹 token 的画布活视图（无快照 + 与主画布同渲染 + 轮询）",
           "kr": "KR2",
-          "status": "pending",
+          "status": "in_progress",
           "dependsOn": [
             "T3.2",
             "X25"
@@ -534,7 +534,22 @@
               "at": "2026-11-15T18:46:58+08:00",
               "by": "main-session",
               "note": "2026-11-15 按用户 5 条裁决立项（第 1/2/3 条）。**先补充任务、待用户后续确认再执行**——本轮不派发。执行前需用户确认的开放项：活视图的隐私暴露风险是否接受、是否需要分享开关/过期机制、轮询频率、旧快照记录（.govio/shares/）处置方式。"
+            },
+            {
+              "status": "in_progress",
+              "at": "2026-11-17T06:24:29+08:00",
+              "by": "main-session",
+              "note": "用户批准开工（T3.5→T3.6→T3.7 串行链，agent=codex，逐个 PR 逐个验收）并裁决全部开放项（见新增 decisions 字段）。前置依赖已闭合：dependsOn 的 X25 经 PR #45 合入 main（merge ed2d9d0）并由主会话 2026-11-16 独立复跑后置 accepted（脚本 671 / vitest 21·289 / UI 4·37 与 verificationBaseline 逐项吻合），T3.2 早已 accepted——此前 main 上「T3.5 引用 X25 但 crossCutting 无 X25」是两条并行分支分别写入造成的悬空表象，非真缺口。派发前调研另取证四条实现陷阱并内联进任务书 §3：(1) useCanvasStore 带 persist(name=govio-canvas-state) 且 /share 与主界面同源，灌远端画布会写穿 localStorage 静默顶掉用户本机画布；(2) store 在模块导入时即同步 rehydrate 本机画布，远端数据到达前渲染会反向泄漏；(3) 五类节点卡片内含预览/复跑/删除/SQL 编辑入口，会打 POST /api/preview·/api/rerun-dataframe·/api/execute-sql 作用于服务端当前会话单例，构成对源 session 的写与执行副作用；(4) ShareView.tsx:19-23 自带一份 apiBase() 仍是页面端口+1 硬编码，是 X25 遗留 2 点名的残留，本任务改轮询请求时必须一并改用 apiBaseFrom。另更正 token 解析的设计约束：指纹 hash 不可逆，服务端只能枚举 .govio/sessions/*.jsonl 中已开启分享者逐个算指纹匹配，分享开关天然即访问控制与撤销机制。八段式任务书落盘 docs/tasks/T3.5-live-share-view/DISPATCH.md，按 Orca SOP 以独立 worktree 派发 codex worker，预算 150min（checkpoint ≈135min）。"
             }
+          ],
+          "decisions": [
+            "① 隐私：接受「活视图 = 源画布后续新增内容实时暴露给任何持链接者」，但强制配套分享开关 + 撤销（无开关不上线）；USER-MANUAL 须显著告知",
+            "② 开关：默认关，显式开启才生成链接，关闭即撤销；状态存新 sidecar <session>.jsonl.share.json（路径函数加进 server/storage/paths.ts 保持单一来源，随 deleteSession 同生命周期删除，仅本地、不随 T3.1 同步 S3）；过期时间不做，记遗留归口 T3.3",
+            "③ 轮询：3s + ETag/If-None-Match→304；document.visibilitychange 隐藏暂停、恢复立即拉一次；失败指数退避 3→6→12→30s 封顶并提示「与源画布同步中断」；走 HTTP，PROTOCOL_VERSION 保持 1",
+            "④ 旧 .govio/shares/*.json：用户裁决「不必保留」——直接废弃，不迁移、不做只读兼容；代码不再读写该目录；旧随机 token 解析不到 → 404 + 前端明确失效文案（USER-MANUAL 告知旧链接一律失效）",
+            "⑤ token：由 session 指纹派生且保持 32 位小写 hex（src/main.tsx:9 正则 [a-f0-9]{32} 无需改）；同一 session 链接恒定，从根上消除 ChatPanel.handleShare 首行 if (shareUrl) { copy; return; } 的陈旧链接短路缺陷，须专门回归断言",
+            "⑥ 复跑：只读页删除复跑能力（UI 入口 + POST /api/shares/<token>/rerun 路由 + 相关用例）——scope 第 5 项要求只读页禁止复跑，活视图语义下动手一律走 fork。属有意功能削减，断言数变化须在 verification.md 逐项对账，由主会话验收时接受新基线",
+            "⑦ S3：活视图只读本地当前 session sidecar，绑定 S3 的远端工件不参与活视图；跨实例分享不在本期，记遗留归口 T3.3/T3.4"
           ]
         },
         {
@@ -547,7 +562,7 @@
             "T1.4"
           ],
           "outputDir": "docs/tasks/T3.6-export-session-bundle/",
-          "note": "用户裁决 2026-11-15（第 4 条）：「关于不变性，重做斜杠命令 /export，把同一 token 的 session 画布、对话、等文件打包下载」。即：只读分享（T3.5）改为活视图后，**不可变留痕的职责转移到 /export** —— 导出一个与 session token 对应的自包含打包文件（含画布与对话等），供离线归档与交接。现状：/export 是 T1.4 的自包含 HTML 报告（节点 + 血缘图 + Manifest 附录 + 漂移警示；scripts/verify-export-report.ts 现有 148 项断言），与本任务要求的「session 文件打包」不是同一件事——两者关系（并存 / HTML 报告作为包内一个文件 / 替代）需在设计阶段定并**由用户确认**。",
+          "note": "用户裁决 2026-11-15（第 4 条）：「关于不变性，重做斜杠命令 /export，把同一 token 的 session 画布、对话、等文件打包下载」。即：只读分享（T3.5）改为活视图后，**不可变留痕的职责转移到 /export** —— 导出一个与 session token 对应的自包含打包文件（含画布与对话等），供离线归档与交接。现状：/export 是 T1.4 的自包含 HTML 报告（节点 + 血缘图 + Manifest 附录 + 漂移警示；scripts/verify-export-report.ts 现有 148 项断言），与本任务要求的「session 文件打包」不是同一件事——两者关系（并存 / HTML 报告作为包内一个文件 / 替代）需在设计阶段定并**由用户确认**。 【主会话更正与裁决 2026-11-17】原 note 称「现状：/export 是 T1.4 的自包含 HTML 报告」有误——实证：/export = src/commands/built-in.ts:32 注册的 handleExport → src/commands/export-session.ts（28 行，前端 Blob 下载 {exportedAt, messages[], canvas{nodes,edges}}，无 Manifest / 无 sidecar / 无 token / 不经服务端）；T1.4 的 HTML 交付报告是 CanvasToolbar.tsx:43 handleExportReport 独立按钮 → src/utils/export-report.ts（动态 import，不进主 bundle）。故「重做 /export」= 替换那个简陋 JSON 快照，HTML 报告是另一条链路、按裁决 ① 入包且零回归。session sidecar 全集（打包清单基座）：<s>.jsonl（pi transcript）、.canvas.json、.audit.jsonl（T1.3）、.injection.jsonl（T2.1）、.storage.json（T3.1 S3 绑定，须复核不入包或仅存 profile 引用名）；另有 1 个孤儿 .injection.zip（旧格式残留，不入包）。用户已裁决全部开放项，见 decisions 字段。",
           "scope": "1. **打包内容清单**（design.md 逐项定并说明取舍）：会话对话 jsonl、画布 sidecar（.canvas.json）、Analysis Manifest、权限审计 sidecar、注入留痕 sidecar、图表 spec、T1.4 的 HTML 报告（建议一并入包作为可读入口）；**明确排除**：凭据/密钥（S3 profile 仅存 env 引用名，仍须复核不入包）、parquet 等大数据文件（按体积取舍，默认排除并在清单中记明）\n2. **token 一致性**：包名与包内元数据都用 T3.5 定义的 session 指纹 token，做到「同一 token → 同一份可归档产物」；包内含 bundle manifest（格式版本号、导出时间、token、文件清单 + 每文件校验和），供 T3.7 导入校验\n3. **打包格式与实现**：zip 或 tar.gz（选一并论证：浏览器端生成 vs 后端生成、流式与体积、Windows 路径分隔符）；新增依赖须论证（能否用 node 内置 zlib + 自写 tar，或复用既有依赖）\n4. **斜杠命令重做**：/export 的交互（当前会话 / 指定会话）、进度反馈与产物落地方式（浏览器下载 vs 写工作目录）、命令帮助文案与 src/commands/ 注册同步；**不得静默破坏** T1.4 既有 HTML 报告能力与其 148 项断言\n5. **安全**：打包路径校验（防 zip-slip / 绝对路径 / .. 穿越）、包体大小上限与超限提示、导出内容不含 .env 与任何凭据\n6. **测试**：包结构断言（清单 + 校验和可验证）、token 一致性、凭据不泄漏（反向断言：包内搜不到 access key 形态字符串）、既有 verify:export 148 项零回归、大画布/空画布边界\n7. **文档**：docs/specs/ 对应篇（导出契约）、docs/USER-MANUAL.md（/export 新语义 + 与只读分享的分工：分享 = 活视图、导出 = 不可变留痕）、T1.4 交付物标注关系；三件套落盘 outputDir",
           "acceptance": [
             "/export 产出一个与 session token 对应的自包含打包文件，含画布 + 对话 + Manifest（+ 清单与校验和），可离线打开与校验",
@@ -564,6 +579,13 @@
               "by": "main-session",
               "note": "2026-11-15 按用户裁决第 4 条立项。**先补充任务、待确认再执行**。开放项：与 T1.4 HTML 报告的关系（并存/入包/替代）、打包格式（zip vs tar.gz）、parquet 等大数据文件是否入包、产物落地方式（浏览器下载 vs 写工作目录）。"
             }
+          ],
+          "decisions": [
+            "① 与 T1.4 HTML 报告关系：HTML 报告入包作可读入口（report.html），CanvasToolbar 独立按钮与 src/utils/export-report.ts 保持不动，verify:export 148 项零回归",
+            "② 压缩格式：zip；用户批准新增依赖（如 fflate），无需 node:zlib 自写 ZIP writer；design.md 论证选型、体积与 Windows 路径分隔符处理",
+            "③ parquet 等大数据文件：默认排除，但 bundle manifest 须记明「已排除 N 个 / 合计 X MB」让接收方知道缺什么",
+            "④ 产物落地：仅浏览器下载（a[download]，与 T1.4 一致）；用户明确否决「写入 .govio/exports/」可选开关，不要实现",
+            "⑤ 基线更正（见 note 追加）：重做对象是 src/commands/export-session.ts 的简陋 JSON 快照，不是 T1.4 HTML 报告"
           ]
         },
         {
@@ -592,6 +614,12 @@
               "by": "main-session",
               "note": "2026-11-15 按用户裁决第 5 条立项，依赖 T3.6 的包格式契约。**先补充任务、待确认再执行**。开放项：导入入口形态（界面上传 vs 命令）、id 冲突策略（新 id vs 覆盖确认）、是否支持导入到 S3 绑定画布。"
             }
+          ],
+          "decisions": [
+            "① 导入入口：与 /export 一致的斜杠命令逻辑，仅 /import 多接一个文件路径参数（/import <bundle 路径>）；不做界面上传/拖拽按钮。路径由服务端读取（浏览器无法读任意本地路径），必须复用 server/session-history.ts:58 assertValidSessionPath 同款校验纪律防目录穿越",
+            "② id 冲突：默认生成新 id + 保留 importedFrom.originalSessionId；不提供覆盖（覆盖会破坏既有会话的审计留痕不可变性）",
+            "③ S3：本期只落本地 .govio/sessions/，导入后用户手动执行既有绑定操作；跨实例导入记遗留",
+            "④ 原子性硬约束：校验（格式版本 / 文件清单 / 逐文件校验和）全部通过前不落任何文件——先解到临时目录，全绿后再落位；任何失败路径都必须断言「零文件写入」"
           ]
         }
       ]
