@@ -9,7 +9,7 @@ import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferenced
 import { setSessionSemanticRefs, setSessionCaliberMetrics, clearSessionSemanticRefs, toSemanticRefs } from "./semantic-context.js";
 import { permissionManager } from "./permission-manager.js";
 import { isAgentConfigNeeded, completeAgentSetup } from "./backend.js";
-import { readModelsConfig, writeModelsConfig, createDefaultModelsConfig, maskModelsConfig } from "./models-config.js";
+import { readModelsConfig, writeModelsConfig, createDefaultModelsConfig, maskModelsConfig, listAvailableModels } from "./models-config.js";
 import { isAllowedUpgrade } from "./security.js";
 import { parseWSClientMessage, type WSClientMessage, type WSClientMessageOf, type WSServerMessage } from "../src/types/ws-protocol.js";
 
@@ -161,7 +161,12 @@ export function setupWebSocket(server: import("http").Server) {
   }
 
   async function pushSessionState(ws: WebSocket, session: SessionInstance) {
-    sendMsg(ws, { type: "session_ready", sessionId: session.sessionId });
+    sendMsg(ws, {
+      type: "session_ready",
+      sessionId: session.sessionId,
+      thinkingLevel: session.thinkingLevel,
+      currentModel: session.model ? { provider: String(session.model.provider), modelId: session.model.id } : undefined,
+    });
     try {
       const file = session.sessionManager.getSessionFile();
       if (!file) return;
@@ -330,7 +335,7 @@ export function setupWebSocket(server: import("http").Server) {
         }
         ctx.session.setModel(model)
           .then(() => {
-            sendMsg(ws, { type: "model_set", provider, modelId });
+            sendMsg(ws, { type: "model_set", provider, modelId, thinkingLevel: ctx.session.thinkingLevel });
           })
           .catch((modelErr) => {
             sendMsg(ws, {
@@ -338,6 +343,35 @@ export function setupWebSocket(server: import("http").Server) {
               message: `set_model failed: ${modelErr instanceof Error ? modelErr.message : String(modelErr)}`,
             });
           });
+        break;
+      }
+      case "get_available_models": {
+        listAvailableModels(ctx.session.modelRuntime)
+          .then((models) => {
+            sendMsg(ws, { type: "available_models", models });
+          })
+          .catch((listErr) => {
+            sendMsg(ws, {
+              type: "error",
+              message: `get_available_models failed: ${listErr instanceof Error ? listErr.message : String(listErr)}`,
+            });
+          });
+        break;
+      }
+      case "set_thinking_level": {
+        if (!msg.level) {
+          sendMsg(ws, { type: "error", message: "set_thinking_level requires level" });
+          break;
+        }
+        try {
+          ctx.session.setThinkingLevel(msg.level as Parameters<typeof ctx.session.setThinkingLevel>[0]);
+          sendMsg(ws, { type: "thinking_level_set", level: ctx.session.thinkingLevel });
+        } catch (levelErr) {
+          sendMsg(ws, {
+            type: "error",
+            message: `set_thinking_level failed: ${levelErr instanceof Error ? levelErr.message : String(levelErr)}`,
+          });
+        }
         break;
       }
       case "clear": {

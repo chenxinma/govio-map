@@ -175,7 +175,7 @@ function messageSchema<T extends string, P extends Record<string, TSchema>>(
 }
 
 /**
- * 客户端入站消息（18 种）。字段必需性与改造前 `WSMessage` 内联 interface 一致
+ * 客户端入站消息（20 种）。字段必需性与改造前 `WSMessage` 内联 interface 一致
  * （全部 Optional），schema 拒绝的是形状漂移（类型/字面量不符），不是缺字段——
  * 业务级必填（如 session_open.path）仍由 handler guard 保留原文案拦截。
  */
@@ -214,6 +214,10 @@ export const WSClientMessageSchema = Type.Union([
     provider: Type.Optional(Type.String()),
     modelId: Type.Optional(Type.String()),
   }), "切换当前会话模型"),
+  messageSchema("get_available_models", Type.Object({}), "拉取可用模型列表（ModelRuntime.getAvailable，仅含有效凭证的模型）"),
+  messageSchema("set_thinking_level", Type.Object({
+    level: Type.Optional(Type.String()),
+  }), "设置思考深度（服务端 clamp 后以 thinking_level_set 回执）"),
   messageSchema("session_list", Type.Object({}), "拉取历史会话列表"),
   messageSchema("session_open", Type.Object({
     path: Type.Optional(Type.String()),
@@ -241,14 +245,19 @@ export type WSClientMessageOf<T extends WSClientMessage["type"]> = Extract<WSCli
 // ── 服务端 → 客户端 ─────────────────────────────────────────────────────────
 
 /**
- * 服务端出站消息（25 种）。仅作编译期契约与测试基准；服务端不对自身消息做运行时
+ * 服务端出站消息（28 种）。仅作编译期契约与测试基准；服务端不对自身消息做运行时
  * 校验。开放载荷（args / nodes / edges / dataframes / info）刻意松绑，形状由消费端
  * 自校验（与改造前 useChat 的松散处理等价）。
  */
 export const WSServerMessageSchema = Type.Union([
   messageSchema("session_ready", Type.Object({
     sessionId: Type.String(),
-  }), "会话就绪（连接建立/切换后首发）"),
+    thinkingLevel: Type.Optional(Type.String()),
+    currentModel: Type.Optional(Type.Object(
+      { provider: Type.String(), modelId: Type.String() },
+      { additionalProperties: true, version: PROTOCOL_VERSION },
+    )),
+  }), "会话就绪（连接建立/切换后首发；附当前模型与思考档供前端对齐）"),
   messageSchema("canvas_restore", Type.Object({
     nodes: Type.Array(Type.Unknown()),
     edges: Type.Array(Type.Unknown()),
@@ -318,12 +327,27 @@ export const WSServerMessageSchema = Type.Union([
   messageSchema("models_config", Type.Object({
     config: WSModelsConfigSchema,
   }), "模型配置（API key 已脱敏）"),
+  messageSchema("available_models", Type.Object({
+    models: Type.Array(Type.Object(
+      {
+        provider: Type.String(),
+        modelId: Type.String(),
+        name: Type.Optional(Type.String()),
+        thinkingLevels: Type.Optional(Type.Array(Type.String())),
+      },
+      { additionalProperties: true, version: PROTOCOL_VERSION },
+    )),
+  }), "可用模型列表（chat 模型选择器数据源，来自 ModelRuntime.getAvailable）"),
   messageSchema("config_saved", Type.Object({}), "配置保存成功回执"),
   messageSchema("config_required", Type.Object({}), "首次启动无配置，需前端引导设置"),
   messageSchema("model_set", Type.Object({
     provider: Type.String(),
     modelId: Type.String(),
-  }), "模型切换成功回执"),
+    thinkingLevel: Type.Optional(Type.String()),
+  }), "模型切换成功回执（thinkingLevel 为切模型 clamp 后的当前值）"),
+  messageSchema("thinking_level_set", Type.Object({
+    level: Type.String(),
+  }), "思考深度设置成功回执（clamp 后的生效值）"),
   messageSchema("fork_applied", Type.Object({
     forkId: Type.String(),
     /** 派生血缘（server/share.ts CanvasForkFrom 的线上形态；开放载荷容忍字段演进） */

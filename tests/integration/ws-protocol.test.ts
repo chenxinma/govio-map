@@ -3,7 +3,7 @@
  *
  * 覆盖（对齐 acceptance「契约测试纳入 verify 聚合：合法收发 + 非法/未知消息拒绝路径」）：
  *  1. 契约注册表：版本字段、$id 命名、消息类型全集（与样本清单双向对齐，防漂移）
- *  2. 合法收发：客户端 17 类 / 服务端 26 类样本全部匹配 schema
+ *  2. 合法收发：客户端 20 类 / 服务端 28 类样本全部匹配 schema
  *  3. 拒绝路径：parseWSClientMessage 对非法 JSON / 非对象 / 未知 type / 形状非法的拒绝，
  *     以及附加字段容忍（兼容策略 3）
  *  4. 端到端：真实 setupWebSocket + ws 客户端（mock pi session，复用 X4 链路① harness），
@@ -37,6 +37,9 @@ vi.mock("../../server/agent.js", () => {
     getFollowUpMessages: () => [],
     modelRuntime: { getModel: () => ({ provider: "mock", id: "mock-model" }) },
     setModel: () => Promise.resolve(),
+    model: { provider: "mock", id: "mock-model" },
+    thinkingLevel: "medium",
+    setThinkingLevel: vi.fn(),
     sessionManager: {
       getSessionFile: () => undefined,
       getBranch: () => [],
@@ -68,6 +71,7 @@ vi.mock("../../server/models-config.js", () => ({
   writeModelsConfig: vi.fn(async () => {}),
   createDefaultModelsConfig: vi.fn(async () => {}),
   maskModelsConfig: (c: unknown) => c,
+  listAvailableModels: vi.fn(async () => [{ provider: "mock", modelId: "mock-model", name: "Mock Model", thinkingLevels: ["off", "low", "medium", "high"] }]),
 }));
 
 import { setupWebSocket } from "../../server/ws-handler.js";
@@ -98,6 +102,8 @@ const clientSamples: WSClientMessage[] = [
   { type: "get_models_config" },
   { type: "save_models_config", apiKey: "sk-test" },
   { type: "set_model", provider: "anthropic", modelId: "claude-x" },
+  { type: "get_available_models" },
+  { type: "set_thinking_level", level: "high" },
   { type: "session_list" },
   { type: "session_open", path: "C:/app/.govio/sessions/s.jsonl" },
   { type: "session_messages", beforeEntryId: "entry-1" },
@@ -107,7 +113,7 @@ const clientSamples: WSClientMessage[] = [
 ];
 
 const serverSamples: WSServerMessage[] = [
-  { type: "session_ready", sessionId: "sess-1" },
+  { type: "session_ready", sessionId: "sess-1", thinkingLevel: "medium", currentModel: { provider: "mock", modelId: "mock-model" } },
   { type: "canvas_restore", nodes: [{ id: "n1" }], edges: [] },
   { type: "session_messages_result", messages: [{ id: "m1", role: "user", content: "hi", referencedNodes: [{ nodeId: "n1", label: "orders", type: "sourceTable", data: null }] }], hasMore: false, oldestEntryId: null, replace: true },
   { type: "session_list_result", sessions: [{ id: "s1", path: "p", name: null, preview: "hi", messageCount: 3, modified: "2026-01-01T00:00:00.000Z" }] },
@@ -128,9 +134,11 @@ const serverSamples: WSServerMessage[] = [
   { type: "observe_list_result", dataframes: [{ name: "df1", rows: 10, columns: 2 }] },
   { type: "observe_info_result", info: { datasources: ["chocolate"], dataframes: { dataframes: [{ name: "df1", rows: 10, columns: 2, column_info: [{ name: "id", dtype: "INTEGER" }] }] } } },
   { type: "models_config", config: { providers: { anthropic: { baseUrl: "https://x", api: "anthropic-messages", apiKey: "sk-masked", models: [{ id: "claude-x", name: "Claude X" }] } } } },
+  { type: "available_models", models: [{ provider: "mock", modelId: "mock-model", name: "Mock Model", thinkingLevels: ["off", "low", "medium", "high"] }] },
   { type: "config_saved" },
   { type: "config_required" },
-  { type: "model_set", provider: "anthropic", modelId: "claude-x" },
+  { type: "model_set", provider: "anthropic", modelId: "claude-x", thinkingLevel: "medium" },
+  { type: "thinking_level_set", level: "high" },
   { type: "fork_applied", forkId: "0123456789abcdef0123456789abcdef", forkFrom: { kind: "share", shareId: "0123456789abcdef0123456789abcdef", canvasId: "2026-11-14T00-00-00-000Z_sess-x", sessionName: null, sharedAt: "2026-11-14T00:00:00.000Z", forkedAt: "2026-11-14T01:00:00.000Z" } },
   { type: "error", message: "boom" },
 ];
@@ -206,20 +214,20 @@ describe("契约注册表：版本化 schema 与消息全集", () => {
     }
   });
 
-  it("客户端消息全集 18 类、服务端 26 类，与合法样本清单双向对齐（漂移防护）", () => {
+  it("客户端消息全集 20 类、服务端 28 类，与合法样本清单双向对齐（漂移防护）", () => {
     const clientTypes = Object.keys(WS_PROTOCOL.client).sort();
     const serverTypes = Object.keys(WS_PROTOCOL.server).sort();
     expect(clientTypes).toEqual([...new Set(clientSamples.map((s) => s.type))].sort());
     expect(serverTypes).toEqual([...new Set(serverSamples.map((s) => s.type))].sort());
-    expect(clientTypes.length).toBe(18);
-    expect(serverTypes.length).toBe(26);
+    expect(clientTypes.length).toBe(20);
+    expect(serverTypes.length).toBe(28);
   });
 });
 
 // ── 2. 合法收发匹配 schema ──────────────────────────────────────────────────
 
 describe("合法消息匹配 schema（收发两端）", () => {
-  it("客户端 18 类样本全部通过 WSClientMessageSchema（含联合与各成员）", () => {
+  it("客户端 20 类样本全部通过 WSClientMessageSchema（含联合与各成员）", () => {
     for (const sample of clientSamples) {
       expect(Value.Check(WSClientMessageSchema, sample), `${sample.type} 应通过联合校验`).toBe(true);
       const member = WS_PROTOCOL.client[sample.type];
@@ -227,7 +235,7 @@ describe("合法消息匹配 schema（收发两端）", () => {
     }
   });
 
-  it("服务端 25 类样本全部通过 WSServerMessageSchema（含联合与各成员）", () => {
+  it("服务端 28 类样本全部通过 WSServerMessageSchema（含联合与各成员）", () => {
     for (const sample of serverSamples) {
       expect(Value.Check(WSServerMessageSchema, sample), `${sample.type} 应通过联合校验`).toBe(true);
       const member = WS_PROTOCOL.server[sample.type];
@@ -386,10 +394,14 @@ describe("端到端：入站拒绝路径 + 服务端实发消息匹配 schema", 
     permissionManager.requestPermission("govio-cli observe info --rows 1", "call-x2");
     ws.send(JSON.stringify({ type: "abort" }));
     ws.send(JSON.stringify({ type: "set_model", provider: "mock", modelId: "mock-model" }));
+    ws.send(JSON.stringify({ type: "get_available_models" }));
+    ws.send(JSON.stringify({ type: "set_thinking_level", level: "high" }));
     ws.send(JSON.stringify({ type: "bogus_for_error_path" }));
 
     await col.waitFor((m) => m.type === "queue_cleared");
     await col.waitFor((m) => m.type === "model_set");
+    await col.waitFor((m) => m.type === "available_models");
+    await col.waitFor((m) => m.type === "thinking_level_set");
     await col.waitFor((m) => m.type === "error");
     await new Promise((r) => setTimeout(r, 50));
 
@@ -399,7 +411,7 @@ describe("端到端：入站拒绝路径 + 服务端实发消息匹配 schema", 
       expect(Value.Check(WSServerMessageSchema, m), `实发消息应匹配 schema: ${JSON.stringify(m)}`).toBe(true);
     }
     const types = new Set(observed.map((m) => m.type));
-    for (const t of ["session_ready", "models_config", "queue_cleared", "model_set", "error"]) {
+    for (const t of ["session_ready", "models_config", "queue_cleared", "model_set", "available_models", "thinking_level_set", "error"]) {
       expect(types.has(t), `实发链路应覆盖 ${t}`).toBe(true);
     }
     ws.close();

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { Node, Edge } from "@xyflow/react";
 import type { ReferencedNode } from "../types";
 import type { ModelsConfig } from "../types/models-config";
+import { createPendingAck } from "../utils/pending-ack";
 import type {
   WSClientMessage,
   WSServerMessage,
@@ -26,6 +27,8 @@ export interface ModelOption {
   provider: string;
   modelId: string;
   label: string;
+  /** 该模型支持的思考深度（含 off）；仅 ["off"] 表示不支持思考 */
+  thinkingLevels: string[];
 }
 
 // 线上载荷形状的单一来源是 types/ws-protocol.ts（X2 契约）；
@@ -37,15 +40,14 @@ export type PermissionDecision = WSPermissionDecision;
 
 const MODEL_STORAGE_KEY = "govio.selectedModel";
 
-export function flattenModels(config: ModelsConfig): ModelOption[] {
-  const out: ModelOption[] = [];
-  for (const [provider, p] of Object.entries(config.providers)) {
-    for (const m of p.models) {
-      if (!m.id) continue;
-      out.push({ key: `${provider}/${m.id}`, provider, modelId: m.id, label: `${provider} / ${m.name || m.id}` });
-    }
-  }
-  return out;
+export function toModelOption(m: { provider: string; modelId: string; name?: string; thinkingLevels?: string[] }): ModelOption {
+  return {
+    key: `${m.provider}/${m.modelId}`,
+    provider: m.provider,
+    modelId: m.modelId,
+    label: `${m.provider} / ${m.name || m.modelId}`,
+    thinkingLevels: m.thinkingLevels ?? [],
+  };
 }
 
 export interface ChatMessage {
@@ -129,12 +131,20 @@ export function useChat() {
   const modelsConfigRef = useRef<ModelsConfig | null>(null);
   const [selectedModel, setSelectedModel] = useState<ModelOption | null>(null);
   const selectedModelRef = useRef<ModelOption | null>(null);
+  /** 可用模型列表（ModelRuntime.getAvailable，仅含有效凭证的模型）*/
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  /** 当前思考深度（服务端 clamp 后的生效值；null = 未知，等 session_ready/model_set 回执） */
+  const [thinkingLevel, setThinkingLevel] = useState<string | null>(null);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const oldestEntryIdRef = useRef<string | null>(null);
   // Model key already sent to the backend (avoids duplicate set_model sends).
   const appliedModelKeyRef = useRef<string | null>(null);
+  // 会话当前模型（session_ready 的 currentModel）：无本地记忆时尊重它，不覆盖会话历史选择。
+  const sessionModelKeyRef = useRef<string | null>(null);
+  // set_model / set_thinking_level 回执闸门（防选完立刻发送的竞态）。
+  const acksRef = useRef(createPendingAck());
   const observeInfoResolveRef = useRef<{ resolve: (info: ObserveInfo) => void; reject: (err: Error) => void } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -155,6 +165,15 @@ export function useChat() {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     sendClientMessage(ws, { type: "set_model", provider: opt.provider, modelId: opt.modelId });
+    void acksRef.current.track("model");
+  }, []);
+
+  const selectThinkingLevel = useCallback((level: string) => {
+    const ws = wsRef.current;
+    setThinkingLevel(level); // 乐观更新；thinking_level_set 回执会以 clamp 后的生效值校正
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    sendClientMessage(ws, { type: "set_thinking_level", level });
+    void acksRef.current.track("thinking");
   }, []);
 
   const sendCanvasSnapshot = useCallback(() => {
@@ -178,16 +197,19 @@ export function useChat() {
     };
   }, [sendCanvasSnapshot]);
 
-  // Remembered model wins; if it no longer exists in the config list, fall back to the first.
-  const applyModelSelection = useCallback((config: ModelsConfig) => {
-    const options = flattenModels(config);
+  // Remembered model wins; if it no longer exists in the available list, fall back to the first.
+  const applyModelSelection = useCallback((options: ModelOption[]) => {
     if (options.length === 0) {
       selectedModelRef.current = null;
       setSelectedModel(null);
       return;
     }
     const remembered = localStorage.getItem(MODEL_STORAGE_KEY);
-    const desired = options.find((o) => o.key === remembered) || options[0];
+    // 优先本地记忆；无记忆时尊重会话当前模型（不覆盖会话历史选择），最后才列表第一个
+    const desired =
+      options.find((o) => o.key === remembered) ||
+      (sessionModelKeyRef.current ? options.find((o) => o.key === sessionModelKeyRef.current) : undefined) ||
+      options[0];
     selectedModelRef.current = desired;
     setSelectedModel(desired);
     if (appliedModelKeyRef.current !== desired.key) {
@@ -253,9 +275,15 @@ export function useChat() {
         const data: WSServerMessage = JSON.parse(event.data);
 
         switch (data.type) {
-          case "session_ready":
+          case "session_ready": {
             setIsConnected(true);
             setNeedsConfig(false);
+            if (data.thinkingLevel) setThinkingLevel(data.thinkingLevel);
+            // 服务端事实基准：会话当前模型（SDK 从会话记录恢复）。
+            // 与之相同就不发多余的 set_model（避免覆盖会话历史选择 / 重置思考档）。
+            const serverModelKey = data.currentModel ? `${data.currentModel.provider}/${data.currentModel.modelId}` : null;
+            sessionModelKeyRef.current = serverModelKey;
+            if (serverModelKey) appliedModelKeyRef.current = serverModelKey;
             // Reset pagination; the server pushes the first transcript page
             // (session_messages_result replace=true) right after this event.
             oldestEntryIdRef.current = null;
@@ -266,12 +294,12 @@ export function useChat() {
             setTimeout(sendCanvasSnapshot, 1500);
             // Fresh session (connect / clear / config save): re-apply the current
             // model choice and refresh the model list in case the config changed.
-            if (selectedModelRef.current) {
+            if (selectedModelRef.current && selectedModelRef.current.key !== serverModelKey) {
               appliedModelKeyRef.current = selectedModelRef.current.key;
               sendSetModel(selectedModelRef.current);
             }
             if (ws.readyState === WebSocket.OPEN) {
-              sendClientMessage(ws, { type: "get_models_config" });
+              sendClientMessage(ws, { type: "get_available_models" });
             }
             // T3.2 fork 续写：首帧会话就绪即应用分享 fork 暂存副本（服务端随后
             // canvas_restore 水合可写画布，血缘 forkFrom 已在服务端 sidecar 落定）。
@@ -281,6 +309,7 @@ export function useChat() {
               sendClientMessage(ws, { type: "canvas_fork_apply", forkId });
             }
             break;
+          }
 
           case "session_messages_result": {
             // 历史消息按轮收拢 thinking/tool 折入「已处理」组，恢复后与运行态一致
@@ -525,14 +554,27 @@ export function useChat() {
             if (data.config) {
               modelsConfigRef.current = data.config;
               setModelsConfig(data.config);
-              applyModelSelection(data.config);
             }
             break;
+
+          case "available_models": {
+            const options = (data.models ?? []).map(toModelOption);
+            setModelOptions(options);
+            applyModelSelection(options);
+            break;
+          }
 
           case "model_set":
             if (data.provider && data.modelId) {
               appliedModelKeyRef.current = `${data.provider}/${data.modelId}`;
             }
+            if (data.thinkingLevel) setThinkingLevel(data.thinkingLevel);
+            acksRef.current.resolve("model");
+            break;
+
+          case "thinking_level_set":
+            if (data.level) setThinkingLevel(data.level);
+            acksRef.current.resolve("thinking");
             break;
 
           case "observe_info_result":
@@ -604,7 +646,13 @@ export function useChat() {
       // queue accepted it (steer_queued) or an assistant turn resumes.
       sendClientMessage(ws, { type: "steer", content, clientMsgId: msgId, referencedNodes: refs });
     } else {
-      sendClientMessage(ws, { type: "prompt", content, clientMsgId: msgId, referencedNodes: refs });
+      // 等 set_model / set_thinking_level 回执落地再发 prompt，防止用上旧模型/旧档位；
+      // 回执缺失时 pending-ack 兜底放行（3s），不卡输入。
+      void acksRef.current.pending().then(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          sendClientMessage(ws, { type: "prompt", content, clientMsgId: msgId, referencedNodes: refs });
+        }
+      });
     }
   }, []);
 
@@ -771,7 +819,5 @@ export function useChat() {
     sendClientMessage(ws, { type: "save_models_config", apiKey });
   }, []);
 
-  const modelOptions = modelsConfig ? flattenModels(modelsConfig) : [];
-
-  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission, needsConfig, modelsConfig, getModelsConfig, saveModelsConfig, saveApiKey, modelOptions, selectedModel, selectModel, observeInfo, hasMoreHistory, historyLoading, loadMoreHistory, sessions, fetchSessions, openSession, deleteSession };
+  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission, needsConfig, modelsConfig, getModelsConfig, saveModelsConfig, saveApiKey, modelOptions, selectedModel, selectModel, thinkingLevel, selectThinkingLevel, observeInfo, hasMoreHistory, historyLoading, loadMoreHistory, sessions, fetchSessions, openSession, deleteSession };
 }
