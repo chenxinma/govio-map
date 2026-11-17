@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-17T08:45:59+08:00",
+  "updatedAt": "2026-11-17T09:31:13+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -511,7 +511,7 @@
           "id": "T3.5",
           "title": "只读分享重定义：基于主 session 指纹 token 的画布活视图（无快照 + 与主画布同渲染 + 轮询）",
           "kr": "KR2",
-          "status": "done",
+          "status": "accepted",
           "dependsOn": [
             "T3.2",
             "X25"
@@ -546,6 +546,12 @@
               "at": "2026-11-17T08:45:59+08:00",
               "by": "main-session",
               "note": "worker（pi subagent / worker agent，fresh context + DISPATCH.md §1-§9）在分支 t35-live-share-view 单次 commit 337485b 交付；主会话 2026-11-17 独立复跑验收（不转述 worker 报告）：npm run build=0 / lint=0 / verify=0，verify 全跑后 git status --porcelain 干净。断言数独立核对：脚本 671（manifest 92 / rerun 71 / audit 119 / export 148 / source-table 39 / semantic-lineage 54 / caliber-conflict 77 / cwd 13 / prompt-injection 58，逐项与 verificationBaseline 一致，删 rerun 路由未影响 verify:rerun 主链路）、vitest integration 21·289 → 24·333（删 share-fork.test.ts 7 例，verification.md §2.2 逐项处置：1 例按裁决⑦有意删除、6 例重建/加强；新增 share-live 21 + share-poll 10）、UI 4·37 → 6·57（新增 share-view 13 + share-toggle 7）。抽查关键实现 6 处均与声明一致：src/components/Share/canvas-persistence.ts（persist storage 换内存空实现，陷阱1）、src/hooks/useReadOnlyCanvas.ts + 五类节点组件 !readOnly 门控（陷阱3）、ShareView payload===null 只渲染 loading 与失效文案（陷阱2）、apiBaseFrom(window.location.origin)（陷阱4）、server/share.ts deriveShareToken=sha256(\"govio-share-v1:\"+sessionId) 前32hex + 索引按目录 mtime 缓存且 enabled 现读 sidecar、server/share-api.ts 路由表（新增 GET /api/share-state、DELETE /api/shares；POST /api/shares/<token>/rerun 已删；/api/canvas-storage 未动）。范围纪律核对：package.json/package-lock.json 零改动（零新增依赖）、server/storage/s3-*.ts 与 scripts/ 未动、src/types/ws-protocol.ts 未动（PROTOCOL_VERSION=1）。唯一超出任务书列举范围的改动是 server/security.ts 的 corsHeadersFor（8 行：放行 DELETE、允许 If-None-Match、暴露 ETag），design.md §9 论证为 dev 跨源 5173→5174 下撤销与条件请求的必要条件，Origin 白名单逻辑未动，已抽查 diff 确认为最小改动。待补：真实浏览器人工目视与截图（design.md 遗留 9 / verification.md §6.1），需在合并前或合并后由用户或主会话用 npm run dev 补做。状态置 done（未置 accepted：按 AGENTS.md 纪律，accepted 于 PR 合并后在合并态 main 上复跑再置位）。"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-11-17T09:31:13+08:00",
+              "by": "main-session",
+              "note": "PR #46（merge 769102d）已由用户合并。主会话在**合并态 main** 上独立复跑验收：npm run build=0 / lint=0 / verify=0，verify 全跑后 git status --porcelain 干净；脚本断言逐项 92/71/119/148/39/54/77/13/58 = 671（与 verificationBaseline 一致）、vitest integration 24 文件 333 例、UI 6 文件 57 例，均已同步进 verificationBaseline。抽查确认合并结果含 T3.5 全部关键实现（share-poll.ts / ShareToggle.tsx / canvas-persistence.ts 在 main、旧 share-fork.test.ts 已删、凭据形态字面量已从仓库彻底消失）。验收期主会话修正 1 处：GitGuardian 报「1 secret」经查为 share-live「凭据不外泄」反向断言的假凭据夹具（该字面量自 T3.2 起即在 main 的 share-fork.test.ts:96），已改为 TEST-ONLY-AK-1234 / TEST-ONLY-SK-1234 并压回单 commit d8f7cd7（force-push 仅限 feature 分支，main 未受影响），修正后重跑三门槛全 0、share-live 21/21 复绿；required check「build + lint + verify」在 d8f7cd7 上 success（GitGuardian 非 required，且其告警源于 commit 内的删除行）。未闭合项（不影响 accepted）：真实浏览器人工目视与截图（design.md 遗留 9 / verification.md §6.1）——worker 环境无浏览器，已给覆盖五类节点+边+页头的逐项文字对照与 DOM 断言，真机并排目视留待用户在 npm run dev 下补做。"
             }
           ],
           "decisions": [
@@ -1768,12 +1774,13 @@
     "x19-caliber-govio": "https://github.com/chenxinma/govio/pull/24",
     "x22-sql-columns-unicode": "https://github.com/chenxinma/govio-map/pull/43",
     "x23-ci-dashboard-baseline": "https://github.com/chenxinma/govio-map/pull/44",
-    "x25-share-link-origin": "https://github.com/chenxinma/govio-map/pull/45"
+    "x25-share-link-origin": "https://github.com/chenxinma/govio-map/pull/45",
+    "t35-live-share-view": "https://github.com/chenxinma/govio-map/pull/46"
   },
   "verificationBaseline": {
     "updatedAt": "2026-11-15T09:35:53+08:00",
     "source": "唯一事实源：CI 断言数看板（.github/workflows/scripts/assertion-dashboard.mjs）从这里读基线，脚本内不再硬编码数字（X23，解 X16 design.md 遗留 1）。",
-    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：X25（2026-11-15，vitest 20·278 → 21·289，+11 例 share-link 回归）。",
+    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：T3.5（2026-11-17，PR #46 合并态 main 独立复跑：vitest 21·289 → 24·333、UI 4·37 → 6·57；脚本 671 逐项不变——删只读页复跑路由未影响 verify:rerun 71 与 verify:export 148）。",
     "scripts": {
       "verify:manifest": 92,
       "verify:rerun": 71,
@@ -1793,12 +1800,12 @@
     },
     "vitest": {
       "verify:integration": {
-        "files": 21,
-        "tests": 289
+        "files": 24,
+        "tests": 333
       },
       "verify:ui": {
-        "files": 4,
-        "tests": 37
+        "files": 6,
+        "tests": 57
       }
     }
   }
