@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-17T13:35:30+08:00",
+  "updatedAt": "2026-11-17T13:49:47+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -552,6 +552,12 @@
               "at": "2026-11-17T09:31:13+08:00",
               "by": "main-session",
               "note": "PR #46（merge 769102d）已由用户合并。主会话在**合并态 main** 上独立复跑验收：npm run build=0 / lint=0 / verify=0，verify 全跑后 git status --porcelain 干净；脚本断言逐项 92/71/119/148/39/54/77/13/58 = 671（与 verificationBaseline 一致）、vitest integration 24 文件 333 例、UI 6 文件 57 例，均已同步进 verificationBaseline。抽查确认合并结果含 T3.5 全部关键实现（share-poll.ts / ShareToggle.tsx / canvas-persistence.ts 在 main、旧 share-fork.test.ts 已删、凭据形态字面量已从仓库彻底消失）。验收期主会话修正 1 处：GitGuardian 报「1 secret」经查为 share-live「凭据不外泄」反向断言的假凭据夹具（该字面量自 T3.2 起即在 main 的 share-fork.test.ts:96），已改为 TEST-ONLY-AK-1234 / TEST-ONLY-SK-1234 并压回单 commit d8f7cd7（force-push 仅限 feature 分支，main 未受影响），修正后重跑三门槛全 0、share-live 21/21 复绿；required check「build + lint + verify」在 d8f7cd7 上 success（GitGuardian 非 required，且其告警源于 commit 内的删除行）。未闭合项（不影响 accepted）：真实浏览器人工目视与截图（design.md 遗留 9 / verification.md §6.1）——worker 环境无浏览器，已给覆盖五类节点+边+页头的逐项文字对照与 DOM 断言，真机并排目视留待用户在 npm run dev 下补做。"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-11-17T13:49:47+08:00",
+              "by": "main-session",
+              "note": "遗留 9（真实浏览器人工目视与截图）处置：用户 2026-11-17 明确「目视情况我后续自己来确认，不用截图」⇒ 主会话不再补做截图/无头浏览器验证，该项由用户自行在 npm run dev 下确认；verification.md §3 的逐项文字对照 + DOM/源码级断言作为已交付证据保留。遗留 9 视为**行政闭合**（非技术闭合）。"
             }
           ],
           "decisions": [
@@ -655,6 +661,12 @@
               "at": "2026-11-17T13:35:30+08:00",
               "by": "main-session",
               "note": "PR #48（merge 05b6889）已由用户合并。主会话在**合并态 main** 独立复跑：build=0 / lint=0 / verify=0，verify 全跑后 git status --porcelain 干净；脚本断言逐项 92/71/119/148/39/54/77/13/58 = 671、vitest integration 30 文件 452 例、UI 9 文件 84 例，已同步进 verificationBaseline。抽查确认：命令参数通道是声明式 opt-in（SlashCommand.args 缺省 = 不收参数 ⇒ /export 等既有命令行为逐字不变）、resolveBundlePath 六道读侧校验（lstatSync 拒 symlink、拒 UNC/设备路径、.zip、体积上限）、zip 两段式 filter 元数据闸门（64MB zip / 256MB 解压后 / 32 条目，零解压先判 = zip 炸弹防线）、isSafeBundlePath 对 zip 条目名与 manifest path 各挡一道、rollback() 覆盖写盘中途失败、importMetaPathFor 进 storage/paths.ts 且随 deleteSession 级联删、bundle 拆分未回退（import-session 懒加载 chunk 3.62kB，plotly.min 4646.12kB 不变）。范围纪律核对：package.json / package-lock.json / scripts/ / export-report.ts / CanvasToolbar.tsx / ws-protocol.ts / security.ts / share.ts / share-api.ts 全部零改动（零新增依赖，fflate 复用 T3.6；PROTOCOL_VERSION 仍为 1）。验收期主会话修正 2 处（均压回单 commit 0640376）：① worker 在 design.md 遗留 6 / verification.md §5.2 断言「dev 跨源下 T3.5 撤销分享会被预检拦死」属**误诊**——它用单 handler 隔离探测，而 backend.ts 真实挂载顺序（parquet-api 35 → share-api 36 → bundle-api 38）下 parquet-api.ts:88 的 OPTIONS 分支在任何路径判断之前兑现所有预检；主会话按真实顺序起临时 server 实测 OPTIONS /api/shares → 204 且 CORS 头齐备，故 T3.5 无现行故障、其 §5.1 记录成立，真实问题是隐性脆弱（依赖无关模块全局分支 + 挂载顺序），两处文档已改写并建议归口后续 BUGFIX；② PR #48 首轮 ubuntu CI 红（1 failed/451 passed）——session-import.test.ts 的 symlink 样本用测试开头的陈旧快照做「零写入」断言，而 buildRealBundle() 会在 sessions 目录建源会话 4 个文件；Windows 因 symlinkSync EPERM 跳过该样本故本地绿，属**测试顺序缺陷非产品缺陷**，改为分支内重新取快照（断言强度不变），并连带发现 CI 的 verify 是 && 串接 ⇒ 首轮 verify:ui（9·84）在 CI 上根本未跑，修正后 ubuntu CI build+lint+verify pass（1m11s）、GitGuardian pass，全程记入 verification.md §7。P3 串行链 T3.5→T3.6→T3.7 至此闭合（P3 status 同步置 in_progress，余 T3.3/T3.4 pending）。未闭合项：真实浏览器端到端与人工目视（T3.5 design.md 遗留 9、T3.7 verification.md §6.1）——三个 worker 环境均无浏览器，已给文字对照 + DOM/纯函数断言，真机验证待用户或主会话用 npm run dev（+ 可选 moli 无头截图）补做。"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-11-17T13:49:47+08:00",
+              "by": "main-session",
+              "note": "verification.md §6.1（真实浏览器端到端）处置：用户 2026-11-17 明确「目视情况我后续自己来确认，不用截图」⇒ 主会话不补做无头浏览器/截图验证，由用户自行确认（/export 点击下载、/import <路径> → 会话列表出现 → 打开画布与对话、导入会话的预览降级提示）。自动化覆盖（命令解析与接线 UI 测试、往返一致性、14 条零写入断言、HTTP 层真 server 冒烟）作为已交付证据保留。另：worker 报的「T3.5 撤销分享预检被拦」误诊已更正，其真实问题（预检依赖挂载顺序 + bundle-api 死分支）由用户指示立项 X26 处理；bundle.json 无法自列校验和的剩余风险由用户指示立项 X27（待裁决后派发）。"
             }
           ],
           "decisions": [
@@ -1750,6 +1762,75 @@
           "at": "2026-11-16T22:24:04+08:00",
           "by": "main-session",
           "note": "主会话验收（T3.5 派发前置）：合并态 main ed2d9d0 独立复跑门槛全绿——build ✓ / lint ✓ / npm run verify exit 0，脚本断言 671（manifest 92 + rerun 71 + audit 119 + export 148 + source-table 39 + semantic-lineage 54 + caliber-conflict 77 + cwd 13 + prompt-injection 58）0 失败、vitest integration 21 文件 289 例、UI 4 文件 37 例，与 verificationBaseline 逐项吻合；verify 全跑后 git status --porcelain 干净。抽查 src/utils/share-link.ts 与 ChatPanel.handleShare：shareLink(path, window.location.origin) 已取代「API 基址端口 +1」拼链接，apiBaseFrom 在 origin 无端口时返回 null 让调用方退回同源相对路径，tests/integration/share-link.test.ts 11 例含反向断言（链接不含 :5174、pathname 可被 main.tsx 分享路由匹配）。PR #45 CI「build + lint + verify」pass 1m17s（run 43706672396），用户 2026-11-15T11:01:01Z 合并。遗留 4 条仍开：最关键一条「全仓 port+1 约定在生产单端口托管下均不成立」归口 T3.4；另 ChatPanel.handleShare 首行 if (shareUrl) { copy; return; } 短路仍在——加完节点后再点分享只重复复制旧链接、不重生成快照，此缺陷由 T3.5 的「session 指纹 token → 链接恒定」从根上消除，T3.5 验收须回归该项。"
+        }
+      ]
+    },
+    {
+      "id": "X26",
+      "title": "BUGFIX：CORS 预检靠 parquet-api 的全局 OPTIONS 分支兑现（挂载顺序隐性依赖 + bundle-api 死分支）",
+      "status": "in_progress",
+      "kr": null,
+      "dependsOn": [
+        "T3.5",
+        "T3.7"
+      ],
+      "note": "T3.7 验收期取证（2026-11-17，主会话实测）：worker 曾报「dev 跨源下 T3.5 撤销分享（DELETE /api/shares）会被预检拦死」，属误诊——backend.ts 的真实挂载顺序是 handleParquetApi(35) → handleShareApi(36) → handleBundleApi(38)，而 parquet-api.ts:88 的 OPTIONS 分支在**任何路径判断之前**，对所有预检一律回 204 + corsHeadersFor，故按真实顺序起临时 server 实测 OPTIONS /api/shares 与 /api/session-import 均 204 且 allow-methods=GET, POST, DELETE, OPTIONS、allow-origin 正确回显。**没有现行故障**，但存在两处结构性问题：① 分享路由（T3.5 的 DELETE /api/shares 撤销、POST /api/shares 开启）与导入路由（T3.7 的 POST /api/session-import + application/json，两者都必预检）自己能应答预检与否**取决于一个无关模块的全局分支与挂载顺序**——日后重排 backend.ts，或把 parquet-api 的 OPTIONS 合理收窄到它自己的路径，会**静默**破坏撤销分享与导入；② bundle-api.ts:163 自带的 OPTIONS 分支在真实服务器上**不可达**（parquet-api 先 return true），是死代码，其测试是单 handler 隔离断言，因此给出了虚假的安全感。用户 2026-11-17 指示「安排 bugfix 执行」。",
+      "scope": [
+        "选定修法并在 BUGFIX 文档论证（推荐 A）：**A) 把全局预检上提到 server/backend.ts** —— 在所有 handle*Api 之前统一应答 OPTIONS（204 + corsHeadersFor），并删除 parquet-api.ts:88 与 bundle-api.ts:163 的重复/死分支（parquet-api.ts:299 那个在 /api/preview 路径内的分支一并评估）；**B) 每个 API 模块自带 OPTIONS 分支**（给 share-api.ts 补一个，保留分散写法）。选 A 必须评估：是否只对 /api/* 前缀应答（避免对任意不存在路径回 204）、对既有 OPTIONS 相关断言（parquet-api / bundle-api / T3.5 CORS 用例）的影响面",
+        "回归断言：**按 backend.ts 真实挂载顺序**（或直接对 createServer 起真 server）断言 OPTIONS /api/shares、/api/share-state、/api/session-import、/api/session-bundle、/api/preview、/api/rerun-dataframe、/api/execute-sql 全部 204 且 CORS 头齐备；并加**顺序无关**断言（单独调 handleShareApi 时预检也有确定行为，或断言预检统一由 backend 层处理），使「重排挂载顺序 / 收窄 parquet-api」不再能静默破坏功能",
+        "反向断言沿用既有纪律：非白名单 Origin 不回显 Access-Control-Allow-Origin；不改 server/security.ts 的白名单语义（Allow-Methods 已含 DELETE、Allow-Headers 已含 Content-Type/If-None-Match、Expose-Headers 已含 ETag）",
+        "文档：docs/tasks/BUGFIX-share-preflight.md（取证表含误诊更正、根因、修法取舍、验证、影响面与遗留）；docs/specs/06-backend.md 补 CORS 预检的单一来源口径；更正 T3.7 design.md 遗留 6 与 verification.md §5.2 中「建议修法」的指向（改为已由 X26 处理）",
+        "按 X23 约定同步 docs/task-plan.json → verificationBaseline（当前 671 / 30·452 / 9·84）"
+      ],
+      "acceptance": [
+        "预检行为不再依赖 handler 挂载顺序，也不依赖某个无关模块的全局分支（有顺序无关的自动化断言）",
+        "死代码消除：不再有真实服务器上不可达的 OPTIONS 分支（或明确保留并说明理由）",
+        "撤销分享（DELETE /api/shares）与导入（POST /api/session-import）在 dev 跨源下预检 204 且 CORS 头齐备，有断言",
+        "非白名单 Origin 仍不回显 ACAO；security.ts 白名单语义未变；PROTOCOL_VERSION 仍为 1",
+        "npm run build/lint/verify 全绿；基线（脚本 671 / vitest 30 文件 452 例 / UI 9 文件 84 例）零回归 + 新增用例；ubuntu CI 亦绿（注意 verify 是 && 串接，integration 失败会掩盖 verify:ui）",
+        "走 GitHub PR（用户合并）"
+      ],
+      "outputDir": "docs/tasks/BUGFIX-share-preflight.md",
+      "history": [
+        {
+          "status": "in_progress",
+          "at": "2026-11-17T13:49:47+08:00",
+          "by": "main-session",
+          "note": "用户 2026-11-17 指示「安排 bugfix 执行」。以 pi subagent（worker agent，context:fork）派发，分支 bugfix-share-preflight 基于合并态 main 06523c5，预算 60min。取证事实已由主会话实测内联进 note，worker 不必重复。"
+        }
+      ]
+    },
+    {
+      "id": "X27",
+      "title": "session bundle 外层完整性校验（闭合 bundle.json 无法自列校验和的剩余风险）",
+      "status": "pending",
+      "kr": null,
+      "dependsOn": [
+        "T3.6",
+        "T3.7"
+      ],
+      "note": "用户 2026-11-17 指示「完整性校验作为待办任务先纳入计划」——**本条只立项，暂不派发**。背景：T3.6 design.md 遗留 2 指出 bundle.json 无法列出自身校验和（自引用不可算），T3.7 decisions ⑥ 因此选择「不加外层签名 + 清单外文件即整包拒绝」，其**已知剩余风险**是：攻击者若能同时重写 bundle.json 与包内文件，导入侧无法察觉（当前防护只保证「清单与文件自洽」，不保证「包来自声称的源」）。落点受 T3.6 decisions ④「仅浏览器下载、不写工作目录」约束，故只有两类候选：① 导出完成时在 UI 显示整包 sha256（可复制），接收方人工核对；② 额外下载一个旁文件 <token>.govio-bundle.zip.sha256。另需评估：纯 sha256 只能防传输损坏与意外篡改，**防不了**同时替换包与旁文件；若要防后者需源实例私钥签名 + 导入侧持公钥，涉及密钥管理，应与 T3.3（SSO/多用户隔离）一并设计。",
+      "scope": [
+        "派发前先由用户裁决落点：UI 显示整包 sha256 / 额外下载 .sha256 旁文件 / 两者都做；以及是否需要导入侧自动比对（若比对，旁文件从哪来：同目录同名文件？/import 第二参数？）",
+        "评估威胁模型边界并写进 design.md：校验和（防损坏/意外篡改）vs 非对称签名（防伪造来源）的取舍；若选签名，密钥生成/存放/分发方案与 T3.3 的关系",
+        "导入侧：与 decisions ⑤（读宽写严）与 ④（校验全绿前零写入）一致，不得因新增校验放宽任何现有闸门；校验失败要有稳定错误码与人话文案",
+        "文档：docs/specs/06-backend.md（若新增路由/参数）、docs/USER-MANUAL.md（导出→核对→导入 的交接流程补一步）、T3.6/T3.7 交付物交叉引用；三件套落盘 outputDir",
+        "按 X23 约定同步 verificationBaseline"
+      ],
+      "acceptance": [
+        "派发前：用户对落点与威胁模型边界给出裁决（记入本条 decisions）",
+        "导出侧能产出包外完整性校验值，且接收方有一条可操作的核对路径（写进 USER-MANUAL）",
+        "导入侧（若实现自动比对）校验失败被拒且零文件写入；既有闸门与断言零回归",
+        "npm run build/lint/verify 全绿 + ubuntu CI 绿；基线零回归 + 新增用例；verificationBaseline 同步",
+        "走 GitHub PR（用户合并）"
+      ],
+      "outputDir": "docs/tasks/X27-bundle-integrity/",
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-11-17T13:49:47+08:00",
+          "by": "main-session",
+          "note": "用户 2026-11-17 指示纳入计划（不派发）。开放项：落点（UI 显示 sha256 / 旁文件 / 两者）、是否导入侧自动比对、是否升级到非对称签名（涉密钥管理，可能归口 T3.3）。派发前需用户裁决。"
         }
       ]
     }
