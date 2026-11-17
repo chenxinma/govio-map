@@ -207,9 +207,14 @@ fflate 的 `unzipSync(data, { filter })` 会对每个条目回调 `UnzipFileInfo
    allow-origin=http://localhost:5173`（`OPTIONS /api/session-import` 同）。**结论：dev 跳源下 T3.5 的「撤销分享」（DELETE）预检是通的，
    `ShareToggle` 不存在现行故障；T3.5 `verification.md §5.1` 记的「OPTIONS 预检 204」也成立（它按同一真实顺序挂载）。**
    剩余风险是**隐性脆弱**：分享路由的预检依赖一个无关模块的全局分支 + 挂载顺序，若日后重排 `backend.ts`
-   或把 `parquet-api.ts` 的 `OPTIONS` 收敢到自己的路径下，撤销分享会静默坏掉。同理，本任务给 `bundle-api.ts` 补的
+   或把 `parquet-api.ts` 的 `OPTIONS` 收窄到自己的路径下，撤销分享会静默坏掉。同理，本任务给 `bundle-api.ts` 补的
    `OPTIONS` 分支在真实服务器上也是**不可达的防御代码**（parquet-api 先兑现；它的测试是在单 handler 隔离下断言的）。
-   建议修法（归口后续 BUGFIX，本任务按范围纪律**未动** `share-api.ts` 与 `backend.ts`）：给 `share-api.ts` 补自己的
-   `OPTIONS` 分支，或把全局预检上提到 `backend.ts` 使其与挂载顺序无关。
+   **已由 X26 修复（2026-11-17，`docs/tasks/BUGFIX-share-preflight.md`）**：上面列的两个候选修法中采用了后者——
+   预检**上提到 `backend.ts`** 成为单一来源（新增具名导出 `handleBackendRequest`，在所有 `handle*Api` 之前调
+   `security.ts` 的 `respondToCorsPreflight`，且只认 `/api/*`），并删除 `parquet-api.ts` 的两处与 `bundle-api.ts` 的一处
+   模块内 `OPTIONS` 分支；本文件当初建议的另一候选（给 `share-api.ts` 也补一个分支）被否，因为它把一处死代码
+   变成 N 处重复代码，且仍无法保证顺序无关。断言见 `tests/integration/cors-preflight.test.ts`（18 例，含
+   「任何 handler 单独都不再兑现预检」与「反向挂载也拿不到 204」两条顺序无关断言）；本任务那条隔离预检断言
+   已改写为「模块自身不再应答预检 → 405」。
 7. **`server/parquet-api.ts` 仍持有自己的 `PARQUET_DIR` 与 `SAFE_DF_NAME_RE`**（T3.6 遗留 1 同源问题）：
    本任务未新增重复常量（预览降级只改前端），但该收敛仍未做。

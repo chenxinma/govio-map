@@ -183,8 +183,12 @@ OPTIONS /api/session-import → 204 allow-methods=GET, POST, DELETE, OPTIONS all
 即：**dev 跨源下 T3.5 的撤销分享（`DELETE /api/shares`）预检是通的，无现行故障**；T3.5 `verification.md §5.1`
 记的「OPTIONS 预检 204」也成立（它按同一真实顺序挂载）。真实问题是**隐性脆弱**：分享路由的预检依赖一个
 无关模块的全局分支 + 挂载顺序（同理本任务给 `bundle-api.ts` 补的 `OPTIONS` 分支在真实服务器上不可达，属
-防御代码，其测试是单 handler 隔离断言）。建议修法：给 `share-api.ts` 补自己的 `OPTIONS` 分支，或把全局预检
-上提到 `backend.ts` 使其与挂载顺序无关（归口后续 BUGFIX，本任务未动 `share-api.ts` / `backend.ts`）。
+防御代码，其测试是单 handler 隔离断言）。**已由 X26 修复（2026-11-17）**：采用的正是「把预检上提到
+`backend.ts`」这条（新增 `handleBackendRequest` 具名导出 + `security.ts` 的 `respondToCorsPreflight`，只认 `/api/*`），
+并删除 `parquet-api.ts`（两处）与 `bundle-api.ts`（一处）的模块内 `OPTIONS` 分支；另一候选（给 `share-api.ts`
+补自己的分支）被否——它把一处死代码变成 N 处重复代码且仍不保证顺序无关。取证、修法取舍与断言对账见
+`docs/tasks/BUGFIX-share-preflight.md`，断言见 `tests/integration/cors-preflight.test.ts`（18 例，含两条顺序无关断言）。
+本文件下面那条隔离预检断言已随之改写为「模块自身不再应答预检 → 405」。
 
 ## 6. 未覆盖 / 需人工确认
 

@@ -283,7 +283,17 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 `Access-Control-Allow-Origin`。放行方法 `GET, POST, DELETE, OPTIONS`（DELETE 供 T3.5「撤销分享」），
 放行请求头 `Content-Type, If-None-Match`（后者供活视图轮询的条件请求），并
 `Access-Control-Expose-Headers: ETag`（让跳源页面能读到活视图的 ETag 响应头）。
-CORS 预检（OPTIONS）由 `handleParquetApi` 首位分支统一回 204。
+
+**CORS 预检（OPTIONS）的单一来源（X26）**：由 `server/backend.ts` 的 `handleBackendRequest` 在**所有**
+`handle*Api` 之前调 `security.ts` 的 `respondToCorsPreflight()` 统一回 `204 + corsHeadersFor(req)`，
+且**只认 `/api/*`**（`/ws`、`/canvas` 是 WebSocket 升级，浏览器不为其发预检；其余路径没有跨源消费者，
+回 204 只会掩盖本该返回的 404）。各 API 模块**不得**再自带 `OPTIONS` 分支：修复前预检由
+`parquet-api.ts` 位于任何路径判断之前的全局分支兑现，使得「撤销分享」（`DELETE /api/shares`）与
+「导入」（`POST /api/session-import` + `application/json`）这两个必预检的路由，其可用性取决于一个无关模块
+与 `backend.ts` 的挂载顺序（重排即静默坏掉）；`bundle-api.ts` 自带的分支则因不可达而成死代码。
+取证、修法取舍与断言见 `docs/tasks/BUGFIX-share-preflight.md`；断言在 `tests/integration/cors-preflight.test.ts`
+（纯函数 / 真实链路 / 真 HTTP 三层，含「任何 handler 单独都不再兑现预检」与「反向挂载也拿不到 204」两条
+顺序无关断言）。
 
 ## dataframe-rerun.ts - DataFrame 复跑与漂移判定
 
@@ -553,7 +563,7 @@ T3.6 的包可被**反向导入**，落地为 `.govio/sessions/` 里的一个历
 | 路由 | 方法 | 说明 |
 |------|------|------|
 | `/api/session-import` | POST | body `{ "path": "<bundle 路径>" }`；成功 → **200** `{ ok:true, sessionId, sessionFile, sessionName, messageCount, nodeCount, edgeCount, manifestCount, importedFrom, filesWritten, missing, excludedParquet, storageProfile? }` |
-| `/api/session-import` | OPTIONS | **204** 跨源预检（POST + `Content-Type: application/json` 不是 CORS 简单请求，dev 下 5173→5174 必先预检）。白名单沿用 `security.ts` 既有配置，**本任务未改 `security.ts`** |
+| `/api/session-import` | OPTIONS | **204** 跨源预检（POST + `Content-Type: application/json` 不是 CORS 简单请求，dev 下 5173→5174 必先预检）。**由 `backend.ts` 的预检单一来源应答**（X26），不在本模块；白名单沿用 `security.ts` 既有配置。隔离调用 `handleBundleApi` 时 OPTIONS 走方法白名单 → **405** |
 | `/api/session-import` | 其它 | **405** |
 
 请求体上限 `MAX_IMPORT_BODY_BYTES = 8KB`（只装一个路径），超限 → **413 `request-too-large`**（流式判定，不缓冲大包体）；

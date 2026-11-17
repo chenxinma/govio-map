@@ -1,11 +1,11 @@
-import { createServer } from "http";
+import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { setupWebSocket } from "./ws-handler.js";
 import { handleParquetApi } from "./parquet-api.js";
 import { handleShareApi } from "./share-api.js";
 import { handleBundleApi } from "./bundle-api.js";
 import { agentSetup } from "./agent.js";
 import { ensureModelsConfig } from "./models-config.js";
-import { LOOPBACK_HOST } from "./security.js";
+import { LOOPBACK_HOST, respondToCorsPreflight } from "./security.js";
 import { prewarmInjectionGraphCache } from "./prompt-injection.js";
 
 let agentConfigNeeded = false;
@@ -26,18 +26,32 @@ export async function completeAgentSetup(): Promise<void> {
 }
 
 /**
+ * The backend's HTTP request chain (X26: extracted as a named export so the *real* mount order
+ * can be asserted by tests instead of being re-created inside a test file).
+ *
+ * CORS preflight is answered here, **before** any `handle*Api`, so it is a single source of truth
+ * that no longer depends on which module happens to be mounted first (see `respondToCorsPreflight`
+ * in security.ts for the failure mode this replaces). Everything below is business routing and is
+ * intentionally order-sensitive only for overlapping paths — which currently do not exist.
+ */
+export async function handleBackendRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (respondToCorsPreflight(req, res)) return;
+  if (await handleParquetApi(req, res)) return;
+  if (await handleShareApi(req, res)) return;
+  // T3.6 session 打包（/export）的只读文件集通道 + T3.7 导入（/import）。
+  if (await handleBundleApi(req, res)) return;
+  res.writeHead(404, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "Not found" }));
+}
+
+/**
  * Start the standalone backend: HTTP API (/api/preview) + WebSocket (/ws, /canvas)
  * on a single port. Used by the Vite dev plugin (dev) and server/serve.ts
  * (npx production launch) so both share identical backend behavior.
  */
 export async function startBackend(port = 5174) {
-  const httpServer = createServer(async (req, res) => {
-    if (await handleParquetApi(req, res)) return;
-    if (await handleShareApi(req, res)) return;
-    // T3.6 session 打包（/export）的只读文件集通道。
-    if (await handleBundleApi(req, res)) return;
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Not found" }));
+  const httpServer = createServer((req, res) => {
+    void handleBackendRequest(req, res);
   });
   setupWebSocket(httpServer);
 
