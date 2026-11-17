@@ -24,9 +24,9 @@
  *  4. 错误响应只回**错误码 + 人话文案**，绝不回包内文件内容（会话内容是敏感数据）。
  *
  * CORS：导出只用 GET（CORS 安全方法）⇒ 无需预检；导入是 `POST` + `Content-Type:
- * application/json`，dev 下页面(5173) → API(5174) 跨源会触发预检，故本模块显式应答
- * `OPTIONS`（204 + 与 `parquet-api.ts` 同款写法）。`security.ts` 的白名单已含 POST 与
- * Content-Type（T3.5 起），**无需再改**。
+ * application/json`，dev 下页面(5173) → API(5174) 跨源会触发预检 —— 预检由 `backend.ts` 的
+ * `handleBackendRequest` 在所有 `handle*Api` 之前统一应答（X26：单一来源，不再逐模块自带
+ * `OPTIONS` 分支）。`security.ts` 的白名单已含 POST 与 Content-Type（T3.5 起），**无需再改**。
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { getSession } from "./agent.js";
@@ -159,12 +159,9 @@ export async function handleBundleApi(req: IncomingMessage, res: ServerResponse)
   }
 
   if (url.pathname === "/api/session-import") {
-    // 跨源预检：POST + application/json 不是 CORS 简单请求，dev(5173→5174) 下必先预检。
-    if (req.method === "OPTIONS") {
-      res.writeHead(204, CORS_HEADERS);
-      res.end();
-      return true;
-    }
+    // X26：跨源预检（POST + application/json 不是 CORS 简单请求，dev 5173→5174 下必先预检）
+    // 统一由 backend.ts 的 handleBackendRequest 在所有 handle*Api 之前应答。本模块原先自带的
+    // OPTIONS 分支在真实服务器上**不可达**（parquet-api 的全局分支先返回 true），属死代码，已删除。
     if (req.method !== "POST") {
       send(405, { error: "method not allowed" });
       return true;

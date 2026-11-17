@@ -925,19 +925,23 @@ describe("HTTP：POST /api/session-import", () => {
     expect(res.body).not.toContain(SENTINEL);
   });
 
-  it("跨源预检 OPTIONS → 204，且 POST + Content-Type 已在 CORS 白名单内", async () => {
+  it("X26：模块自身不再应答跨源预检（隔离调用 OPTIONS → 405），预检统一由 backend.ts 兑现", async () => {
+    // 修复前本模块自带一个 OPTIONS 分支回 204，但它在真实服务器上**不可达**（parquet-api 的
+    // 全局分支先应答），隔离测试因此给出虚假安全感。现在预检的单一来源是 backend.ts 的
+    // handleBackendRequest：真实链路上的 204 + CORS 头齐备断言见
+    // tests/integration/cors-preflight.test.ts（已覆盖 /api/session-import）。
     const res = await callApi("OPTIONS", "/api/session-import", { headers: { origin: "http://localhost:5173" } });
     expect(res.handled).toBe(true);
-    expect(res.status).toBe(204);
-    expect(String(res.headers["Access-Control-Allow-Methods"])).toContain("POST");
-    expect(String(res.headers["Access-Control-Allow-Headers"])).toContain("Content-Type");
+    expect(res.status).toBe(405);
+    expect(res.json()).toEqual({ error: "method not allowed" });
+    // 非预检响应仍带 CORS 头（跳源页面要能读到错误），且白名单语义未变
+    expect(res.headers["Access-Control-Allow-Methods"]).toBe("GET, POST, DELETE, OPTIONS");
     expect(res.headers["Access-Control-Allow-Origin"]).toBe("http://localhost:5173");
-  });
 
-  it("非白名单 Origin 不回显（CORS 面未扩大）", async () => {
-    const res = await callApi("OPTIONS", "/api/session-import", { headers: { origin: "https://evil.example.com" } });
-    expect(res.status).toBe(204);
-    expect(res.headers["Access-Control-Allow-Origin"]).toBeUndefined();
+    // 非白名单 Origin 不回显 ACAO（CORS 面未因本修复扩大）
+    const evil = await callApi("OPTIONS", "/api/session-import", { headers: { origin: "https://evil.example.com" } });
+    expect(evil.status).toBe(405);
+    expect(evil.headers["Access-Control-Allow-Origin"]).toBeUndefined();
   });
 
   it("缺 path / 空 path / 非法 JSON body → 400", async () => {
