@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-17T06:24:29+08:00",
+  "updatedAt": "2026-11-17T08:45:59+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -511,7 +511,7 @@
           "id": "T3.5",
           "title": "只读分享重定义：基于主 session 指纹 token 的画布活视图（无快照 + 与主画布同渲染 + 轮询）",
           "kr": "KR2",
-          "status": "in_progress",
+          "status": "done",
           "dependsOn": [
             "T3.2",
             "X25"
@@ -540,6 +540,12 @@
               "at": "2026-11-17T06:24:29+08:00",
               "by": "main-session",
               "note": "用户批准开工（T3.5→T3.6→T3.7 串行链，agent=codex，逐个 PR 逐个验收）并裁决全部开放项（见新增 decisions 字段）。前置依赖已闭合：dependsOn 的 X25 经 PR #45 合入 main（merge ed2d9d0）并由主会话 2026-11-16 独立复跑后置 accepted（脚本 671 / vitest 21·289 / UI 4·37 与 verificationBaseline 逐项吻合），T3.2 早已 accepted——此前 main 上「T3.5 引用 X25 但 crossCutting 无 X25」是两条并行分支分别写入造成的悬空表象，非真缺口。派发前调研另取证四条实现陷阱并内联进任务书 §3：(1) useCanvasStore 带 persist(name=govio-canvas-state) 且 /share 与主界面同源，灌远端画布会写穿 localStorage 静默顶掉用户本机画布；(2) store 在模块导入时即同步 rehydrate 本机画布，远端数据到达前渲染会反向泄漏；(3) 五类节点卡片内含预览/复跑/删除/SQL 编辑入口，会打 POST /api/preview·/api/rerun-dataframe·/api/execute-sql 作用于服务端当前会话单例，构成对源 session 的写与执行副作用；(4) ShareView.tsx:19-23 自带一份 apiBase() 仍是页面端口+1 硬编码，是 X25 遗留 2 点名的残留，本任务改轮询请求时必须一并改用 apiBaseFrom。另更正 token 解析的设计约束：指纹 hash 不可逆，服务端只能枚举 .govio/sessions/*.jsonl 中已开启分享者逐个算指纹匹配，分享开关天然即访问控制与撤销机制。八段式任务书落盘 docs/tasks/T3.5-live-share-view/DISPATCH.md，按 Orca SOP 以独立 worktree 派发 codex worker，预算 150min（checkpoint ≈135min）。"
+            },
+            {
+              "status": "done",
+              "at": "2026-11-17T08:45:59+08:00",
+              "by": "main-session",
+              "note": "worker（pi subagent / worker agent，fresh context + DISPATCH.md §1-§9）在分支 t35-live-share-view 单次 commit 337485b 交付；主会话 2026-11-17 独立复跑验收（不转述 worker 报告）：npm run build=0 / lint=0 / verify=0，verify 全跑后 git status --porcelain 干净。断言数独立核对：脚本 671（manifest 92 / rerun 71 / audit 119 / export 148 / source-table 39 / semantic-lineage 54 / caliber-conflict 77 / cwd 13 / prompt-injection 58，逐项与 verificationBaseline 一致，删 rerun 路由未影响 verify:rerun 主链路）、vitest integration 21·289 → 24·333（删 share-fork.test.ts 7 例，verification.md §2.2 逐项处置：1 例按裁决⑦有意删除、6 例重建/加强；新增 share-live 21 + share-poll 10）、UI 4·37 → 6·57（新增 share-view 13 + share-toggle 7）。抽查关键实现 6 处均与声明一致：src/components/Share/canvas-persistence.ts（persist storage 换内存空实现，陷阱1）、src/hooks/useReadOnlyCanvas.ts + 五类节点组件 !readOnly 门控（陷阱3）、ShareView payload===null 只渲染 loading 与失效文案（陷阱2）、apiBaseFrom(window.location.origin)（陷阱4）、server/share.ts deriveShareToken=sha256(\"govio-share-v1:\"+sessionId) 前32hex + 索引按目录 mtime 缓存且 enabled 现读 sidecar、server/share-api.ts 路由表（新增 GET /api/share-state、DELETE /api/shares；POST /api/shares/<token>/rerun 已删；/api/canvas-storage 未动）。范围纪律核对：package.json/package-lock.json 零改动（零新增依赖）、server/storage/s3-*.ts 与 scripts/ 未动、src/types/ws-protocol.ts 未动（PROTOCOL_VERSION=1）。唯一超出任务书列举范围的改动是 server/security.ts 的 corsHeadersFor（8 行：放行 DELETE、允许 If-None-Match、暴露 ETag），design.md §9 论证为 dev 跨源 5173→5174 下撤销与条件请求的必要条件，Origin 白名单逻辑未动，已抽查 diff 确认为最小改动。待补：真实浏览器人工目视与截图（design.md 遗留 9 / verification.md §6.1），需在合并前或合并后由用户或主会话用 npm run dev 补做。状态置 done（未置 accepted：按 AGENTS.md 纪律，accepted 于 PR 合并后在合并态 main 上复跑再置位）。"
             }
           ],
           "decisions": [
@@ -578,6 +584,12 @@
               "at": "2026-11-15T18:46:58+08:00",
               "by": "main-session",
               "note": "2026-11-15 按用户裁决第 4 条立项。**先补充任务、待确认再执行**。开放项：与 T1.4 HTML 报告的关系（并存/入包/替代）、打包格式（zip vs tar.gz）、parquet 等大数据文件是否入包、产物落地方式（浏览器下载 vs 写工作目录）。"
+            },
+            {
+              "status": "pending",
+              "at": "2026-11-17T08:45:59+08:00",
+              "by": "main-session",
+              "note": "补记（此前 history 缺该条）：2026-11-17 用户已批准 T3.5→T3.6→T3.7 串行开工并裁决全部开放项，裁决固化于 decisions ①-⑤（commit 4cd269f），note 中「/export 现状」的事实错误亦在该 commit 更正（重做对象是 src/commands/export-session.ts 的简陋 JSON 快照，不是 T1.4 的 HTML 交付报告）。执行方式变更（用户指令 2026-11-17）：改由 pi subagent 以 context:fork 直接继承主会话上下文执行，不再撰写 DISPATCH.md；三件套 design.md/CHANGES.md/verification.md 仍为必交。派发前仍需用户裁决 4 个 decisions 未写死的点：.storage.json 是否入包、包文件名与 bundle manifest 路径契约、/import 路径允许范围（T3.7）、PR 节奏（堆叠 vs 逐个合并）。"
             }
           ],
           "decisions": [
@@ -613,6 +625,12 @@
               "at": "2026-11-15T18:46:58+08:00",
               "by": "main-session",
               "note": "2026-11-15 按用户裁决第 5 条立项，依赖 T3.6 的包格式契约。**先补充任务、待确认再执行**。开放项：导入入口形态（界面上传 vs 命令）、id 冲突策略（新 id vs 覆盖确认）、是否支持导入到 S3 绑定画布。"
+            },
+            {
+              "status": "pending",
+              "at": "2026-11-17T08:45:59+08:00",
+              "by": "main-session",
+              "note": "补记（此前 history 缺该条）：2026-11-17 用户已批准串行开工并裁决全部开放项，裁决固化于 decisions ①-④（commit 4cd269f）。执行方式变更（用户指令 2026-11-17）：改由 pi subagent 以 context:fork 执行，不再撰写 DISPATCH.md；三件套仍为必交。包格式契约以 T3.6 实际落地产物为准（bundle manifest 字段、校验和算法、包内路径布局），派发时由主会话内联进 brief。"
             }
           ],
           "decisions": [
