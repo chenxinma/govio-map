@@ -15,3 +15,14 @@ export function canvasPathFor(sessionFile: string): string {
 export function storageBindingPathFor(sessionFile: string): string {
   return sessionFile + ".storage.json";
 }
+
+/**
+ * 只读分享开关 sidecar（T3.5）：`<session>.jsonl.share.json`。
+ *
+ * 文件存在且 `enabled:true` 即「该会话已开启活视图分享」——它同时是 token 的
+ * **访问控制**（未开启的会话其派生 token 解析不到）与**撤销机制**（删除文件即失效）。
+ * 仅本地，不随 T3.1 同步到 S3（活视图只读本地当前会话，见 T3.5 design.md）。
+ */
+export function shareStatePathFor(sessionFile: string): string {
+  return sessionFile + ".share.json";
+}

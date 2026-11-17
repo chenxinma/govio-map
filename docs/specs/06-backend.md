@@ -273,7 +273,12 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 
 ### CORS
 
-完全开放（Allow-Origin: *），支持 GET/OPTIONS。
+不是「完全开放」：`server/security.ts` 的 `corsHeadersFor` 只**回显本地白名单 Origin**
+（`http(s)://localhost|127.0.0.1|[::1]`，任意端口），非白名单/无 Origin 时不下发
+`Access-Control-Allow-Origin`。放行方法 `GET, POST, DELETE, OPTIONS`（DELETE 供 T3.5「撤销分享」），
+放行请求头 `Content-Type, If-None-Match`（后者供活视图轮询的条件请求），并
+`Access-Control-Expose-Headers: ETag`（让跳源页面能读到活视图的 ETag 响应头）。
+CORS 预检（OPTIONS）由 `handleParquetApi` 首位分支统一回 204。
 
 ## dataframe-rerun.ts - DataFrame 复跑与漂移判定
 
@@ -390,16 +395,79 @@ Electron main 进程调用 `startBackend(5174)`，前端通过 `window.location.
 - `saveCanvas` 同步写本地后 fire-and-forget 上传（内容 hash 未变跳过）；会话打开（`pushSessionState`）先
   `await refreshCanvasFromRemote` 拉对端更新（失败降级本地缓存，不阻塞交互）。
 - 冲突策略：If-Match 探测并发 → 冲突时**最后写入胜出 + warn 留痕**；本地有未同步改动时 refresh 不强覆盖（返回 conflict）。
-- `deleteSession` 级联：远端工件尽力删除 + 本地绑定 sidecar 删除。
+- `deleteSession` 级联：远端工件尽力删除 + 本地绑定 sidecar 删除 + 分享开关 sidecar（`.jsonl.share.json`，T3.5）删除。
 
-## share.ts / share-api.ts - 只读分享与 fork 续写（T3.2）
+## share.ts / share-api.ts - 只读分享「画布活视图」与 fork 续写（T3.5，取代 T3.2 快照语义）
 
-- `POST /api/shares`：把**活动会话**画布固化为 ShareRecord（canvas 快照 + `manifests[]` 抽取 + `forkFrom` 继承）；
-  本地必写 `.govio/shares/<shareId>.json`，S3 绑定画布同时写远端（跨实例发现）。令牌 = `randomBytes(16).hex`。
-- `GET /api/shares/<token>`：只读视图载荷（剥 profile/originBackend，绝无凭据）；解析顺序 = 本地记录 → 逐配置 profile 查远端。
-- `POST /api/shares/<token>/rerun`：只读态复跑，按快照 Manifest 固化 SQL 走 `rerunDataFrame`（T1.2 语义），
-  结果只进响应——不存在写回源画布的路径。
-- `POST /api/shares/<token>/fork` → 暂存 `.govio/forks/<forkId>.json`（含 forkFrom）；前端跳转 `/?fork=<forkId>` 后
-  WS `canvas_fork_apply` 写入本地新会话（canvas.json 顶层 `forkFrom` 键，`saveCanvas` 无 meta 调用时保留附加键，血缘抗 autosave）。
-- `GET/POST /api/canvas-storage`：活动会话的 S3 绑定查询/设置（`{profile, canvasId?}` / `{clear:true}`）；响应不含凭据。
-- 前端：`/share/<token>` 独立静态页（不建立 /ws 连接）；ChatPanel 头部分享按钮。
+分享不再是快照，而是**基于会话指纹 token 的画布活视图**：同一个链接恒定，内容随源画布实时变化
+（前端 3s 轮询）。T3.2 的 `.govio/shares/*.json` 快照机制已**废弃删除**（不迁移、不做只读兼容，
+旧随机 token 解析不到 → 404）。详见 `docs/tasks/T3.5-live-share-view/design.md`。
+
+### 路由
+
+| 路由 | 方法 | 说明 |
+|------|------|------|
+| `/api/share-state` | GET | **当前会话**的分享开关状态 `{enabled, token, enabledAt}`；无活动会话 → 409 |
+| `/api/shares` | POST | **开启**当前会话分享（**幂等**：重复调用返回同一 token）；无活动会话 → 409 |
+| `/api/shares` | DELETE | **撤销**分享（删掉开关 sidecar，链接立即失效）；幂等 |
+| `/api/shares/<token>` | GET | **当前**画布活视图载荷（不写任何快照文件）；带 `ETag`，`If-None-Match` 命中 → **304** 无 body；token 未开启/不存在/形状非法 → **404 `{error:"share-not-found"}`**（不区分「无此会话」与「已关闭」，不泄露存在性） |
+| `/api/shares/<token>/fork` | POST | 从**当前活画布** fork 出可写副本（保留），暂存 `.govio/forks/<forkId>.json` |
+| `/api/canvas-storage` | GET/POST | 逐画布 S3 绑定查询/配置（T3.1；不属分享链路，响应不含凭据） |
+| ~~`/api/shares/<token>/rerun`~~ | ~~POST~~ | **T3.5 删除**：只读页禁止复跑（复跑会对服务端当前会话产生执行副作用），活视图语义下动手一律走 fork |
+
+### token 与分享开关
+
+- **token 派生**：`sha256("govio-share-v1:" + sessionId)` 前 32 位小写 hex（`sessionId` = 会话文件 basename
+  去 `.jsonl`）。域分隔前缀防跨用途碰撞；形状与 T3.2 一致，`src/main.tsx` 的分享路由正则 `[a-f0-9]{32}`
+  无需改动。同一会话链接**恒定**。
+- **解析**：hash 不可逆 ⇒ 服务端只能「枚举 `.govio/sessions/*.jsonl` → 只保留分享已开启的 → 逐个算指纹 → 匹配」。
+  sessionId→token 的派生索引按「sessions 目录路径 + 目录 mtime」缓存；`enabled` 一律**现读 sidecar** 确认，
+  保证撤销立即生效（不被缓存拖住）。
+- **开关 sidecar**：`<session>.jsonl.share.json` = `{version:1, enabled, enabledAt, token}`（路径函数
+  `shareStatePathFor` 在 `server/storage/paths.ts` 保持单一来源）。**默认关**（无 sidecar 即未开启）；
+  开关天然就是访问控制，撤销就是删除 sidecar（无需黑名单）；随 `deleteSession` 同生命周期删除。
+  **仅本地**，不随 T3.1 同步到 S3。
+
+### 活视图载荷与轮询契约
+
+```jsonc
+// GET /api/shares/<token> → 200
+{ "readonly": true, "version": 1, "etag": "<画布内容 sha256 前 32 位>",
+  "token": "...", "canvasId": "...", "sessionName": "...", "updatedAt": "<canvas sidecar mtime>",
+  "canvas": { "nodes": [], "edges": [] }, "forkFrom": { "kind": "share" },
+  "manifests": [ { "nodeId": "gov-2", "nodeTitle": "...", "nodeType": "sqlQuery", "manifest": {} } ] }
+```
+
+- 响应头：`ETag: "<etag>"` + `Cache-Control: no-store`（活视图绝不进浏览器 HTTP 缓存）。`etag` 同时进 body：
+  跨源时读响应头要靠 `Access-Control-Expose-Headers`，body 里的值前端无条件可读。
+- 轮询（`src/utils/share-poll.ts`）：基准 **3s**；带 `If-None-Match`，**304 / 指纹未变不回调 `onPayload`**
+  （它是只读视图唯一的渲染触发源 ⇒ 不重渲染）；`document.visibilitychange` 隐藏**暂停**、恢复可见立即拉一次
+  并重启计时；失败**指数退避 3→6→12→30s 封顶**并报「与源画布同步中断」，恢复后清除提示并复位；
+  404（分享已撤销）终止轮询并渲染失效文案；组件卸载清理定时器与可见性监听。
+- 轮询**走 HTTP**，不新增 WS 消息类型 ⇒ `PROTOCOL_VERSION` 保持 **1**（见 `docs/specs/07-websocket-protocol.md`）。
+- 画布 sidecar 还没落盘时返回**空画布**（不是 404）：链接可以先开，内容随后长出来。
+
+### 只读纪律（三层，继承 T3.2）
+
+1. **视图层**：ReactFlow `nodesDraggable/nodesConnectable/elementsSelectable` 全关；五类节点组件经
+   `ReadOnlyCanvasContext`（`src/hooks/useReadOnlyCanvas.ts`，默认 `false`）隐藏一切副作用入口；
+2. **连接层**：`/share/*` 不建 `/ws`（`src/main.tsx` 分支），agent 会话与 `canvas_save` 通道物理不存在；
+3. **API 层**：分享路由只有读活视图 / 暂存 fork，没有任何写源画布 sidecar 的入口；写只发生在开关 sidecar
+   与 `.govio/forks/`。集成测试断言 GET/fork 前后源 `.canvas.json` 字节与 etag 恒定。
+
+### fork 续写与派生血缘
+
+`POST /api/shares/<token>/fork` → 服务端把**当前活画布**暂存 `.govio/forks/<forkId>.json`（含 `forkFrom`）
+→ 前端跳转 `/?fork=<forkId>` → 主界面会话就绪后 WS `canvas_fork_apply {forkId}` → 写入**本地当前会话** sidecar
+（顶层键 `forkFrom`）→ `fork_applied` + `canvas_restore` 水合成可写画布，暂存文件消费即删。血缘形状与 T3.2
+一致（`forkFrom.shareId` 现在存的是派生 token）；`saveCanvas` 无 meta 调用时保留附加键（血缘抗 autosave）；
+派生画布再分享时活视图载荷继承 `forkFrom`。
+
+### 前端
+
+- `/share/<token>` 独立静态页（`src/components/Share/ShareView.tsx`）：**复用主画布同一套 `nodeTypes`** 与边样式
+  （语义边、X13/X15 关系详情、X18 口径徽标、Plotly 懒加载 chunk），右栏只读展示 Manifest 清单；
+- 单例 `useCanvasStore` 灌远端数据前必须中和 persist（`src/components/Share/canvas-persistence.ts`），否则远端画布
+  会被写进同源共享的 `localStorage['govio-canvas-state']`，顶掉本机画布；
+- ChatPanel 头部分享入口改为**开关语义**（`src/components/Chat/ShareToggle.tsx`）；链接一律
+  `shareLink(path, window.location.origin)`，API 一律 `apiBaseFrom(origin) ?? ''`（X25 模块）。

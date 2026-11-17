@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Database, Quote, Trash2, ChevronDown, ChevronUp, Copy, Check, Link2, AlertTriangle } from 'lucide-react';
 import type { SourceTableNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
+import { useReadOnlyCanvas } from '../../hooks/useReadOnlyCanvas';
 import { SEMANTIC_SOURCE_HANDLE, SEMANTIC_TARGET_HANDLE } from '../../utils/lineage';
 import { nodeTableRelations } from '../../utils/table-relations';
 import {
@@ -17,6 +18,8 @@ function SourceTableNode({ data, id }: NodeProps) {
   const nodeData = data as unknown as SourceTableNodeData;
   const addReference = useCanvasStore((s) => s.addReference);
   const deleteNodes = useCanvasStore((s) => s.deleteNodes);
+  // T3.5 只读活视图：整条操作栏（引用/删除）不渲染，字段与表间关系等纯展示区保留
+  const readOnly = useReadOnlyCanvas();
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [relationsExpanded, setRelationsExpanded] = useState(false);
@@ -198,21 +201,23 @@ function SourceTableNode({ data, id }: NodeProps) {
         </div>
       )}
 
-      <div className="border-t border-border-subtle px-4 py-2 flex gap-2">
-        <button
-          onClick={(e) => { e.stopPropagation(); addReference(id); }}
-          className="flex items-center gap-1 text-xs text-text-muted hover:text-brand transition-colors px-2 py-1 rounded-md hover:bg-brand/5"
-        >
-          <Quote size={12} />
-          <span>引用</span>
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); deleteNodes([id]); }}
-          className="ml-auto flex items-center text-text-muted hover:text-error transition-colors p-1 rounded-md hover:bg-error/10"
-        >
-          <Trash2 size={12} />
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="border-t border-border-subtle px-4 py-2 flex gap-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); addReference(id); }}
+            className="flex items-center gap-1 text-xs text-text-muted hover:text-brand transition-colors px-2 py-1 rounded-md hover:bg-brand/5"
+          >
+            <Quote size={12} />
+            <span>引用</span>
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); deleteNodes([id]); }}
+            className="ml-auto flex items-center text-text-muted hover:text-error transition-colors p-1 rounded-md hover:bg-error/10"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      )}
 
       <Handle type="source" position={Position.Right} className="!bg-brand" />
       <Handle type="target" position={Position.Left} className="!bg-brand" />
