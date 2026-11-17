@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-17T11:06:34+08:00",
+  "updatedAt": "2026-11-17T13:35:30+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -387,7 +387,7 @@
       "id": "P3",
       "name": "成果可交接",
       "northStar": "画布复用率 ≥30%（团队试点）",
-      "status": "pending",
+      "status": "in_progress",
       "branch": null,
       "tasks": [
         {
@@ -616,7 +616,7 @@
           "id": "T3.7",
           "title": "session 打包导入：上传导出包作为历史会话加载到界面",
           "kr": null,
-          "status": "in_progress",
+          "status": "accepted",
           "dependsOn": [
             "T3.6"
           ],
@@ -649,6 +649,12 @@
               "at": "2026-11-17T11:06:34+08:00",
               "by": "main-session",
               "note": "T3.6 经 PR #47 合入 main（81c88ad）并验收 accepted，包格式契约已落地在 src/types/bundle.ts（BUNDLE_FORMAT/VERSION、BUNDLE_MANIFEST_PATH=bundle.json、BUNDLE_SUFFIX=.govio-bundle.zip、单层正斜杠布局 session.jsonl/canvas.json/manifests.json/audit.jsonl/injection.jsonl/report.html、BundleManifest 字段含 files[{path,bytes,sha256}]/missing/excluded.parquet/storageProfile?/reportOmitted?），T3.7 照此实现。补记用户裁决 ⑤（C3=b：包可任意路径读、写入严格限定 .govio/sessions/）与主会话建议口径 ⑥（不加签名，改为清单外文件即拒）。执行方式：pi subagent（worker agent，context:fork），免写 DISPATCH.md，分支 t37-import-session-bundle 基于 main 81c88ad，预算 120min。"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-11-17T13:35:30+08:00",
+              "by": "main-session",
+              "note": "PR #48（merge 05b6889）已由用户合并。主会话在**合并态 main** 独立复跑：build=0 / lint=0 / verify=0，verify 全跑后 git status --porcelain 干净；脚本断言逐项 92/71/119/148/39/54/77/13/58 = 671、vitest integration 30 文件 452 例、UI 9 文件 84 例，已同步进 verificationBaseline。抽查确认：命令参数通道是声明式 opt-in（SlashCommand.args 缺省 = 不收参数 ⇒ /export 等既有命令行为逐字不变）、resolveBundlePath 六道读侧校验（lstatSync 拒 symlink、拒 UNC/设备路径、.zip、体积上限）、zip 两段式 filter 元数据闸门（64MB zip / 256MB 解压后 / 32 条目，零解压先判 = zip 炸弹防线）、isSafeBundlePath 对 zip 条目名与 manifest path 各挡一道、rollback() 覆盖写盘中途失败、importMetaPathFor 进 storage/paths.ts 且随 deleteSession 级联删、bundle 拆分未回退（import-session 懒加载 chunk 3.62kB，plotly.min 4646.12kB 不变）。范围纪律核对：package.json / package-lock.json / scripts/ / export-report.ts / CanvasToolbar.tsx / ws-protocol.ts / security.ts / share.ts / share-api.ts 全部零改动（零新增依赖，fflate 复用 T3.6；PROTOCOL_VERSION 仍为 1）。验收期主会话修正 2 处（均压回单 commit 0640376）：① worker 在 design.md 遗留 6 / verification.md §5.2 断言「dev 跨源下 T3.5 撤销分享会被预检拦死」属**误诊**——它用单 handler 隔离探测，而 backend.ts 真实挂载顺序（parquet-api 35 → share-api 36 → bundle-api 38）下 parquet-api.ts:88 的 OPTIONS 分支在任何路径判断之前兑现所有预检；主会话按真实顺序起临时 server 实测 OPTIONS /api/shares → 204 且 CORS 头齐备，故 T3.5 无现行故障、其 §5.1 记录成立，真实问题是隐性脆弱（依赖无关模块全局分支 + 挂载顺序），两处文档已改写并建议归口后续 BUGFIX；② PR #48 首轮 ubuntu CI 红（1 failed/451 passed）——session-import.test.ts 的 symlink 样本用测试开头的陈旧快照做「零写入」断言，而 buildRealBundle() 会在 sessions 目录建源会话 4 个文件；Windows 因 symlinkSync EPERM 跳过该样本故本地绿，属**测试顺序缺陷非产品缺陷**，改为分支内重新取快照（断言强度不变），并连带发现 CI 的 verify 是 && 串接 ⇒ 首轮 verify:ui（9·84）在 CI 上根本未跑，修正后 ubuntu CI build+lint+verify pass（1m11s）、GitGuardian pass，全程记入 verification.md §7。P3 串行链 T3.5→T3.6→T3.7 至此闭合（P3 status 同步置 in_progress，余 T3.3/T3.4 pending）。未闭合项：真实浏览器端到端与人工目视（T3.5 design.md 遗留 9、T3.7 verification.md §6.1）——三个 worker 环境均无浏览器，已给文字对照 + DOM/纯函数断言，真机验证待用户或主会话用 npm run dev（+ 可选 moli 无头截图）补做。"
             }
           ],
           "decisions": [
@@ -1790,12 +1796,13 @@
     "x23-ci-dashboard-baseline": "https://github.com/chenxinma/govio-map/pull/44",
     "x25-share-link-origin": "https://github.com/chenxinma/govio-map/pull/45",
     "t35-live-share-view": "https://github.com/chenxinma/govio-map/pull/46",
-    "t36-export-session-bundle": "https://github.com/chenxinma/govio-map/pull/47"
+    "t36-export-session-bundle": "https://github.com/chenxinma/govio-map/pull/47",
+    "t37-import-session-bundle": "https://github.com/chenxinma/govio-map/pull/48"
   },
   "verificationBaseline": {
     "updatedAt": "2026-11-15T09:35:53+08:00",
     "source": "唯一事实源：CI 断言数看板（.github/workflows/scripts/assertion-dashboard.mjs）从这里读基线，脚本内不再硬编码数字（X23，解 X16 design.md 遗留 1）。",
-    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：T3.6（2026-11-17，PR #47 合并态 main 独立复跑：vitest 24·333 → 27·377、UI 6·57 → 7·62；脚本 671 逐项不变，verify:export 148 零改动——scripts/verify-export-report.ts、src/utils/export-report.ts、CanvasToolbar.tsx 三者未动）。",
+    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：T3.7（2026-11-17，PR #48 合并态 main 独立复跑：vitest 27·377 → 30·452、UI 7·62 → 9·84；脚本 671 逐项不变，verify:export 148 零改动、零新增依赖）。P3 串行链 T3.5→T3.6→T3.7 至此全部 accepted。",
     "scripts": {
       "verify:manifest": 92,
       "verify:rerun": 71,
@@ -1815,12 +1822,12 @@
     },
     "vitest": {
       "verify:integration": {
-        "files": 27,
-        "tests": 377
+        "files": 30,
+        "tests": 452
       },
       "verify:ui": {
-        "files": 7,
-        "tests": 62
+        "files": 9,
+        "tests": 84
       }
     }
   }
