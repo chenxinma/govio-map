@@ -1,6 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readFile, writeFile, mkdir, access, rename } from "node:fs/promises";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { ModelsConfig, ProviderConfig } from "../src/types/models-config.js";
 
 export const MODELS_CONFIG_DIR = join(homedir(), ".pi", "agent");
@@ -103,6 +105,30 @@ export async function writeModelsConfig(config: ModelsConfig): Promise<void> {
   const tempPath = `${MODELS_CONFIG_PATH}.tmp`;
   await writeFile(tempPath, JSON.stringify(resolved, null, 2) + "\n", { encoding: "utf-8", mode: 0o600 });
   await rename(tempPath, MODELS_CONFIG_PATH);
+}
+
+export interface AvailableModel {
+  provider: string;
+  modelId: string;
+  name: string;
+  thinkingLevels: string[];
+}
+
+/**
+ * Available models (valid API keys) via ModelRuntime.getAvailable — source for
+ * the chat model selector. The settings dialog keeps reading/writing
+ * MODELS_CONFIG_PATH directly.
+ */
+export async function listAvailableModels(
+  modelRuntime: Pick<ModelRuntime, "getAvailable">,
+): Promise<AvailableModel[]> {
+  const models = await modelRuntime.getAvailable();
+  return models.map((m) => ({
+    provider: String(m.provider),
+    modelId: m.id,
+    name: m.name,
+    thinkingLevels: getSupportedThinkingLevels(m),
+  }));
 }
 
 export { DEFAULT_PROVIDER_NAME };

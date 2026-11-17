@@ -143,7 +143,9 @@ export async function agentSetup() {
   console.log(">>> Server agent ready. <<<");
 }
 
-export async function getOrCreateSession(forceNew = false): Promise<AgentSession> {
+type SessionCreateOpts = Pick<NonNullable<Parameters<typeof createAgentSession>[0]>, "model" | "thinkingLevel" | "modelRuntime">;
+
+export async function getOrCreateSession(forceNew = false, opts?: SessionCreateOpts): Promise<AgentSession> {
   if (session) return session;
   if (!resLoader) throw Error("Agent not ready.");
 
@@ -161,6 +163,7 @@ export async function getOrCreateSession(forceNew = false): Promise<AgentSession
     cwd,
     resourceLoader: resLoader,
     sessionManager,
+    ...opts,
   });
 
   session = newSession;

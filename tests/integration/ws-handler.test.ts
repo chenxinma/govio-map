@@ -37,6 +37,9 @@ vi.mock("../../server/agent.js", () => {
     getFollowUpMessages: () => [],
     modelRuntime: { getModel: () => ({ provider: "mock", id: "mock-model" }) },
     setModel: () => Promise.resolve(),
+    model: { provider: "mock", id: "mock-model" },
+    thinkingLevel: "medium",
+    setThinkingLevel: vi.fn(),
     sessionManager: {
       getSessionFile: () => undefined,
       getBranch: () => [],
@@ -81,6 +84,7 @@ vi.mock("../../server/models-config.js", () => ({
   writeModelsConfig: vi.fn(async () => {}),
   createDefaultModelsConfig: vi.fn(async () => {}),
   maskModelsConfig: (c: unknown) => c,
+  listAvailableModels: vi.fn(async () => [{ provider: "mock", modelId: "mock-model", name: "Mock Model", thinkingLevels: ["off", "low", "medium", "high"] }]),
 }));
 
 import { setupWebSocket } from "../../server/ws-handler.js";

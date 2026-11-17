@@ -27,16 +27,16 @@
 
 ### 消息全集
 
-- 客户端 → 服务端（17 类）：`prompt`、`steer`、`followUp`、`abort`、`observe_list`、
+- 客户端 → 服务端（20 类）：`prompt`、`steer`、`followUp`、`abort`、`observe_list`、
   `observe_info`、`clear`、`tool_permission_response`、`permission_accept_all`、
-  `get_models_config`、`save_models_config`、`set_model`、`session_list`、`session_open`、
-  `session_messages`、`session_delete`、`canvas_save`
-- 服务端 → 客户端（25 类）：`session_ready`、`canvas_restore`、`session_messages_result`、
+  `get_models_config`、`save_models_config`、`set_model`、`get_available_models`、`set_thinking_level`、`session_list`、`session_open`、
+  `session_messages`、`session_delete`、`canvas_save`、`canvas_fork_apply`
+- 服务端 → 客户端（28 类）：`session_ready`、`canvas_restore`、`session_messages_result`、
   `session_list_result`、`session_deleted`、`agent_start`、`agent_end`、`message_start`、
   `message_end`、`text_delta`、`thinking_delta`、`tool_start`、`tool_end`、`queue_update`、
   `steer_queued`、`followUp_queued`、`queue_cleared`、`tool_permission_request`、
-  `observe_list_result`、`observe_info_result`、`models_config`、`config_saved`、
-  `config_required`、`model_set`、`error`
+  `observe_list_result`、`observe_info_result`、`models_config`、`available_models`、`config_saved`、
+  `config_required`、`model_set`、`thinking_level_set`、`fork_applied`、`error`
 
 开放载荷（`args` / `nodes` / `edges` / `dataframes` / `info`）在契约中松绑为 unknown/宽松
 对象，形状由消费端自校验。
@@ -270,14 +270,19 @@ REF:[{"billing": "{\"full_table_name\":\"billing\",...}"},{"df_query_1": "df_que
 | `get_models_config` | - | 拉取 models.json |
 | `save_models_config` | `{config}` 或 `{apiKey}` | 保存配置或首次设置 API key |
 | `set_model` | `{provider, modelId}` | 切换当前会话使用的模型 |
+| `get_available_models` | - | 拉取可用模型列表（ModelRuntime.getAvailable） |
+| `set_thinking_level` | `{level}` | 设置思考深度（服务端 clamp） |
 
 ### 服务端消息
 
 | 消息 | 载荷 | 说明 |
 |---|---|---|
-| `models_config` | `{config}` | ModelsConfig 对象 |
+| `session_ready` | `{sessionId, currentModel?, thinkingLevel?}` | 会话当前模型/思考档；前端无本地记忆时尊重它，不重复 set_model |
+| `models_config` | `{config}` | ModelsConfig 对象（模型配置对话框数据源，API key 已脱敏） |
+| `available_models` | `{models}` | 可用模型列表（chat 模型选择器数据源，含各模型 thinkingLevels） |
 | `config_saved` | - | 配置保存成功回执 |
 | `config_required` | - | 首次启动无配置，需前端引导设置 |
-| `model_set` | `{provider, modelId}` | 模型切换成功回执 |
+| `model_set` | `{provider, modelId, thinkingLevel}` | 模型切换成功回执（含 clamp 后思考深度） |
+| `thinking_level_set` | `{level}` | 思考深度设置成功回执（clamp 后生效值） |
 
 首次启动检测到无 models.json 时，服务端发送 `config_required`，前端显示配置弹窗。配置保存后服务端重启 Agent 会话并推送 `session_ready`。

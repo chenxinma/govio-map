@@ -6,6 +6,7 @@ import type { ChatMessage as ChatMessageType } from "../../hooks/useChat";
 import { useCanvasStore } from "../../store/canvas-store";
 import ChatMessage, { ProcessedGroup } from "./ChatMessage";
 import ChatInput from "./ChatInput";
+import ModelSelect from "./ModelSelect";
 import PermissionCard from "./PermissionCard";
 import ShareToggle from "./ShareToggle";
 
@@ -38,8 +39,18 @@ interface ChatPanelProps {
   width: number;
 }
 
+const THINKING_LABELS: Record<string, string> = {
+  off: "关闭",
+  minimal: "极简",
+  low: "低",
+  medium: "中",
+  high: "高",
+  xhigh: "超高",
+  max: "最大",
+};
+
 export default function ChatPanel({ width }: ChatPanelProps) {
-  const { messages, isConnected, isStreaming, send, abort, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission, needsConfig, modelOptions, selectedModel, selectModel, hasMoreHistory, historyLoading, loadMoreHistory, sessions, fetchSessions, openSession, deleteSession } = useChatContext();
+  const { messages, isConnected, isStreaming, send, abort, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission, needsConfig, modelOptions, selectedModel, selectModel, thinkingLevel, selectThinkingLevel, hasMoreHistory, historyLoading, loadMoreHistory, sessions, fetchSessions, openSession, deleteSession } = useChatContext();
   const referencedNodes = useCanvasStore((s) => s.referencedNodes);
   const removeReference = useCanvasStore((s) => s.removeReference);
   const clearReferences = useCanvasStore((s) => s.clearReferences);
@@ -205,21 +216,21 @@ export default function ChatPanel({ width }: ChatPanelProps) {
       {modelOptions.length > 0 && (
         <div className="flex items-center gap-2 px-3 py-2 border-t border-border-subtle flex-shrink-0">
           <span className="text-xs text-text-muted flex-shrink-0">模型</span>
-          <select
-            value={selectedModel?.key ?? ""}
-            onChange={(e) => {
-              const opt = modelOptions.find((o) => o.key === e.target.value);
-              if (opt) selectModel(opt);
-            }}
-            className="flex-1 min-w-0 h-7 bg-bg-surface border border-border-default rounded-md px-1.5 text-xs text-text-secondary focus:outline-none focus:border-brand/50 truncate"
-            title={selectedModel?.label}
-          >
-            {modelOptions.map((m) => (
-              <option key={m.key} value={m.key}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+          <ModelSelect options={modelOptions} value={selectedModel} onChange={selectModel} />
+          {thinkingLevel !== null && (selectedModel?.thinkingLevels ?? []).length > 1 && (
+            <select
+              value={thinkingLevel}
+              onChange={(e) => selectThinkingLevel(e.target.value)}
+              title="思考深度"
+              className="h-7 w-16 flex-shrink-0 bg-bg-surface border border-border-default rounded-md px-1 text-xs text-text-secondary focus:outline-none focus:border-brand/50"
+            >
+              {(selectedModel?.thinkingLevels ?? []).map((l) => (
+                <option key={l} value={l}>
+                  {THINKING_LABELS[l] ?? l}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 
