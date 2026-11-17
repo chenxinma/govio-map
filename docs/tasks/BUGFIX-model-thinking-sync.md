@@ -20,9 +20,23 @@
 
 ## 验证
 
-- `npm run build` / `npm run lint` / `npm run verify` 全绿（集成 372 + UI 87）
+- `npm run build` / `npm run lint` / `npm run verify` 全绿（本分支当时实测：`tests/integration` 目录 **372** 例 + `tests/ui` **87** 例）
 - 新增：`tests/integration/pending-ack.test.ts`（4 例）、`tests/ui/model-select.test.tsx`（3 例）
 - 协议契约测试计数 20/28 同步更新，e2e 实发链路覆盖 `available_models`/`thinking_level_set`
+
+### 口径澄清与合并后数字（主会话 2026-11-17 于 X26 验收时补记）
+
+上面的 **372** 是「`tests/integration` 目录」计数，且测于 X26（PR #49）合入**之前**——两个数字都对，只是口径与时点不同。
+两 PR 合并后的 main（`62c46bc`，主会话独立复跑）实测：
+
+| 口径 | 命令 | 实测 |
+|---|---|---|
+| 仅 integration 目录 | `npx vitest run tests/integration` | **23 文件 / 389 例**（= 372 + X26 的 `cors-preflight` 17 例） |
+| 仅 UI | `npm run verify:ui`（`vitest run tests/ui`） | **10 文件 / 87 例**（本任务贡献 +1 文件 / +3 例） |
+| **基线口径** | `npm run verify:integration`（裸 `vitest run`，**包含** `tests/ui`） | **33 文件 / 476 例**（= 389 + 87） |
+
+`docs/task-plan.json → verificationBaseline` 用的是第三种口径，**不要拿「仅 integration 目录」的数字去对基线**。
+脚本断言不受本任务影响，仍为 **671**（9 脚本逐项不变）。
 
 ## 遗留
 
