@@ -6,9 +6,9 @@ export function useCommands(ctx: CommandContext) {
   const commands = useMemo(() => loadCommands(), []);
 
   const execute = useCallback(
-    (command: SlashCommand) => {
+    (command: SlashCommand, args = "") => {
       if (command.category === "builtin" && command.handler) {
-        command.handler(ctx);
+        command.handler(ctx, args);
       }
     },
     [ctx]

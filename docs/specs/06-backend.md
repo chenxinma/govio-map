@@ -21,9 +21,10 @@
 | `server/parquet-api.ts` | HTTP API（parquet 预览 / SQL 执行 / DataFrame 复跑） |
 | `server/permission-manager.ts` | observe load 权限审批（确认门）+ 决策 ID / 审计写入（Phase 1 KR3） |
 | `server/permission-audit.ts` | 权限确认审计留痕：`<session-file>.audit.jsonl` 追写 / 读回 / 删除（Phase 1 KR3） |
-| `server/session-history.ts` | 会话列表/删除（含 canvas、审计、注入、存储绑定、分享开关 sidecar）/画布 sidecar/transcript 分页 |
+| `server/session-history.ts` | 会话列表/删除（含 canvas、审计、注入、存储绑定、分享开关、导入来源 sidecar）/画布 sidecar/transcript 分页 |
 | `server/session-bundle.ts` | `/export` 打包的会话文件集收集（读 sidecar + 算 sha256 + 排除项记账，T3.6） |
-| `server/bundle-api.ts` | HTTP API：`GET /api/session-bundle`（只读返回打包文件集，T3.6） |
+| `server/session-import.ts` | `/import` 导入：包校验（清单/校验和/白名单）+ 原子落盘为历史会话（T3.7） |
+| `server/bundle-api.ts` | HTTP API：`GET /api/session-bundle`（只读返回打包文件集，T3.6）、`POST /api/session-import`（导入，T3.7） |
 | `server/models-config.ts` | 多模型配置管理 (~/.pi/agent/models.json) |
 | `server/govio-installer.ts` | govio-cli + skills 自动安装 |
 | `server/cli.ts` | CLI 命令行入口 |
@@ -45,8 +46,8 @@
 ### startBackend(port)
 
 1. 创建 HTTP Server，请求按序交给三个 handler：`handleParquetApi`（`/api/preview` 等）→
-   `handleShareApi`（T3.5 分享活视图 / fork / `/api/canvas-storage`）→ `handleBundleApi`（T3.6 `/api/session-bundle`），
-   都不接管则 404
+   `handleShareApi`（T3.5 分享活视图 / fork / `/api/canvas-storage`）→ `handleBundleApi`（T3.6 `/api/session-bundle`、
+   T3.7 `/api/session-import`），都不接管则 404
 2. 调用 `setupWebSocket(httpServer)` 设置双端点 WebSocket
 3. 检查 `ensureModelsConfig()` 是否存在 models.json
    - 存在 → 调用 `agentSetup()` 初始化 Agent
@@ -541,3 +542,89 @@ CORS 预检（OPTIONS）由 `handleParquetApi` 首位分支统一回 204。
 `exportedAt` ⇒ 同一内容两次打包字节一致）→ `a[download]` 下载 `<token>.govio-bundle.zip`。
 审计附录走 `fetchAuditForBundle()`（基址由 `apiBaseFrom(origin)` 推导，**不复用** `export-report.ts` 里那份
 端口 +1 硬编码的 `fetchAuditAppendix`，X25 遗留 2 归口 T3.4）。
+
+## session-import.ts / bundle-api.ts - session 导入（`/import`，T3.7）
+
+T3.6 的包可被**反向导入**，落地为 `.govio/sessions/` 里的一个历史会话（出现在会话列表、可打开看画布与对话），
+用于跨人/跨机的成果交接。详见 `docs/tasks/T3.7-import-session-bundle/design.md`。
+
+### 路由
+
+| 路由 | 方法 | 说明 |
+|------|------|------|
+| `/api/session-import` | POST | body `{ "path": "<bundle 路径>" }`；成功 → **200** `{ ok:true, sessionId, sessionFile, sessionName, messageCount, nodeCount, edgeCount, manifestCount, importedFrom, filesWritten, missing, excludedParquet, storageProfile? }` |
+| `/api/session-import` | OPTIONS | **204** 跨源预检（POST + `Content-Type: application/json` 不是 CORS 简单请求，dev 下 5173→5174 必先预检）。白名单沿用 `security.ts` 既有配置，**本任务未改 `security.ts`** |
+| `/api/session-import` | 其它 | **405** |
+
+请求体上限 `MAX_IMPORT_BODY_BYTES = 8KB`（只装一个路径），超限 → **413 `request-too-large`**（流式判定，不缓冲大包体）；
+非法 JSON → **400 `invalid-json-body`**；缺 `path` → **400 `invalid-request`**。响应带 `Cache-Control: no-store`。
+
+### 错误码表（`error` 字段 = 稳定码，`message` = 人话文案）
+
+| HTTP | 错误码 | 含义 |
+|---|---|---|
+| 400 | `invalid-path` | 路径为空 / 含 NUL / UNC 或设备路径 / 非 `.zip` 扩展名 |
+| 400 | `not-a-file` | 目标是目录、symlink 或设备（`lstat` 判定，不跟随链接） |
+| 400 | `invalid-request` / `invalid-json-body` | 请求体缺 `path` / 不是合法 JSON |
+| 404 | `bundle-not-found` | 路径合法但文件不存在 |
+| 409 | `target-conflict` | 目标会话文件已存在（**不提供覆盖**，decisions ②） |
+| 413 | `bundle-too-large` | zip 文件本体超 `MAX_IMPORT_ZIP_BYTES`（64MB） |
+| 413 | `too-many-files` | 包内条目数超 `MAX_IMPORT_FILE_COUNT`（32） |
+| 413 | `uncompressed-too-large` | 解压后总体积超 `MAX_IMPORT_UNCOMPRESSED_BYTES`（256MB，zip 炸弹闸门） |
+| 413 | `request-too-large` | 请求体超 8KB |
+| 422 | `bundle-unreadable` | 不是合法 zip，或条目使用了不支持的压缩方式（非 store/deflate） |
+| 422 | `unsafe-entry` | 包内条目名或清单路径不安全（绝对路径 / `..` / 反斜杠 / 盘符 / 子目录）⇒ zip-slip 样本 |
+| 422 | `duplicate-entry` | 包内条目重名，清单无法唯一对应 |
+| 422 | `manifest-missing` | 包内没有 `bundle.json` |
+| 422 | `manifest-invalid` | `bundle.json` 不是合法 JSON / 缺字段 / sha256 形状不符 / 把自己列进清单 |
+| 422 | `format-mismatch` | `format` 不是 `govio-session-bundle` |
+| 422 | `version-unsupported` | `version` 不是本端支持的 `BUNDLE_VERSION` |
+| 422 | `entry-missing` | 清单登记的文件在包里不存在（含缺 `session.jsonl`） |
+| 422 | `entry-unexpected` | 包内出现清单未登记的条目（口径 ⑥：整包拒绝，防夹带） |
+| 422 | `checksum-mismatch` | 逐文件 sha256 或字节数与清单不符 |
+| 422 | `payload-invalid` | 包内 `canvas.json` / `manifests.json` 解析失败或形状不符 |
+| 422 | `transcript-invalid` | `session.jsonl` 首条不是合法 pi session header |
+| 500 | `write-failed` | 校验全绿后落盘失败（已回滚，零残留） |
+
+### 校验顺序与原子性（decisions ④⑤⑥）
+
+```
+读侧路径校验 → zip 元数据遍历（不解压）→ 条目闸门 → 解压 → bundle.json 校验
+  → 清单双向对齐 → 逐文件 sha256 → transcript/画布形状校验 → 目标冲突探测 → 落盘
+```
+
+1. **先判后解压**：`inspectBundleEntries()` 用 fflate 的 `unzipSync(data, { filter })`，`filter` 一律返回 `false`
+   ⇒ 拿到每个条目的 `name`/`size`/`originalSize`/`compression` 而**一个字节都不解压**。条目数、解压后总体积、
+   条目名白名单、压缩方式都在这一步判完（zip 炸弹的正经防线：先解压再检查的话内存已经炸了）。
+2. **全程内存校验**：不用临时目录——所有校验通过后才开始写盘，所以失败路径下 sessions 目录**连隐藏残留都没有**。
+3. **写盘失败回滚**：`writeFileImpl` 逐个写，任一失败即删除本次已写文件（`write-failed`），测试断言零残留。
+4. **读宽写严**（⑤）：包可从任意路径读（`D:/Downloads/...`），但落盘目标与文件名一律由本机生成
+   （`<ISO时间>_<新uuid>.jsonl` + 各 sidecar），**包内路径不参与拼接落盘路径**，写入只在 `getSessionDir()` 内。
+5. **清单即白名单**（⑥）：清单内逐文件校 sha256 + 字节数；包内出现清单外条目 → `entry-unexpected` 整包拒绝。
+   `bundle.json` 无法自列校验和 ⇒ 本期不做外层签名，剩余风险见 T3.7 `design.md`「遗留问题」。
+
+### 落地形态
+
+| 写入文件 | 来源 | 说明 |
+|---|---|---|
+| `<新id>.jsonl` | 包内 `session.jsonl` | **只改 header 一行**：`id`→新 uuid、`cwd`→本机 cwd、`parentSession`→null；其余每行逐字节保留 |
+| `<新id>.jsonl.canvas.json` | 包内 `canvas.json` | 顶层追加 `importedFrom`，保留源包其它顶层键（如 T3.2 `forkFrom` 血缘） |
+| `<新id>.jsonl.audit.jsonl` | 包内 `audit.jsonl` | 原字节；包里缺就不写 |
+| `<新id>.jsonl.injection.jsonl` | 包内 `injection.jsonl` | 同上 |
+| `<新id>.jsonl.import.json` | 本机生成 | 来源标注 sidecar（`importMetaPathFor()`），随 `deleteSession()` 同生命周期删除 |
+| ~~`report.html` / `manifests.json`~~ | — | **只校验不落地**：前者是给人看的导出产物，后者是 `canvas.json` 的派生便利产物，写进 sessions 目录只会制造 pi 不认的孤儿文件 |
+| ~~`.storage.json`~~ | — | 不自动绑定 S3（decisions ③）；`bundle.json.storageProfile` 有值时只在结果提示里告知 |
+
+**为什么必须改写 header**：`SessionManager.list(cwd, sessionDir)` 在 sessionDir 不是 pi 默认目录时按 header 的
+`cwd` 做大小写敏感比较过滤，且 `SessionInfo.id` 直接取 header 的 `id`。照抄源 header 的包导进来要么因 cwd 是
+源机器路径而**在列表里根本不出现**，要么与源会话 id 撞车。写入的 cwd 取 `process.cwd()`（与 `listSessions()`
+的比较基准同一个值；X7 已在启动链路把它规范成磁盘大小写，故此处**不再**做 `realpathSync.native`，
+符号链接场景下反而会与基准不一致）。
+
+### 前端（`src/commands/import-session.ts` + ChatInput）
+
+`/import <路径>` 经命令参数通道（`SlashCommand.args`，见 `docs/specs/08-commands.md`）拿到余串 → 动态 import
+本模块 → `POST /api/session-import` → 把错误码翻成人话（`IMPORT_ERROR_TEXT`）→ 成功用 `describeImportResult()`
+给「会话名 + 节点/边/对话数 + 缺什么数据」一句话反馈，并调 `onSessionsChanged()`（= `useChat().fetchSessions`）
+让会话列表走**既有** WS `session_list` 重拉 ⇒ 不新增 WS 消息类型、`PROTOCOL_VERSION` 仍为 1。
+基址一律 `apiBaseFrom(window.location.origin) ?? ''`（X25 纪律）。

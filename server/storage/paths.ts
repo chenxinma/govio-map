@@ -29,6 +29,17 @@ export function shareStatePathFor(sessionFile: string): string {
 }
 
 /**
+ * 导入来源 sidecar（T3.7）：`<session>.jsonl.import.json`。
+ *
+ * 只有「由 `/import` 落地的会话」才有这个文件，所以它的**存在本身就是「原生 vs 导入」的
+ * 权威判别依据**（内容是 {@link SessionImportMeta}：来源 token / 导出时间 / 源会话 id /
+ * 包文件名 / 导入时间 + 落地文件与排除记账）。仅本地，不随 T3.1 同步到 S3。
+ */
+export function importMetaPathFor(sessionFile: string): string {
+  return sessionFile + ".import.json";
+}
+
+/**
  * ObserveStore 的 DataFrame parquet 目录（相对 cwd），T3.6 打包时用它给「已排除的
  * 大数据文件」记账（parquet 不入包，但 bundle.json 必须写明缺了什么）。
  *

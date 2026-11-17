@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Send, Square, Database, Code, Table2, FileText, BarChart3, X } from "lucide-react";
 import type { ReferencedNode, NodeType } from "../../types";
 import { useCommands } from "../../commands/useCommands";
-import { filterCommands } from "../../commands/registry";
+import { filterCommands, parseSlashCommand } from "../../commands/registry";
 import CommandSuggestion from "../../commands/CommandSuggestion";
 import type { SlashCommand, CommandContext } from "../../commands/types";
 
@@ -33,15 +33,22 @@ interface ChatInputProps {
   clearMessages?: () => void;
   clearCanvas?: () => void;
   clearSession?: () => void;
+  /**
+   * 导入成功后刷新历史会话列表（T3.7）。
+   *
+   * 走**既有** WS 通道（`session_list`），所以不新增 WS 消息类型、不 bump `PROTOCOL_VERSION`；
+   * 由 ChatPanel 把 `useChat().fetchSessions` 透下来。缺省（如 UI 测试里）为 no-op。
+   */
+  onSessionsChanged?: () => void;
 }
 
-/** `/export` 进度与结果的一句话反馈（与 CanvasToolbar 的导出提示同款形态与 TTL）。 */
-interface ExportNote {
+/** `/export`、`/import` 的进度与结果反馈（一句话，与 CanvasToolbar 的导出提示同款形态与 TTL）。 */
+interface CommandNote {
   kind: "ok" | "error";
   text: string;
 }
 
-const EXPORT_NOTE_TTL_MS = 8000;
+const COMMAND_NOTE_TTL_MS = 8000;
 
 export default function ChatInput({
   onSend,
@@ -54,24 +61,25 @@ export default function ChatInput({
   clearMessages = () => {},
   clearCanvas = () => {},
   clearSession = () => {},
+  onSessionsChanged = () => {},
 }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [exporting, setExporting] = useState(false);
-  const [exportNote, setExportNote] = useState<ExportNote | null>(null);
-  const exportNoteTimer = useRef<number | null>(null);
+  const [commandBusy, setCommandBusy] = useState(false);
+  const [commandNote, setCommandNote] = useState<CommandNote | null>(null);
+  const commandNoteTimer = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const showExportNote = useCallback((next: ExportNote) => {
-    setExportNote(next);
-    if (exportNoteTimer.current !== null) window.clearTimeout(exportNoteTimer.current);
-    exportNoteTimer.current = window.setTimeout(() => setExportNote(null), EXPORT_NOTE_TTL_MS);
+  const showCommandNote = useCallback((next: CommandNote) => {
+    setCommandNote(next);
+    if (commandNoteTimer.current !== null) window.clearTimeout(commandNoteTimer.current);
+    commandNoteTimer.current = window.setTimeout(() => setCommandNote(null), COMMAND_NOTE_TTL_MS);
   }, []);
 
   useEffect(
     () => () => {
-      if (exportNoteTimer.current !== null) window.clearTimeout(exportNoteTimer.current);
+      if (commandNoteTimer.current !== null) window.clearTimeout(commandNoteTimer.current);
     },
     [],
   );
@@ -87,9 +95,9 @@ export default function ChatInput({
    * HTML 报告模板、Plotly 静态渲染都不进主 bundle，只有用户真的执行 `/export` 才付这份代价。
    */
   const runExportBundle = useCallback(async () => {
-    if (exporting) return;
-    setExporting(true);
-    showExportNote({ kind: "ok", text: "正在打包会话（画布 + 对话 + 留痕 + 交付报告）…" });
+    if (commandBusy) return;
+    setCommandBusy(true);
+    showCommandNote({ kind: "ok", text: "正在打包会话（画布 + 对话 + 留痕 + 交付报告）…" });
     try {
       const { exportSessionBundle } = await import("../../commands/export-session");
       const result = await exportSessionBundle({
@@ -105,13 +113,35 @@ export default function ChatInput({
       if (result.excludedParquet.count > 0) {
         parts.push(`未含 ${result.excludedParquet.count} 个 parquet（清单已记账）`);
       }
-      showExportNote({ kind: "ok", text: `已导出 ${result.fileName}（${parts.join(" · ")}）` });
+      showCommandNote({ kind: "ok", text: `已导出 ${result.fileName}（${parts.join(" · ")}）` });
     } catch (err) {
-      showExportNote({ kind: "error", text: `导出失败：${err instanceof Error ? err.message : String(err)}` });
+      showCommandNote({ kind: "error", text: `导出失败：${err instanceof Error ? err.message : String(err)}` });
     } finally {
-      setExporting(false);
+      setCommandBusy(false);
     }
-  }, [exporting, showExportNote]);
+  }, [commandBusy, showCommandNote]);
+
+  /**
+   * `/import <bundle 路径>`（T3.7）：服务端读包 + 校验 + 落盘，本层只发请求与展示结果。
+   *
+   * 同样用**动态 import**：导入是低频操作，不该把它的代码与其错误码文案表塞进主 bundle。
+   * 成功后调 `onSessionsChanged()` 让会话列表走既有 WS `session_list` 重拉一次。
+   */
+  const runImportBundle = useCallback(async (bundlePath: string) => {
+    if (commandBusy) return;
+    setCommandBusy(true);
+    showCommandNote({ kind: "ok", text: `正在校验并导入 ${bundlePath} …` });
+    try {
+      const { importSessionBundle, describeImportResult } = await import("../../commands/import-session");
+      const result = await importSessionBundle({ pageOrigin: window.location.origin, bundlePath });
+      showCommandNote({ kind: "ok", text: describeImportResult(result) });
+      onSessionsChanged();
+    } catch (err) {
+      showCommandNote({ kind: "error", text: `导入失败：${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      setCommandBusy(false);
+    }
+  }, [commandBusy, showCommandNote, onSessionsChanged]);
 
   const ctx: CommandContext = useMemo(
     () => ({
@@ -121,11 +151,14 @@ export default function ChatInput({
       exportSession: () => {
         void runExportBundle();
       },
+      importSession: (bundlePath: string) => {
+        void runImportBundle(bundlePath);
+      },
       addSystemMessage: () => {
         // System messages are visual-only; the store handles display
       },
     }),
-    [clearMessages, clearCanvas, clearSession, runExportBundle]
+    [clearMessages, clearCanvas, clearSession, runExportBundle, runImportBundle]
   );
 
   const { commands, execute } = useCommands(ctx);
@@ -164,7 +197,12 @@ export default function ChatInput({
 
   const handleSelect = useCallback(
     (command: SlashCommand) => {
-      if (command.category === "builtin") {
+      if (command.category === "builtin" && command.args) {
+        // 带参数的命令（T3.7 `/import`）：选中不立即执行，而是把命令行预填好等用户补参数
+        // （与 skill 命令的 `prompt` 预填同款交互）。
+        updateValue(`/${command.name} `);
+        setShowSuggestions(false);
+      } else if (command.category === "builtin") {
         execute(command);
         updateValue("");
       } else if (command.prompt) {
@@ -180,12 +218,27 @@ export default function ChatInput({
   const handleSend = useCallback(() => {
     const trimmed = value.trim();
     if (!trimmed || !isConnected) return;
+    // 带参数的内置命令（当前只有 `/import <path>`）在前端就地执行，不发给 agent：
+    // 只认**声明了 args 的命令**，所以 `/export foo` 这类既有输入的行为逐字不变。
+    const parsed = parseSlashCommand(trimmed, allCommands);
+    if (parsed) {
+      const placeholder = parsed.command.args?.placeholder ?? "参数";
+      if (parsed.args === "") {
+        showCommandNote({ kind: "error", text: `用法：/${parsed.command.name} <${placeholder}>` });
+        updateValue(`/${parsed.command.name} `);
+      } else {
+        execute(parsed.command, parsed.args);
+        updateValue("");
+      }
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
+      return;
+    }
     onSend(trimmed);
     updateValue("");
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [value, isConnected, onSend, updateValue]);
+  }, [value, isConnected, onSend, updateValue, allCommands, execute, showCommandNote]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -263,14 +316,14 @@ export default function ChatInput({
         </div>
       )}
 
-      {/* /export 进度与结果反馈（T3.6） */}
-      {exportNote && (
+      {/* /export 与 /import 的进度与结果反馈（T3.6 / T3.7） */}
+      {commandNote && (
         <div
           className={`px-2.5 py-1.5 rounded-md text-[11px] font-mono leading-relaxed break-all border bg-bg-card ${
-            exportNote.kind === "error" ? "border-error/40 text-error" : "border-border-default text-text-muted"
+            commandNote.kind === "error" ? "border-error/40 text-error" : "border-border-default text-text-muted"
           }`}
         >
-          {exportNote.text}
+          {commandNote.text}
         </div>
       )}
 
