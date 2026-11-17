@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-17T09:31:13+08:00",
+  "updatedAt": "2026-11-17T11:06:34+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -568,7 +568,7 @@
           "id": "T3.6",
           "title": "重做 /export：同一 token 的 session 画布 + 对话等文件打包下载（承担不变性）",
           "kr": null,
-          "status": "pending",
+          "status": "accepted",
           "dependsOn": [
             "T3.5",
             "T1.4"
@@ -596,6 +596,12 @@
               "at": "2026-11-17T08:45:59+08:00",
               "by": "main-session",
               "note": "补记（此前 history 缺该条）：2026-11-17 用户已批准 T3.5→T3.6→T3.7 串行开工并裁决全部开放项，裁决固化于 decisions ①-⑤（commit 4cd269f），note 中「/export 现状」的事实错误亦在该 commit 更正（重做对象是 src/commands/export-session.ts 的简陋 JSON 快照，不是 T1.4 的 HTML 交付报告）。执行方式变更（用户指令 2026-11-17）：改由 pi subagent 以 context:fork 直接继承主会话上下文执行，不再撰写 DISPATCH.md；三件套 design.md/CHANGES.md/verification.md 仍为必交。派发前仍需用户裁决 4 个 decisions 未写死的点：.storage.json 是否入包、包文件名与 bundle manifest 路径契约、/import 路径允许范围（T3.7）、PR 节奏（堆叠 vs 逐个合并）。"
+            },
+            {
+              "status": "accepted",
+              "at": "2026-11-17T11:06:34+08:00",
+              "by": "main-session",
+              "note": "PR #47（merge 81c88ad）已由用户合并。主会话在**合并态 main** 独立复跑：build=0 / lint=0 / verify=0，verify 全跑后 git status --porcelain 干净；脚本断言逐项 92/71/119/148/39/54/77/13/58 = 671、vitest integration 27 文件 377 例、UI 7 文件 62 例，已同步进 verificationBaseline。抽查确认：server/session-bundle.ts 直接 import deriveShareToken 复用 T3.5 token（未另写）、三层路径防护（assertValidSessionPath + isSafeBundlePath 8 样本 + dfName 白名单不触盘）、.storage.json 本体不入包只留 storageProfile 名（C1）、.share.json 不入包、parquet 排除但 count/bytes/names/absent 记账、64MB→413、GET /api/session-bundle 带 no-store 且复用 corsHeadersFor（未再动 security.ts）、bundle.json 前端最后组装不列自身、report.html 用包内 canvas.json 生成（包内自洽）。bundle 拆分：主 chunk 1457.38→1458.25kB、新增 export-session chunk 14.11kB、plotly.min 4646.12kB 未回退（fflate 走动态 import）。CI required check pass（1m1s），GitGuardian 本次 pass（夹具 TEST-ONLY-* 无真实凭据前缀形态，#46 教训已生效）。遗留 8 条（design.md §10），其中第 2 条（bundle.json 无法自列 ⇒ 清单被整体替换不可检测）已转为 T3.7 的处置口径，见 T3.7.decisions ⑥。"
             }
           ],
           "decisions": [
@@ -610,7 +616,7 @@
           "id": "T3.7",
           "title": "session 打包导入：上传导出包作为历史会话加载到界面",
           "kr": null,
-          "status": "pending",
+          "status": "in_progress",
           "dependsOn": [
             "T3.6"
           ],
@@ -637,13 +643,21 @@
               "at": "2026-11-17T08:45:59+08:00",
               "by": "main-session",
               "note": "补记（此前 history 缺该条）：2026-11-17 用户已批准串行开工并裁决全部开放项，裁决固化于 decisions ①-④（commit 4cd269f）。执行方式变更（用户指令 2026-11-17）：改由 pi subagent 以 context:fork 执行，不再撰写 DISPATCH.md；三件套仍为必交。包格式契约以 T3.6 实际落地产物为准（bundle manifest 字段、校验和算法、包内路径布局），派发时由主会话内联进 brief。"
+            },
+            {
+              "status": "in_progress",
+              "at": "2026-11-17T11:06:34+08:00",
+              "by": "main-session",
+              "note": "T3.6 经 PR #47 合入 main（81c88ad）并验收 accepted，包格式契约已落地在 src/types/bundle.ts（BUNDLE_FORMAT/VERSION、BUNDLE_MANIFEST_PATH=bundle.json、BUNDLE_SUFFIX=.govio-bundle.zip、单层正斜杠布局 session.jsonl/canvas.json/manifests.json/audit.jsonl/injection.jsonl/report.html、BundleManifest 字段含 files[{path,bytes,sha256}]/missing/excluded.parquet/storageProfile?/reportOmitted?），T3.7 照此实现。补记用户裁决 ⑤（C3=b：包可任意路径读、写入严格限定 .govio/sessions/）与主会话建议口径 ⑥（不加签名，改为清单外文件即拒）。执行方式：pi subagent（worker agent，context:fork），免写 DISPATCH.md，分支 t37-import-session-bundle 基于 main 81c88ad，预算 120min。"
             }
           ],
           "decisions": [
             "① 导入入口：与 /export 一致的斜杠命令逻辑，仅 /import 多接一个文件路径参数（/import <bundle 路径>）；不做界面上传/拖拽按钮。路径由服务端读取（浏览器无法读任意本地路径），必须复用 server/session-history.ts:58 assertValidSessionPath 同款校验纪律防目录穿越",
             "② id 冲突：默认生成新 id + 保留 importedFrom.originalSessionId；不提供覆盖（覆盖会破坏既有会话的审计留痕不可变性）",
             "③ S3：本期只落本地 .govio/sessions/，导入后用户手动执行既有绑定操作；跨实例导入记遗留",
-            "④ 原子性硬约束：校验（格式版本 / 文件清单 / 逐文件校验和）全部通过前不落任何文件——先解到临时目录，全绿后再落位；任何失败路径都必须断言「零文件写入」"
+            "④ 原子性硬约束：校验（格式版本 / 文件清单 / 逐文件校验和）全部通过前不落任何文件——先解到临时目录，全绿后再落位；任何失败路径都必须断言「零文件写入」",
+            "⑤ 导入路径口径（用户裁决 2026-11-17，回答主会话 C3 提问选 b）：/import <path> 的**包文件可从任意路径读**（如 D:/Downloads/xxx.govio-bundle.zip），但**写入目标严格限定 .govio/sessions/**。读侧防护：必须存在、是常规文件（拒 symlink/目录/设备）、扩展名 .zip、体积 ≤ 上限、拒 UNC 与设备路径、resolve 后再校验、包内容永不写进日志；写侧防护：落盘目标与任何临时暂存目录都必须在 .govio/sessions/ 内——推荐直接在内存中完成 bundle.json 与逐文件 sha256 校验，全绿后才写盘（从根上满足 decisions ④ 的「校验前零文件写入」）；若用暂存目录，必须是该目录内的隐藏前缀目录且每条失败路径都清理并断言零残留",
+            "⑥ 包完整性口径（主会话建议，用户 2026-11-17 未反对即按此执行，落地后如不同意可回退）：bundle.json 无法列自身（T3.6 design.md 遗留 2），故**本期不加外层签名**；改为 T3.7 严格校验清单内每个文件的 sha256，并且**包内出现清单外的任何文件即整包拒绝**，把防护重点放在路径穿越/解压后体积与文件数上限/类型白名单/不执行包内内容。该结论与剩余风险（攻击者若能同时重写清单与文件则等同于任意包）必须写进 T3.7 design.md 遗留问题"
           ]
         }
       ]
@@ -1775,12 +1789,13 @@
     "x22-sql-columns-unicode": "https://github.com/chenxinma/govio-map/pull/43",
     "x23-ci-dashboard-baseline": "https://github.com/chenxinma/govio-map/pull/44",
     "x25-share-link-origin": "https://github.com/chenxinma/govio-map/pull/45",
-    "t35-live-share-view": "https://github.com/chenxinma/govio-map/pull/46"
+    "t35-live-share-view": "https://github.com/chenxinma/govio-map/pull/46",
+    "t36-export-session-bundle": "https://github.com/chenxinma/govio-map/pull/47"
   },
   "verificationBaseline": {
     "updatedAt": "2026-11-15T09:35:53+08:00",
     "source": "唯一事实源：CI 断言数看板（.github/workflows/scripts/assertion-dashboard.mjs）从这里读基线，脚本内不再硬编码数字（X23，解 X16 design.md 遗留 1）。",
-    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：T3.5（2026-11-17，PR #46 合并态 main 独立复跑：vitest 21·289 → 24·333、UI 4·37 → 6·57；脚本 671 逐项不变——删只读页复跑路由未影响 verify:rerun 71 与 verify:export 148）。",
+    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：T3.6（2026-11-17，PR #47 合并态 main 独立复跑：vitest 24·333 → 27·377、UI 6·57 → 7·62；脚本 671 逐项不变，verify:export 148 零改动——scripts/verify-export-report.ts、src/utils/export-report.ts、CanvasToolbar.tsx 三者未动）。",
     "scripts": {
       "verify:manifest": 92,
       "verify:rerun": 71,
@@ -1800,12 +1815,12 @@
     },
     "vitest": {
       "verify:integration": {
-        "files": 24,
-        "tests": 333
+        "files": 27,
+        "tests": 377
       },
       "verify:ui": {
-        "files": 6,
-        "tests": 57
+        "files": 7,
+        "tests": 62
       }
     }
   }
