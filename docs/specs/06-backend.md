@@ -21,7 +21,9 @@
 | `server/parquet-api.ts` | HTTP API（parquet 预览 / SQL 执行 / DataFrame 复跑） |
 | `server/permission-manager.ts` | observe load 权限审批（确认门）+ 决策 ID / 审计写入（Phase 1 KR3） |
 | `server/permission-audit.ts` | 权限确认审计留痕：`<session-file>.audit.jsonl` 追写 / 读回 / 删除（Phase 1 KR3） |
-| `server/session-history.ts` | 会话列表/删除（含 canvas 与审计 sidecar）/画布 sidecar/transcript 分页 |
+| `server/session-history.ts` | 会话列表/删除（含 canvas、审计、注入、存储绑定、分享开关 sidecar）/画布 sidecar/transcript 分页 |
+| `server/session-bundle.ts` | `/export` 打包的会话文件集收集（读 sidecar + 算 sha256 + 排除项记账，T3.6） |
+| `server/bundle-api.ts` | HTTP API：`GET /api/session-bundle`（只读返回打包文件集，T3.6） |
 | `server/models-config.ts` | 多模型配置管理 (~/.pi/agent/models.json) |
 | `server/govio-installer.ts` | govio-cli + skills 自动安装 |
 | `server/cli.ts` | CLI 命令行入口 |
@@ -42,7 +44,9 @@
 
 ### startBackend(port)
 
-1. 创建 HTTP Server，`/api/preview` 路由由 `handleParquetApi` 处理，其他 404
+1. 创建 HTTP Server，请求按序交给三个 handler：`handleParquetApi`（`/api/preview` 等）→
+   `handleShareApi`（T3.5 分享活视图 / fork / `/api/canvas-storage`）→ `handleBundleApi`（T3.6 `/api/session-bundle`），
+   都不接管则 404
 2. 调用 `setupWebSocket(httpServer)` 设置双端点 WebSocket
 3. 检查 `ensureModelsConfig()` 是否存在 models.json
    - 存在 → 调用 `agentSetup()` 初始化 Agent
@@ -471,3 +475,69 @@ CORS 预检（OPTIONS）由 `handleParquetApi` 首位分支统一回 204。
   会被写进同源共享的 `localStorage['govio-canvas-state']`，顶掉本机画布；
 - ChatPanel 头部分享入口改为**开关语义**（`src/components/Chat/ShareToggle.tsx`）；链接一律
   `shareLink(path, window.location.origin)`，API 一律 `apiBaseFrom(origin) ?? ''`（X25 模块）。
+
+## session-bundle.ts / bundle-api.ts - session 打包（`/export`，T3.6）
+
+只读分享（T3.5）是**活视图**，内容随源画布变；**不可变留痕**的职责由重做的 `/export` 承担：
+把同一会话打成一个自包含 zip（包名用同一个会话指纹 token），可离线归档、可校验、可被 T3.7 导入。
+详见 `docs/tasks/T3.6-export-session-bundle/design.md`。
+
+### 路由
+
+| 路由 | 方法 | 说明 |
+|------|------|------|
+| `/api/session-bundle` | GET | 返回**当前会话**的打包文件集（含逐文件 sha256 与 base64 内容）；无活动会话 → **409** |
+| `/api/session-bundle?session=<path>` | GET | 导出**指定会话**（历史会话归档）；路径必须过 `assertValidSessionPath`（sessions 目录内的 `.jsonl`），越界 → **400 `invalid-session-path`**，合法但不存在 → **404 `session-not-found`** |
+| `/api/session-bundle` | 非 GET | **405** |
+
+响应头带 `Cache-Control: no-store`（会话内容不进任何缓存）。只用 GET 这个 CORS 安全方法、不要自定义
+请求头 ⇒ **无需预检，也未扩大 `security.ts` 的 CORS 白名单**。
+
+### 载荷形状
+
+```jsonc
+// GET /api/session-bundle → 200
+{ "format": "govio-session-bundle", "version": 1,
+  "token": "<deriveShareToken(sessionId)>", "sessionId": "...", "exportedAt": "<服务端时钟>",
+  "files": [ { "path": "session.jsonl", "bytes": 123, "sha256": "<hex>", "contentBase64": "..." } ],
+  "missing": ["audit.jsonl"],
+  "excluded": { "parquet": { "count": 1, "bytes": 1024, "names": ["df_a.parquet"], "absent": ["df_gone"] } },
+  "storageProfile": "<profile 引用名，无绑定时缺省>" }
+```
+
+### 打包清单（入包 / 排除）
+
+| 内容 | 包内路径 | 说明 |
+|------|---------|------|
+| 会话 transcript（对话） | `session.jsonl` | `<session>.jsonl` 原字节；缺它就没东西可归档 → 报错 |
+| 画布 sidecar | `canvas.json` | `<session>.canvas.json`，节点/边 + 节点内固化的 Analysis Manifest |
+| Manifest 清单 | `manifests.json` | **派生**便利产物（`extractManifests(canvas.nodes)`），真源仍是 `canvas.json` |
+| 权限确认留痕 | `audit.jsonl` | `<session>.audit.jsonl`（T1.3）；不存在则记进 `missing` |
+| 图谱注入留痕 | `injection.jsonl` | `<session>.injection.jsonl`（T2.1）；同上 |
+| 交付报告 | `report.html` | T1.4 的自包含 HTML，**由前端生成**（图表静态渲染靠浏览器里的 Plotly） |
+| 包清单 | `bundle.json` | 格式版本 / token / 文件清单 + 逐文件 sha256 / `missing` / `excluded` / `storageProfile` |
+| ~~`.storage.json`~~ | — | **不入包**：只在 `bundle.json` 里留 `storageProfile` 引用名，凭据/endpoint/桶名一律不出现在包里 |
+| ~~`.share.json`~~ | — | 分享开关是本机运行态，不是归档内容 |
+| ~~`.injection.zip`~~ | — | 旧格式孤儿残留 |
+| ~~parquet 等大数据~~ | — | 默认排除，但 `excluded.parquet` 必须记明「缺几个 / 合计多少字节 / 哪些名字」 |
+| ~~`.env` 与任何凭据~~ | — | 不读不传；测试有反向断言 |
+
+### 安全边界
+
+1. **只读**：只 `readFileSync` 会话自己的 sidecar，不写不删不执行命令；
+2. **路径白名单**：`?session=` 一律过 `assertValidSessionPath`（与 `/ws` 的 open/delete 同款纪律）；
+3. **包内路径白名单**：`isSafeBundlePath()`（`src/types/bundle.ts`）只允许单层正斜杠相对路径，拒绝对路径、
+   `..`、反斜杠、盘符；打包侧自查，T3.7 解包前再校一次（zip-slip 的正经防线在解包侧）；
+4. **总量上限** `MAX_BUNDLE_TOTAL_BYTES = 64MB` → **413 `bundle-too-large`**（带 `bytes`/`limitBytes`），
+   前端给明确提示而不是静默截断；
+5. **dfName 防穿越**：parquet 记账经 `dataframeParquetPathFor()`（`server/storage/paths.ts`）的安全标识符白名单，
+   不合法的名字不会被拼成磁盘路径。
+
+### 前端组装（zip 在浏览器完成）
+
+`src/commands/export-session.ts` 的 `exportSessionBundle()`：拉文件集 → 用**包内 `canvas.json`**（而不是画布 store
+的实时状态）生成 `report.html`（保证包内自洽：T3.7 导入后看到的画布与报告说的是同一个东西）→
+用 WebCrypto 补算 `report.html` 的 sha256 → 组装 `bundle.json` → fflate `zipSync`（条目 mtime 固定为
+`exportedAt` ⇒ 同一内容两次打包字节一致）→ `a[download]` 下载 `<token>.govio-bundle.zip`。
+审计附录走 `fetchAuditForBundle()`（基址由 `apiBaseFrom(origin)` 推导，**不复用** `export-report.ts` 里那份
+端口 +1 硬编码的 `fetchAuditAppendix`，X25 遗留 2 归口 T3.4）。

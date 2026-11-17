@@ -2,6 +2,7 @@
  * T3.1 sidecar 路径单一来源：画布工件与存储绑定文件的命名规则。
  * session-history.ts 以 re-export 保持既有公共 API（canvasPathFor）兼容。
  */
+import { resolve as resolvePath } from "node:path";
 
 /** 画布 sidecar 路径；同目录下还有权限审计/注入留痕 sidecar 与本绑定文件。 */
 export function canvasPathFor(sessionFile: string): string {
@@ -25,4 +26,30 @@ export function storageBindingPathFor(sessionFile: string): string {
  */
 export function shareStatePathFor(sessionFile: string): string {
   return sessionFile + ".share.json";
+}
+
+/**
+ * ObserveStore 的 DataFrame parquet 目录（相对 cwd），T3.6 打包时用它给「已排除的
+ * 大数据文件」记账（parquet 不入包，但 bundle.json 必须写明缺了什么）。
+ *
+ * 注意：`server/parquet-api.ts` 目前仍持有同值的本地常量 `PARQUET_DIR`（读写预览用），
+ * 本任务按范围纪律未改动它；两处收敛记在 T3.6 design.md 遗留问题。
+ */
+export const DATAFRAME_PARQUET_DIR = ".govio/observe/dataframes";
+
+/** parquet 目录绝对路径（随 cwd 变化，与 parquet-api.ts 的 resolve 方式一致）。 */
+export function dataframeParquetDir(): string {
+  return resolvePath(process.cwd(), DATAFRAME_PARQUET_DIR);
+}
+
+/**
+ * DataFrame 名 → parquet 绝对路径；名字不是安全标识符时返回 `null`。
+ *
+ * dfName 来自画布节点里的 Manifest（外部内容），直接拼路径就等于把目录穿越交给
+ * 会话数据；这里与 `parquet-api.ts` 的 `SAFE_DF_NAME_RE` 同款白名单先挡一道
+ * （该正则的收敛同样记在 design.md 遗留问题）。
+ */
+export function dataframeParquetPathFor(dfName: string): string | null {
+  if (typeof dfName !== "string" || !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/.test(dfName)) return null;
+  return resolvePath(dataframeParquetDir(), `${dfName}.parquet`);
 }
