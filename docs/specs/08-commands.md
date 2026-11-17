@@ -13,6 +13,7 @@
 | `src/commands/registry.ts` | 命令注册与过滤 |
 | `src/commands/useCommands.ts` | React Hook |
 | `src/commands/export-session.ts` | 会话打包导出（zip，T3.6） |
+| `src/commands/import-session.ts` | 会话包导入为历史会话（T3.7） |
 | `src/commands/CommandSuggestion.tsx` | 命令建议下拉组件 |
 | `src/data/commands.json` | 自定义命令配置 |
 
@@ -23,8 +24,15 @@ interface SlashCommand {
   name: string;
   description: string;
   category: "builtin" | "custom";
-  handler?: (ctx: CommandContext) => void;
+  /** 参数通道（T3.7）：声明了的命令才能从输入框拿到 `/name <余串>` 里的余串 */
+  args?: CommandArgsSpec;
+  handler?: (ctx: CommandContext, args: string) => void;
   prompt?: string;
+}
+
+interface CommandArgsSpec {
+  placeholder: string;   // 用法提示里的占位符，如 "bundle 路径"
+  required: boolean;     // 必填时空参数不执行，只给用法提示
 }
 
 interface CommandContext {
@@ -33,9 +41,24 @@ interface CommandContext {
   clearSession(): void;
   /** 打包导出当前会话为 zip（异步实现，进度/结果反馈由 ChatInput 展示） */
   exportSession(): void;
+  /** 导入会话包为历史会话（T3.7；同款异步约定） */
+  importSession(bundlePath: string): void;
   addSystemMessage(content: string): void;
 }
 ```
+
+### 参数通道（T3.7）
+
+旧命令系统只有 `handler(ctx)`，**拿不到用户在命令名后面输的余串**，所以 `/import <路径>` 无法实现。
+T3.7 加了一个**最小**参数通道，关键约束：
+
+- `args` **缺省 = 不接收参数**，此时行为与 T3.7 之前逐字一致：`/export 帮我导出一下` 仍原样发给 agent，
+  不会被前端截走（有反向断言）；
+- `parseSlashCommand(input, commands)` 只认**声明了 `args`** 的命令，且命令名与首个空白前的段**全等**
+  （大小写不敏感）⇒ `/important ...` 不会被误判成 `/import`；
+- 余串整体作为**单个参数**（路径可以含空格），首尾空白去掉；
+- 下拉里选中带参数的命令是**预填** `/import ` 而不是立即执行（与 skill 命令的 `prompt` 预填同款交互）；
+- 必填参数为空时给用法提示 `用法：/import <bundle 路径>` 并预填命令，不打后端。
 
 ## 内置命令
 
@@ -44,8 +67,9 @@ interface CommandContext {
 | /clear | 清空聊天消息 | `ctx.clearMessages()` |
 | /clear-canvas | 清空画布和消息 | `ctx.clearCanvas()` + `ctx.clearMessages()` |
 | /export | 打包导出当前会话为 zip（画布 + 对话 + 留痕 + 交付报告） | `ctx.exportSession()` |
+| /import `<bundle 路径>` | 导入会话打包文件为历史会话（T3.7，**带参数**） | `ctx.importSession(args)` |
 
-内置命令有 `handler`，选中时直接执行。
+内置命令有 `handler`，选中时直接执行；声明了 `args` 的（当前只有 `/import`）选中时先预填命令等用户补参数。
 
 ## 自定义命令
 
@@ -64,6 +88,9 @@ interface CommandContext {
 
 `filterCommands(commands, query)` 按名称或描述过滤，忽略大小写，去除前导 `/`。
 
+`parseSlashCommand(input, commands)`（T3.7）从输入原文解析**带参数**的内置命令，返回
+`{ command, args } | null`；只认声明了 `args` 的命令（见上「参数通道」）。
+
 ## useCommands Hook
 
 ```typescript
@@ -71,7 +98,7 @@ const { commands, execute } = useCommands(ctx);
 ```
 
 - `commands`: 合并后的完整命令列表（useMemo 缓存）
-- `execute(command)`: 执行命令（仅 builtin 有 handler）
+- `execute(command, args?)`: 执行命令（仅 builtin 有 handler）；`args` 缺省空串，所以既有 handler 零改动
 
 ## export-session.ts
 
@@ -114,6 +141,37 @@ const { commands, execute } = useCommands(ctx);
 打包中 / `已导出 <文件名>（X KB · N 个文件 · 含交付报告 · 未含 M 个 parquet）` / `导出失败：<原因>`。
 失败原因都是人话（无活动会话 / 会话已删 / 超限 / 载荷版本不符 / 非安全上下文无法算校验和），不静默失败。
 打包进行中重复触发不会并发第二次。
+
+## import-session.ts
+
+**T3.7 新增**：`/import <bundle 路径>` 把 T3.6 产出的 `<token>.govio-bundle.zip` 导入成一个**历史会话**。
+浏览器读不到任意本地路径，所以路径交给**服务端**读（`POST /api/session-import`）；校验（格式版本 /
+文件清单 / 逐文件 sha256 / 清单外条目）与原子落盘全在服务端（`server/session-import.ts`，
+路由与错误码表见 `docs/specs/06-backend.md`）。本模块只做三件事：发请求、把错误码翻成人话
+（`IMPORT_ERROR_TEXT`）、把成功结果整理成一句可展示的反馈（`describeImportResult`）。
+
+用户裁决：包可**从任意路径**读（如 `D:/Downloads/xxx.govio-bundle.zip`），但**写入严格限定**
+`.govio/sessions/`；校验全绿前零文件写入；id 冲突一律生成新 id（不提供覆盖）。
+
+### 反馈
+
+与 `/export` 共用输入框上方那一行提示（`commandNote`，8s 自动消失）：
+`正在校验并导入 <路径> …` / `已导入为历史会话「<名>」（N 节点 · N 边 · N 条对话 · N 份分析留痕 · 数据文件未随包…）`
+/ `导入失败：<人话原因>`。成功后调 `onSessionsChanged()`（= `useChat().fetchSessions`）走**既有** WS
+`session_list` 重拉会话列表 ⇒ 不新增 WS 消息类型，`PROTOCOL_VERSION` 仍为 1。
+失败原因全部是人话（找不到包 / 校验和不符 / 清单外夹带 / 版本不支持 / 超限 / 目标已存在…），不静默失败；
+导入进行中重复触发不会并发第二次。
+
+### 导入会话的降级语义
+
+包里**不含 parquet**（T3.6 裁决 ③），所以导入会话的 DataFrame 预览/复跑大概率不可用：
+
+- **预览**：`openPreviewPanel` 取数失败不再只 `console.error`（以前会静默渲染成「0 rows」空表），
+  而是把原因挂到 `PreviewPanel.previewError` 并在面板里渲染告警块（隐藏空表与分页页脚）；
+  404 给「数据不在本机 + 需重新加载该 DataFrame」的专用文案；
+- **复跑**：沿用 T1.2 已有链路——失败会把原因记进 `rerunHistory`（`outcome:'error'`）并由 `RerunStatus` 展示；
+- **存储绑定**：`bundle.json.storageProfile` 有值时只在导入结果里告知「源实例曾绑定 profile X，本机未绑定」，
+  **不自动建绑定**（decisions ③）。
 
 ## CommandSuggestion 组件
 

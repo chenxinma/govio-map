@@ -3,7 +3,7 @@ import { existsSync, unlinkSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve as resolvePath, sep } from "node:path";
 import { deletePermissionAudit } from "./permission-audit.js";
 import { deleteInjectionTrace } from "./prompt-injection.js";
-import { canvasPathFor, shareStatePathFor, storageBindingPathFor } from "./storage/paths.js";
+import { canvasPathFor, importMetaPathFor, shareStatePathFor, storageBindingPathFor } from "./storage/paths.js";
 import { queueRemoteDelete, queueRemoteSync } from "./storage/canvas-storage.js";
 
 export function getSessionDir(): string {
@@ -77,6 +77,8 @@ export function deleteSession(path: string): void {
   if (existsSync(storageBindingPathFor(resolved))) unlinkSync(storageBindingPathFor(resolved));
   // T3.5 分享开关 sidecar 同生命周期：会话删了，分享必须一并失效（token 随即解析不到）。
   if (existsSync(shareStatePathFor(resolved))) unlinkSync(shareStatePathFor(resolved));
+  // T3.7 导入来源 sidecar 同生命周期：会话删了，来源标注也没有独立存在的意义。
+  if (existsSync(importMetaPathFor(resolved))) unlinkSync(importMetaPathFor(resolved));
 }
 
 // ---- canvas sidecar ----

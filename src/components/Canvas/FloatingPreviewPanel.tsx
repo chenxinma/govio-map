@@ -62,6 +62,16 @@ export default function FloatingPreviewPanel({ panel }: { panel: PreviewPanel })
         </button>
       </div>
 
+      {panel.previewError ? (
+        // 降级提示（T3.7）：导入会话的 DataFrame 大概率不在本机，parquet 不入包（T3.6 裁决 ③）。
+        // 以前这里会渲染成一张「0 rows」的空表（静默失败），现在把原因直接说给用户听。
+        <div
+          role="alert"
+          className="px-4 py-3 text-xs leading-relaxed text-error bg-error/5 border-b border-border-subtle font-mono break-all"
+        >
+          {panel.previewError}
+        </div>
+      ) : (
       <div className="overflow-auto max-h-[360px]">
         <table className="w-full text-xs font-mono">
           <thead className="sticky top-0 bg-bg-surface z-10">
@@ -88,7 +98,9 @@ export default function FloatingPreviewPanel({ panel }: { panel: PreviewPanel })
           </tbody>
         </table>
       </div>
+      )}
 
+      {!panel.previewError && (
       <div className="flex items-center justify-between px-4 py-2 border-t border-border-subtle text-[11px] text-text-muted no-drag">
         <span>
           {data.totalRows} rows · {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, data.previewData.length)}
@@ -111,6 +123,7 @@ export default function FloatingPreviewPanel({ panel }: { panel: PreviewPanel })
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 }

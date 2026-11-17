@@ -18,6 +18,13 @@ export interface PreviewPanel {
   data: DataFrameNodeData;
   x: number;
   y: number;
+  /**
+   * 预览数据拿不到时的**用户可见**原因（T3.7 降级语义）。
+   *
+   * 此前取数失败只 `console.error`，面板依旧渲染成「0 rows」的空表 —— 对导入会话
+   * （parquet 不随包，T3.6 裁决 ③）那就是静默失败。现在失败会把原因挂在面板上。
+   */
+  previewError?: string;
 }
 
 /** 返回去掉指定 key 的新对象（复跑进行中/错误态都是临时态，用完即清） */
@@ -51,6 +58,8 @@ interface CanvasStore {
   closePreviewPanel: (panelId: string) => void;
   movePreviewPanel: (panelId: string, x: number, y: number) => void;
   updatePreviewPanelData: (panelId: string, previewData: Record<string, unknown>[]) => void;
+  /** 预览取数失败：把原因挂到面板上（T3.7 降级语义，不再静默失败）。 */
+  setPreviewPanelError: (panelId: string, message: string) => void;
 
   referencedNodes: ReferencedNode[];
   addReference: (nodeId: string) => void;
@@ -435,10 +444,20 @@ export const useCanvasStore = create<CanvasStore>()(
     });
 
     // Fetch preview data from backend
+    // 基址仍是本仓约定的「页面端口 +1」（X25 遗留 2，归口 T3.4 统一收敛），本处刻意不动。
     const apiPort = Number(window.location.port) + 1;
     fetch(`http://localhost:${apiPort}/api/preview?df=${encodeURIComponent(data.dfName)}&rows=50`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      .then(async (res) => {
+        if (!res.ok) {
+          const detail = ((await res.json().catch(() => null)) as { error?: string } | null)?.error;
+          // 404 = parquet 不在本机。导入的会话包**按设计不含数据文件**（T3.6 裁决 ③），
+          // 所以这里给的是「怎么办」而不只是「失败了」。
+          throw new Error(
+            res.status === 404
+              ? `数据不在本机：DataFrame「${data.dfName}」的 parquet 不存在。导入的会话包不含数据文件，需重新加载该 DataFrame 后才能预览。${detail ? `（后端：${detail}）` : ""}`
+              : `预览失败：HTTP ${res.status}${detail ? `（${detail}）` : ""}`,
+          );
+        }
         return res.json();
       })
       .then((rows: Record<string, unknown>[]) => {
@@ -446,6 +465,7 @@ export const useCanvasStore = create<CanvasStore>()(
       })
       .catch((err) => {
         console.error(`[preview] Failed to fetch data for ${data.dfName}:`, err);
+        get().setPreviewPanelError(panelId, err instanceof Error ? err.message : String(err));
       });
   },
 
@@ -465,8 +485,16 @@ export const useCanvasStore = create<CanvasStore>()(
     set({
       previewPanels: get().previewPanels.map((p) =>
         p.id === panelId
-          ? { ...p, data: { ...p.data, previewData } }
+          ? { ...p, previewError: undefined, data: { ...p.data, previewData } }
           : p
+      ),
+    });
+  },
+
+  setPreviewPanelError: (panelId, message) => {
+    set({
+      previewPanels: get().previewPanels.map((p) =>
+        p.id === panelId ? { ...p, previewError: message } : p
       ),
     });
   },

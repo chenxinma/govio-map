@@ -134,3 +134,129 @@ export interface BundleManifest {
   /** `report.html` 未生成时的原因（空画布等）；生成了则缺省。 */
   reportOmitted?: string;
 }
+
+// ── T3.7 导入（`/import <bundle 路径>`）────────────────────────────────────
+//
+// 与导出共用上面那份包契约：导入侧只认 `bundle.json`（format/version/files/sha256），
+// **不依赖文件名**，也不接受清单之外的任何条目（主会话裁定口径 ⑥）。
+
+/** 导入 sidecar `<session>.jsonl.import.json` 的格式版本。 */
+export const IMPORT_META_VERSION = 1;
+
+/**
+ * 导入失败原因码（服务端 `session-import.ts` 抛出，HTTP 层按码映射状态与人话文案）。
+ *
+ * 一律是**稳定字符串**而不是自由文本：前端据此给中文提示，测试据此逐条断言拒绝路径，
+ * 文档（`docs/specs/06-backend.md`）据此列错误码表。
+ */
+export const IMPORT_ERROR_CODES = [
+  /** 路径为空 / 含 NUL / UNC / 设备路径 / 非 `.zip` 扩展名（decisions ⑤ 读侧校验）。 */
+  "invalid-path",
+  /** 路径合法但磁盘上不存在。 */
+  "bundle-not-found",
+  /** 存在但不是常规文件（目录 / symlink / 设备）——decisions ⑤ 明确拒 symlink。 */
+  "not-a-file",
+  /** zip 文件本体超过 {@link MAX_IMPORT_ZIP_BYTES}。 */
+  "bundle-too-large",
+  /** 不是合法 zip（或压缩方式不受支持）。 */
+  "bundle-unreadable",
+  /** 包内条目数超过 {@link MAX_IMPORT_FILE_COUNT}。 */
+  "too-many-files",
+  /** 解压后总体积超过 {@link MAX_IMPORT_UNCOMPRESSED_BYTES}（zip 炸弹闸门）。 */
+  "uncompressed-too-large",
+  /** 包内条目名不安全（绝对路径 / `..` / 反斜杠 / 子目录），即 zip-slip 样本。 */
+  "unsafe-entry",
+  /** 包内出现重名条目（清单无法唯一对应）。 */
+  "duplicate-entry",
+  /** 包内没有 `bundle.json`。 */
+  "manifest-missing",
+  /** `bundle.json` 不是合法 JSON 或缺必需字段。 */
+  "manifest-invalid",
+  /** `format` 不是 {@link BUNDLE_FORMAT}。 */
+  "format-mismatch",
+  /** `version` 不被本端支持（高于 {@link BUNDLE_VERSION} 或非法）。 */
+  "version-unsupported",
+  /** 清单列了但包里没有的文件。 */
+  "entry-missing",
+  /** 包里有但清单没列的文件（口径 ⑥：整包拒绝）。 */
+  "entry-unexpected",
+  /** 逐文件 sha256 或字节数与清单不符。 */
+  "checksum-mismatch",
+  /** 包内某个 JSON 工件（`canvas.json` / `manifests.json`）解析失败或形状不符。 */
+  "payload-invalid",
+  /** `session.jsonl` 不是合法 pi transcript（首条不是 session header）。 */
+  "transcript-invalid",
+  /** 目标会话文件已存在——decisions ②：不提供覆盖。 */
+  "target-conflict",
+  /** 校验全绿后落盘失败（I/O 层）。 */
+  "write-failed",
+] as const;
+
+export type ImportErrorCode = (typeof IMPORT_ERROR_CODES)[number];
+
+/** 上限常量（服务端 `session-import.ts` 为权威值，此处供前端提示与文档引用）。 */
+export const MAX_IMPORT_ZIP_BYTES = 64 * 1024 * 1024;
+/** 解压后总体积上限：zip 炸弹闸门，按 deflate 最大膨胀比留足余量后取 4× 导出上限。 */
+export const MAX_IMPORT_UNCOMPRESSED_BYTES = 256 * 1024 * 1024;
+/** 包内条目数上限：单层布局正常只有 ≤7 个文件，32 已是很宽的余量。 */
+export const MAX_IMPORT_FILE_COUNT = 32;
+
+/**
+ * 导入来源标注（decisions ②：新 id + 保留来源，可区分原生与导入会话）。
+ * 落点见 `docs/tasks/T3.7-import-session-bundle/design.md`：`.import.json` sidecar 为权威记录，
+ * 画布 sidecar 顶层同名键为血缘邻近信息；两者都**不进** WS 契约（X2 零改动）。
+ */
+export interface ImportedFrom {
+  /** 源会话指纹 token（= `bundle.json.token`，与 T3.5 分享同一派生口径）。 */
+  token: string;
+  /** 源实例的导出时间（`bundle.json.exportedAt`）。 */
+  exportedAt: string;
+  /** 源会话 id（`bundle.json.sessionId`，即源实例上的会话文件名主干）。 */
+  originalSessionId: string;
+  /** 源会话显示名（从包内 transcript 的 `session_info` 取最新一条；没有则 null）。 */
+  originSessionName: string | null;
+  /** 包文件名（不含目录）——只记名字，**不记源路径**（避免把源机器的目录布局写进留痕）。 */
+  bundleFileName: string;
+  /** 本机导入时间（ISO 8601）。 */
+  importedAt: string;
+}
+
+/** `POST /api/session-import` 的成功载荷，也是 `.import.json` sidecar 的内容。 */
+export interface SessionImportResult {
+  /** 本机新生成的会话 id（transcript header 已改写为它）。 */
+  sessionId: string;
+  /** 新会话文件绝对路径（前端可直接交给既有 `session_open`）。 */
+  sessionFile: string;
+  /** 显示名（来自包内 transcript；无则 null）。 */
+  sessionName: string | null;
+  /** 包内 transcript 的消息条数（`type:"message"`）。 */
+  messageCount: number;
+  nodeCount: number;
+  edgeCount: number;
+  /** 画布节点内固化的 Analysis Manifest 条数（与包内 `manifests.json` 一致）。 */
+  manifestCount: number;
+  importedFrom: ImportedFrom;
+  /**
+   * 落地为会话文件的**包内路径**（正斜杠相对名）。
+   * `report.html` 与 `manifests.json` 只参与校验、**不落地**（前者是给人看的导出产物，
+   * 后者是 canvas.json 的派生便利产物，写进 sessions 目录只会制造孤儿文件）。
+   * 另外恒定多写一个 `.import.json` 来源 sidecar（不属包内路径，见 {@link SessionImportMeta}）。
+   */
+  filesWritten: string[];
+  /** 源包里就缺的可选文件（`bundle.json.missing` 透传）。 */
+  missing: string[];
+  /** 源包排除的大数据记账（透传）——导入后预览/复跑降级提示的依据。 */
+  excludedParquet: BundleExcludedParquet;
+  /** 源实例曾绑定的 S3 profile 名（decisions ③：本机不自动绑定，仅告知）。 */
+  storageProfile?: string;
+}
+
+/** `.import.json` sidecar 的落盘形状。 */
+export interface SessionImportMeta {
+  version: typeof IMPORT_META_VERSION;
+  importedFrom: ImportedFrom;
+  filesWritten: string[];
+  missing: string[];
+  excludedParquet: BundleExcludedParquet;
+  storageProfile?: string;
+}

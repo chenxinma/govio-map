@@ -235,6 +235,7 @@ export default function ChatPanel({ width }: ChatPanelProps) {
         clearMessages={clearMessages}
         clearSession={clearSession}
         clearCanvas={useCanvasStore.getState().clearCanvas}
+        onSessionsChanged={fetchSessions}
       />
     </div>
     </>

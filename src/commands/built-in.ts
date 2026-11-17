@@ -15,6 +15,17 @@ function handleExport(ctx: CommandContext) {
   ctx.exportSession();
 }
 
+function handleImport(ctx: CommandContext, args: string) {
+  // T3.7：/import <bundle 路径> = 把 T3.6 产出的包导入成一个历史会话。
+  // 路径由**服务端**读（浏览器读不到任意本地路径）；空参数的用法提示在 ChatInput 侧拦下，
+  // 这里再兜一道，保证 handler 单独被调用时也不会把空串发给后端。
+  if (!args.trim()) {
+    ctx.addSystemMessage("用法：/import <bundle 路径>（T3.6 /export 产出的 .govio-bundle.zip）");
+    return;
+  }
+  ctx.importSession(args.trim());
+}
+
 export function getBuiltInCommands(): SlashCommand[] {
   return [
     {
@@ -34,6 +45,13 @@ export function getBuiltInCommands(): SlashCommand[] {
       description: "打包导出当前会话为 zip（画布 + 对话 + 留痕 + 交付报告）",
       category: "builtin",
       handler: handleExport,
+    },
+    {
+      name: "import",
+      description: "导入会话打包文件为历史会话：/import <bundle 路径>",
+      category: "builtin",
+      args: { placeholder: "bundle 路径", required: true },
+      handler: handleImport,
     },
   ];
 }
