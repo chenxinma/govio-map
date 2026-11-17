@@ -1,5 +1,14 @@
 # T3.2 只读分享与 fork 续写 · 设计（简版，存储层引用 T3.1 design.md）
 
+> ⚠️ **快照语义已被 T3.5 取代（2026-11-17）**：本文 §1（ShareRecord 快照、`.govio/shares/*.json`、
+> 随机令牌、S3 远端分享发现）与 §2（只读态复跑 `POST /api/shares/<token>/rerun`）**已废弃删除**，
+> 不迁移、不做只读兼容。现行语义（会话指纹 token 的画布**活视图** + 分享开关/撤销 + 3s 轮询 +
+> 与主画布同渲染）见 `docs/tasks/T3.5-live-share-view/design.md` 与 `docs/specs/06-backend.md`。
+> **仍然有效的部分**：§1 的「三层只读实现」（视图层 / 连接层不建 /ws / API 层无写入口）、
+> §3 fork 续写与 `forkFrom` 派生血缘（改为从当前活画布 fork）、§4 WS 协议版本口径。
+> §5 遗留 1（无过期/撤销）已由 T3.5 的开关部分闭合（过期时间仍未做，归口 T3.3）；遗留 3（未复用
+> Nodes/*.tsx、图表不渲染）已由 T3.5 彻底解决。
+
 任务：`docs/task-plan.json → P3.T3.2`；与 T3.1 合并单 worker 串行实施。
 存储/绑定/凭据模型章节全部见 `docs/tasks/T3.1-canvas-team-storage/design.md`（§0.4 凭据安全、§0.5 配置与发现）。
 

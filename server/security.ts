@@ -27,8 +27,12 @@ export function isAllowedOrigin(origin: string | undefined | null): boolean {
  */
 export function corsHeadersFor(req: { headers: { origin?: string } }): Record<string, string> {
   const base: Record<string, string> = {
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    // DELETE 供 T3.5「撤销分享」（DELETE /api/shares）；两者均不是 CORS 安全方法，需进白名单。
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    // If-None-Match 供 T3.5 活视图轮询的条件请求（→ 304），同样不是安全请求头。
+    "Access-Control-Allow-Headers": "Content-Type, If-None-Match",
+    // 允许跳源页面（dev：5173 → 5174）的 JS 读到活视图的 ETag 响应头。
+    "Access-Control-Expose-Headers": "ETag",
     Vary: "Origin",
   };
   const origin = req.headers.origin;

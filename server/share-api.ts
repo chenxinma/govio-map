@@ -1,25 +1,27 @@
 /**
- * T3.2 分享 HTTP API（挂载在 backend.ts 的 createServer，与 /api/preview 同侧）。
+ * T3.5 只读分享「活视图」HTTP API（挂载在 backend.ts 的 createServer，与 /api/preview 同侧）。
  *
  * 路由：
- *  - POST /api/shares                  → 分享当前活动会话画布（生成快照 + 令牌）
- *  - GET  /api/shares/<token>          → 只读打开分享（含 Manifest 清单与派生血缘；
- *                                        永远不含 profile/凭据）
- *  - POST /api/shares/<token>/fork     → fork 出可写副本（暂存 forkId，供主界面
- *                                        canvas_fork_apply 应用，不回写源画布）
- *  - POST /api/shares/<token>/rerun    → 只读态复跑（T1.2 语义，按快照 Manifest 固化
- *                                        SQL 重跑并判漂移；结果只进响应，不写任何画布）
- *  - GET/POST /api/canvas-storage      → 逐画布 S3 绑定查询/配置（T3.1；响应只含
- *                                        profile 名与 canvasId，不含凭据）
+ *  - GET    /api/share-state            → 当前会话的分享开关状态 `{enabled, token}`（无活动会话 409）
+ *  - POST   /api/shares                 → **开启**当前会话分享（幂等：重复调用返回同一 token）
+ *  - DELETE /api/shares                 → **撤销**当前会话分享（幂等：删除开关 sidecar，链接立即失效）
+ *  - GET    /api/shares/<token>         → 当前画布**活视图**载荷（不再写快照文件）；带 ETag，
+ *                                         `If-None-Match` 命中回 304；token 未开启/不存在 → 404
+ *  - POST   /api/shares/<token>/fork    → fork 出可写副本（从当前活画布暂存 forkId，供主界面
+ *                                         canvas_fork_apply 应用，不回写源画布）
+ *  - GET/POST /api/canvas-storage       → 逐画布 S3 绑定查询/配置（T3.1；不属本 API 的变更范围）
  *
- * 只读纪律：以上路由不存在任何写源画布 sidecar 的路径；写只发生在
- * 分享记录/暂存 fork 的创建与绑定配置（服务端自有文件，且不含凭据）。
+ * T3.5 删除：`POST /api/shares/<token>/rerun`（只读页复跑）。活视图语义下「动手」一律走 fork，
+ * 且复跑会对服务端当前会话产生执行副作用，与只读纪律冲突（用户裁决 ⑥）。
+ *
+ * 只读纪律：以上路由不存在任何写源画布 sidecar 的路径；写只发生在分享开关 sidecar
+ * （`<session>.jsonl.share.json`，仅 `{version,enabled,enabledAt,token}`）与暂存 fork 的创建。
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { getSession } from "./agent.js";
-import { rerunDataFrame } from "./dataframe-rerun.js";
 import { corsHeadersFor } from "./security.js";
-import { canvasIdFromSessionFile, assertValidShareId } from "./storage/backend.js";
+import { SHARE_NOT_FOUND_ERROR, type LiveSharePayload } from "../src/types/share.js";
+import { assertValidShareId } from "./storage/backend.js";
 import {
   bindCanvasStorage,
   clearStorageBinding,
@@ -28,11 +30,12 @@ import {
   type SyncResult,
 } from "./storage/canvas-storage.js";
 import {
-  createShare,
+  disableShare,
+  enableShare,
   forkShare,
-  resolveShare,
-  shareViewPayload,
-  type ShareRecord,
+  ifNoneMatchHits,
+  liveShareView,
+  shareStateOf,
 } from "./share.js";
 
 const MAX_BODY_BYTES = 1 * 1024 * 1024;
@@ -66,6 +69,9 @@ function activeSessionFile(): string | null {
   return session?.sessionManager.getSessionFile() ?? null;
 }
 
+/** token 未开启/不存在/形状非法一律同一个 404，不区分「没有这个会话」与「分享已关闭」（不泄露存在性）。 */
+const SHARE_NOT_FOUND = { error: SHARE_NOT_FOUND_ERROR };
+
 export async function handleShareApi(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const CORS_HEADERS = corsHeadersFor(req);
   const send = (status: number, payload: unknown): void => {
@@ -73,79 +79,98 @@ export async function handleShareApi(req: IncomingMessage, res: ServerResponse):
     res.end(JSON.stringify(payload));
   };
 
-  if (req.method === "POST" && req.url === "/api/shares") {
+  if (req.url === "/api/share-state" && req.method === "GET") {
+    const file = activeSessionFile();
+    if (!file) {
+      send(409, { error: "share state requires an active session" });
+      return true;
+    }
+    const state = shareStateOf(file);
+    send(200, { enabled: state.enabled, token: state.token, enabledAt: state.enabledAt });
+    return true;
+  }
+
+  if (req.url === "/api/shares" && req.method === "POST") {
     try {
       const file = activeSessionFile();
       if (!file) {
         send(409, { error: "share requires an active session" });
         return true;
       }
-      const record = await createShare(file, canvasIdFromSessionFile(file));
-      send(201, { shareId: record.shareId, url: `/share/${record.shareId}`, createdAt: record.createdAt });
+      const state = enableShare(file);
+      send(200, {
+        enabled: true,
+        token: state.token,
+        enabledAt: state.enabledAt,
+        url: `/share/${state.token}`,
+      });
     } catch (err) {
       send(500, { error: err instanceof Error ? err.message : String(err) });
     }
     return true;
   }
 
-  const shareMatch = /^\/api\/shares\/([A-Za-z0-9]+)(\/(fork|rerun))?$/.exec(req.url ?? "");
+  if (req.url === "/api/shares" && req.method === "DELETE") {
+    try {
+      const file = activeSessionFile();
+      if (!file) {
+        send(409, { error: "share requires an active session" });
+        return true;
+      }
+      const state = disableShare(file);
+      send(200, { enabled: false, token: state.token });
+    } catch (err) {
+      send(500, { error: err instanceof Error ? err.message : String(err) });
+    }
+    return true;
+  }
+
+  const shareMatch = /^\/api\/shares\/([A-Za-z0-9]+)(\/fork)?$/.exec(req.url ?? "");
   if (shareMatch) {
     const token = shareMatch[1];
-    const action = shareMatch[3];
+    const action = shareMatch[2];
     try {
       assertValidShareId(token);
     } catch {
-      send(404, { error: "share not found" });
+      send(404, SHARE_NOT_FOUND);
       return true;
     }
     if (req.method === "GET" && !action) {
       try {
-        const record = await resolveShare(token);
-        if (!record) {
-          send(404, { error: "share not found" });
+        const view = liveShareView(token);
+        if (!view) {
+          send(404, SHARE_NOT_FOUND);
           return true;
         }
-        send(200, { readonly: true, ...shareViewPayload(record) });
+        const etag = `"${view.etag}"`;
+        // 活视图绝不进浏览器 HTTP 缓存（否则轮询会拿到陈旧副本）；304 由 If-None-Match 显式协商。
+        const headers = { ETag: etag, "Cache-Control": "no-store", ...CORS_HEADERS };
+        if (ifNoneMatchHits(req.headers["if-none-match"], view.etag)) {
+          res.writeHead(304, headers);
+          res.end();
+          return true;
+        }
+        res.writeHead(200, { "Content-Type": "application/json", ...headers });
+        // etag 同时进 body：跨源时读响应头需要 Access-Control-Expose-Headers，
+        // body 里的值前端无条件可读，作为下一次 If-None-Match 的来源更稳。
+        const payload: LiveSharePayload = { readonly: true, etag: view.etag, ...view.record };
+        res.end(JSON.stringify(payload));
       } catch (err) {
         send(500, { error: err instanceof Error ? err.message : String(err) });
       }
       return true;
     }
-    if (req.method === "POST" && action === "fork") {
+    if (req.method === "POST" && action === "/fork") {
       try {
-        const result = await forkShare(token);
+        const result = forkShare(token);
         if (!result) {
-          send(404, { error: "share not found" });
+          send(404, SHARE_NOT_FOUND);
           return true;
         }
         send(201, { forkId: result.forkId, shareId: result.shareId, forkFrom: result.forkFrom });
       } catch (err) {
         send(500, { error: err instanceof Error ? err.message : String(err) });
       }
-      return true;
-    }
-    if (req.method === "POST" && action === "rerun") {
-      (async () => {
-        try {
-          const parsed = await readJsonBody(req);
-          const nodeId = (parsed as { nodeId?: unknown })?.nodeId;
-          if (typeof nodeId !== "string" || !nodeId) {
-            send(400, { error: "Missing required field: nodeId" });
-            return;
-          }
-          const record = await resolveShare(token);
-          const entry = record?.manifests.find((m) => m.nodeId === nodeId);
-          if (!entry) {
-            send(409, { error: `分享快照中找不到节点 ${nodeId} 的分析留痕（Manifest），无法复跑` });
-            return;
-          }
-          // 只读复跑：结果只进响应（前端在分享视图本地追加新副本节点），不写任何画布工件。
-          const rerunRecord = await rerunDataFrame(entry.manifest, { sessionId: `share:${token}` });
-          send(200, { record: rerunRecord });
-        } catch (err) {
-          send(500, { error: err instanceof Error ? err.message : String(err) });
-        }
-      })();
       return true;
     }
     send(405, { error: "method not allowed" });
@@ -168,7 +193,7 @@ export async function handleShareApi(req: IncomingMessage, res: ServerResponse):
         const file = activeSessionFile();
         if (!file) {
           send(409, { error: "canvas storage requires an active session" });
-          return;
+          return true;
         }
         const parsed = await readJsonBody(req);
         const body = (parsed ?? {}) as { profile?: unknown; canvasId?: unknown; clear?: unknown };
@@ -199,5 +224,3 @@ export async function handleShareApi(req: IncomingMessage, res: ServerResponse):
 
   return false;
 }
-
-export type { ShareRecord };

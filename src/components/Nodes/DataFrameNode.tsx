@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Table2, Quote, Eye, Trash2, ChevronDown, ChevronUp, ScrollText, RotateCw, AlertTriangle } from 'lucide-react';
 import type { DataFrameNodeData } from '../../types';
 import { useCanvasStore } from '../../store/canvas-store';
+import { useReadOnlyCanvas } from '../../hooks/useReadOnlyCanvas';
 import { canRerun, hasDrift, latestRerun } from '../../utils/rerun';
 import ManifestDetails from './ManifestDetails';
 import RerunStatus from './RerunStatus';
@@ -15,6 +16,9 @@ function DataFrameNode({ data, id }: NodeProps) {
   const rerunDataFrame = useCanvasStore((s) => s.rerunDataFrame);
   const rerunning = useCanvasStore((s) => s.rerunningNodeIds.includes(id));
   const rerunError = useCanvasStore((s) => s.rerunErrors[id]);
+  // T3.5 只读活视图：预览（POST /api/preview）与复跑（POST /api/rerun-dataframe）都会对
+  // **服务端当前会话单例**（即源实例）产生执行副作用，连同引用/删除一律不渲染
+  const readOnly = useReadOnlyCanvas();
   const [expanded, setExpanded] = useState(false);
   const [showManifest, setShowManifest] = useState(false);
   const visibleColumns = expanded ? nodeData.columns : nodeData.columns.slice(0, 10);
@@ -88,8 +92,10 @@ function DataFrameNode({ data, id }: NodeProps) {
         </div>
       )}
 
-      {/* 5 个按钮在 320px 卡片里偏宽，flex-wrap 保证不溢出 */}
+      {/* 5 个按钮在 320px 卡片里偏宽，flex-wrap 保证不溢出；只读态只剩「详情」时不留空壳 */}
+      {(!readOnly || nodeData.manifest) && (
       <div className="border-t border-border-subtle px-4 py-2 flex flex-wrap gap-2">
+        {!readOnly && (
         <button
           onClick={(e) => { e.stopPropagation(); addReference(id); }}
           className="flex items-center gap-1 text-xs text-text-muted hover:text-brand transition-colors px-2 py-1 rounded-md hover:bg-brand/5"
@@ -97,6 +103,8 @@ function DataFrameNode({ data, id }: NodeProps) {
           <Quote size={12} />
           <span>引用</span>
         </button>
+        )}
+        {!readOnly && (
         <button
           onClick={(e) => { e.stopPropagation(); openPreviewPanel(id); }}
           className="flex items-center gap-1 text-xs text-text-muted hover:text-brand transition-colors px-2 py-1 rounded-md hover:bg-brand/5"
@@ -104,6 +112,7 @@ function DataFrameNode({ data, id }: NodeProps) {
           <Eye size={12} />
           <span>预览</span>
         </button>
+        )}
         {nodeData.manifest && (
           <button
             onClick={(e) => { e.stopPropagation(); setShowManifest(!showManifest); }}
@@ -114,7 +123,7 @@ function DataFrameNode({ data, id }: NodeProps) {
             <span>详情</span>
           </button>
         )}
-        {canRerun(nodeData) && (
+        {!readOnly && canRerun(nodeData) && (
           <button
             onClick={(e) => { e.stopPropagation(); void rerunDataFrame(id); }}
             disabled={rerunning}
@@ -125,13 +134,16 @@ function DataFrameNode({ data, id }: NodeProps) {
             <span>{rerunning ? '复跑中' : '复跑'}</span>
           </button>
         )}
+        {!readOnly && (
         <button
           onClick={(e) => { e.stopPropagation(); deleteNodes([id]); }}
           className="ml-auto flex items-center text-text-muted hover:text-error transition-colors p-1 rounded-md hover:bg-error/10"
         >
           <Trash2 size={12} />
         </button>
+        )}
       </div>
+      )}
 
       <Handle type="source" position={Position.Right} className="!bg-brand" />
       <Handle type="target" position={Position.Left} className="!bg-brand" />

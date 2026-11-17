@@ -23,6 +23,7 @@
 | `src/types/rerun.ts` | 复跑记录类型（前后端共享） |
 | `src/utils/rerun.ts` | 复跑记录的前端写入规则（追加/封顶/漂移判定，纯函数）+ 结论措辞 `RERUN_OUTCOME_LABELS` |
 | `src/utils/manifest-labels.ts` | Manifest 展示措辞（origin / 生成模型），节点详情面板与交付报告共用 |
+| `src/hooks/useReadOnlyCanvas.ts` | 只读画布上下文（T3.5）：节点组件据此隐藏一切会产生副作用的操作入口，默认 `false` |
 
 ## 节点类型注册
 
@@ -326,3 +327,42 @@ ChartNode 使用 ChartErrorBoundary 包裹，渲染失败时显示 "图表配置
 | DataFrame | 1. AI 执行 `govio-cli observe load` 后自动创建 2. AI 调用 `govio_show_dataframe` 工具 |
 | Report | AI 执行 `govio-cli observe compare/explore` 后自动创建 |
 | Chart | AI 调用 `govio_show_chart` 工具 |
+
+## 只读画布：分享活视图的渲染口径（T3.5）
+
+`/share/<token>` 只读页**不另写一套简化卡片**，直接复用本模块的五类节点组件与同一套边渲染
+（语义边样式、X13/X15 关系详情、X18 口径徐标、Plotly 懒加载 chunk）——`ShareView` 的
+`nodeTypes` 就是 `src/components/Nodes/index.ts` 导出的**同一对象**，所以主画布长什么样，
+只读页就长什么样（图表也是真 Plotly，不是文字占位）。
+
+### 只读上下文
+
+五类节点不只是展示，卡片内的按钮会调 store action 或打 HTTP 接口（`/api/preview`、
+`/api/rerun-dataframe`、`/api/execute-sql`），而这些接口作用于**服务端当前会话单例**（即分享链接的源实例）。
+只读页用 `ReadOnlyCanvasContext`（`src/hooks/useReadOnlyCanvas.ts`）把这些入口关掉：
+
+```tsx
+// ShareView：包住 ReactFlow
+<ReadOnlyCanvasContext.Provider value={true}> … </ReadOnlyCanvasContext.Provider>
+// 节点组件：默认 false ⇒ 主画布零行为变化
+const readOnly = useReadOnlyCanvas();
+```
+
+| 节点 | 只读态**隐藏**（会产生副作用） | 只读态**保留**（纯本地展示） |
+|------|------|------|
+| SourceTableNode | 引用、删除（整条操作栏不渲染） | 字段表与展开/收起、全限定名复制、表间关系（X13/X15） |
+| SQLQueryNode | 引用、**编辑**（SQLModal 会执行 SQL）、删除、双击就地编辑 | SQL 高亮全文、输出列、口径徐标（X18）与冲突详情（T2.3）、Manifest「详情」 |
+| DataFrameNode | 引用、**预览**（`POST /api/preview`）、**复跑**（`POST /api/rerun-dataframe`）、删除 | 列结构表与展开、漂移/复跑历史（RerunStatus）、Manifest「详情」 |
+| ReportNode | 引用、删除（整条操作栏不渲染） | Markdown 正文、源引用标签 |
+| ChartNode | 引用、删除 | **Plotly 图本体**、放大（ChartModal）、来源 df / 图表类型 |
+
+只读态下操作栏只剩「详情」时仍渲染（Manifest 是交付证据）；一个按钮也不剩时整条栏不渲染，不留空壳。
+
+### 存储隔离（必读）
+
+只读页把远端画布灌进**同一个** `useCanvasStore` 单例，而它与主界面同源共享
+`localStorage['govio-canvas-state']`。因此灌数据前**必须**先中和 persist
+（`src/components/Share/canvas-persistence.ts`，在任何 `set()` 之前调用），否则远端画布会被写进本机
+ localStorage，用户下次打开主界面 rehydrate 成「别人的画布」。同理，远端数据到达前只渲染 loading 态，
+绝不渲染 store 在模块导入时从 localStorage rehydrate 出来的本机节点（反向隐私泄露）。
+UI 测试（`tests/ui/share-view.test.tsx`）对这两条都有断言。

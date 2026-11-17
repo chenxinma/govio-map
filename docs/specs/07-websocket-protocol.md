@@ -19,6 +19,11 @@
   （schema 元数据层）。
 - **version 不上线**：消息字段与改造前逐字节等价，v1 的版本语义由前后端同仓同构建的
   「部署对」隐式携带。未来跨版本协商的演进路径是新增 hello/握手消息，而非逐条加字段。
+- **T3.5（只读分享活视图）确认 `PROTOCOL_VERSION` 仍为 1，本任务零契约变更**：只读页的实时同步全部走
+  HTTP 轮询（`GET /api/shares/<token>` + `If-None-Match` → 304，3s 间隔，失败退避 3→6→12→30s），
+  **未新增也未修改任何 WS 消息类型**；`/share/*` 页面根本不建 `/ws` 连接（只读纪律的连接层）。
+  契约文件 `src/types/ws-protocol.ts` 零改动，`tests/integration/ws-protocol.test.ts` 计数不变（19 例全绿）。
+  已删除的 `POST /api/shares/<token>/rerun` 是 HTTP 路由，与本契约无关。
 
 ### 消息全集
 
