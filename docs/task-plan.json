@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-17T13:49:47+08:00",
+  "updatedAt": "2026-11-17T21:19:27+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1768,7 +1768,7 @@
     {
       "id": "X26",
       "title": "BUGFIX：CORS 预检靠 parquet-api 的全局 OPTIONS 分支兑现（挂载顺序隐性依赖 + bundle-api 死分支）",
-      "status": "in_progress",
+      "status": "accepted",
       "kr": null,
       "dependsOn": [
         "T3.5",
@@ -1797,6 +1797,12 @@
           "at": "2026-11-17T13:49:47+08:00",
           "by": "main-session",
           "note": "用户 2026-11-17 指示「安排 bugfix 执行」。以 pi subagent（worker agent，context:fork）派发，分支 bugfix-share-preflight 基于合并态 main 06523c5，预算 60min。取证事实已由主会话实测内联进 note，worker 不必重复。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-17T21:19:27+08:00",
+          "by": "main-session",
+          "note": "PR #49（merge 62c46bc）已由用户合并。主会话在**合并态 main** 独立复跑：build=0 / lint=0 / verify=0，verify 全跑后 git status --porcelain 干净；脚本断言逐项 92/71/119/148/39/54/77/13/58 = 671 不变。抽查确认：security.ts 为**纯新增**两个函数（isCorsPreflight / respondToCorsPreflight），corsHeadersFor 与 ALLOWED_ORIGIN_RE 一字未动；backend.ts 抽出具名导出 handleBackendRequest 且首行应答预检（使测试能断言生产用的同一条链）；parquet-api.ts:88、parquet-api.ts:299、bundle-api.ts:163 三处 OPTIONS 分支已删净（grep -c 三个文件均为 0）；断言三层（纯函数 / 真实链路 / 真 HTTP 127.0.0.1+端口0）含两条顺序无关断言与七个必预检端点全覆盖；非白名单 Origin 不回显 ACAO 三层各一条。**主会话另核覆盖面**：server/serve.ts（npm run serve → dist-server/cli.mjs）走同一个 startBackend，故生产模式同受本修复覆盖。唯一行为变化（非 /api/* 的 OPTIONS 由一律 204 改为落 404 兜底）已加断言钉住，并取证 grep -rn OPTIONS src/ 为空 ⇒ 无前端消费者依赖旧行为。ubuntu CI build+lint+verify pass（1m6s）、GitGuardian pass。断言数归属说明：X26 自身为 vitest 30·452 → 31·469（+1 文件/+17 例 = 新增 18 − 合并改写 1，删除 0 例）、UI 9·84 不变；合并态 main 实测 33·476 / 10·87 的额外增量来自**并行合入的 PR #50**（用户的另一条交互会话，非本链任务），已按 X23 约定一并同步进 verificationBaseline 并在 note 中标注归属。零新增依赖、src/ 零改动、share.ts/share-api.ts/ws-protocol.ts/scripts/ 零改动（PROTOCOL_VERSION 仍为 1）。"
         }
       ]
     },
@@ -1878,12 +1884,14 @@
     "x25-share-link-origin": "https://github.com/chenxinma/govio-map/pull/45",
     "t35-live-share-view": "https://github.com/chenxinma/govio-map/pull/46",
     "t36-export-session-bundle": "https://github.com/chenxinma/govio-map/pull/47",
-    "t37-import-session-bundle": "https://github.com/chenxinma/govio-map/pull/48"
+    "t37-import-session-bundle": "https://github.com/chenxinma/govio-map/pull/48",
+    "bugfix-share-preflight": "https://github.com/chenxinma/govio-map/pull/49",
+    "bugfix-model-thinking-sync": "https://github.com/chenxinma/govio-map/pull/50"
   },
   "verificationBaseline": {
     "updatedAt": "2026-11-15T09:35:53+08:00",
     "source": "唯一事实源：CI 断言数看板（.github/workflows/scripts/assertion-dashboard.mjs）从这里读基线，脚本内不再硬编码数字（X23，解 X16 design.md 遗留 1）。",
-    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：T3.7（2026-11-17，PR #48 合并态 main 独立复跑：vitest 27·377 → 30·452、UI 7·62 → 9·84；脚本 671 逐项不变，verify:export 148 零改动、零新增依赖）。P3 串行链 T3.5→T3.6→T3.7 至此全部 accepted。",
+    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：X26 + PR #50（2026-11-17，合并态 main 62c46bc 独立复跑：脚本 671 逐项不变；vitest 30·452 → 33·476，其中 X26 贡献 +1 文件/+17 例（cors-preflight，30·452→31·469），PR #50「模型/思考档链路」贡献 +2 文件/+7 例（pending-ack 与 model-select）；UI 9·84 → 10·87，全部来自 PR #50 的 model-select.test.tsx。注意 verify:integration = 裸 vitest run，其文件/用例数**包含** tests/ui。PR #50 由用户的另一条交互会话直接实现并合并，task-plan 内暂无对应任务条目，仅有 docs/tasks/BUGFIX-model-thinking-sync.md。）",
     "scripts": {
       "verify:manifest": 92,
       "verify:rerun": 71,
@@ -1903,12 +1911,12 @@
     },
     "vitest": {
       "verify:integration": {
-        "files": 30,
-        "tests": 452
+        "files": 33,
+        "tests": 476
       },
       "verify:ui": {
-        "files": 9,
-        "tests": 84
+        "files": 10,
+        "tests": 87
       }
     }
   }
