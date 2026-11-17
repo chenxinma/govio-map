@@ -235,9 +235,6 @@ export default function ChatPanel({ width }: ChatPanelProps) {
         clearMessages={clearMessages}
         clearSession={clearSession}
         clearCanvas={useCanvasStore.getState().clearCanvas}
-        messages={messages}
-        nodes={useCanvasStore.getState().nodes}
-        edges={useCanvasStore.getState().edges}
       />
     </div>
     </>

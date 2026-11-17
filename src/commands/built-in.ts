@@ -11,6 +11,7 @@ function handleClearCanvas(ctx: CommandContext) {
 }
 
 function handleExport(ctx: CommandContext) {
+  // T3.6：/export = 把当前会话打包成 zip（不可变留痕）；异步与进度反馈由 ChatInput 侧承担。
   ctx.exportSession();
 }
 
@@ -30,7 +31,7 @@ export function getBuiltInCommands(): SlashCommand[] {
     },
     {
       name: "export",
-      description: "导出会话保存成json",
+      description: "打包导出当前会话为 zip（画布 + 对话 + 留痕 + 交付报告）",
       category: "builtin",
       handler: handleExport,
     },

@@ -1,11 +1,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Send, Square, Database, Code, Table2, FileText, BarChart3, X } from "lucide-react";
 import type { ReferencedNode, NodeType } from "../../types";
-import type { ChatMessage } from "../../hooks/useChat";
-import type { Node, Edge } from "@xyflow/react";
 import { useCommands } from "../../commands/useCommands";
 import { filterCommands } from "../../commands/registry";
-import { exportSession } from "../../commands/export-session";
 import CommandSuggestion from "../../commands/CommandSuggestion";
 import type { SlashCommand, CommandContext } from "../../commands/types";
 
@@ -36,10 +33,15 @@ interface ChatInputProps {
   clearMessages?: () => void;
   clearCanvas?: () => void;
   clearSession?: () => void;
-  messages?: ChatMessage[];
-  nodes?: Node[];
-  edges?: Edge[];
 }
+
+/** `/export` 进度与结果的一句话反馈（与 CanvasToolbar 的导出提示同款形态与 TTL）。 */
+interface ExportNote {
+  kind: "ok" | "error";
+  text: string;
+}
+
+const EXPORT_NOTE_TTL_MS = 8000;
 
 export default function ChatInput({
   onSend,
@@ -52,26 +54,78 @@ export default function ChatInput({
   clearMessages = () => {},
   clearCanvas = () => {},
   clearSession = () => {},
-  messages = [],
-  nodes = [],
-  edges = [],
 }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState<ExportNote | null>(null);
+  const exportNoteTimer = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const showExportNote = useCallback((next: ExportNote) => {
+    setExportNote(next);
+    if (exportNoteTimer.current !== null) window.clearTimeout(exportNoteTimer.current);
+    exportNoteTimer.current = window.setTimeout(() => setExportNote(null), EXPORT_NOTE_TTL_MS);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (exportNoteTimer.current !== null) window.clearTimeout(exportNoteTimer.current);
+    },
+    [],
+  );
+
+  /**
+   * `/export`：打包当前会话为 zip（T3.6）。
+   *
+   * 内容全部由服务端会话文件 + 浏览器生成的交付报告组成（见 `commands/export-session.ts`），
+   * 所以这里**不需要** messages/nodes/edges props —— 旧实现把画布 store 的实时状态塞进 JSON
+   * 快照，新实现以会话 sidecar 为准，保证「包里的画布」与「包里的报告」说的是同一个东西。
+   *
+   * 实现模块用**动态 import**（与 CanvasToolbar 对 `export-report.ts` 的做法一致）：fflate、
+   * HTML 报告模板、Plotly 静态渲染都不进主 bundle，只有用户真的执行 `/export` 才付这份代价。
+   */
+  const runExportBundle = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    showExportNote({ kind: "ok", text: "正在打包会话（画布 + 对话 + 留痕 + 交付报告）…" });
+    try {
+      const { exportSessionBundle } = await import("../../commands/export-session");
+      const result = await exportSessionBundle({
+        pageOrigin: window.location.origin,
+        appVersion: typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : undefined,
+      });
+      const kb = Math.max(1, Math.round(result.bytes / 1024));
+      const parts = [
+        `${kb} KB`,
+        `${result.fileCount} 个文件`,
+        result.reportIncluded ? "含交付报告" : "无交付报告（画布为空）",
+      ];
+      if (result.excludedParquet.count > 0) {
+        parts.push(`未含 ${result.excludedParquet.count} 个 parquet（清单已记账）`);
+      }
+      showExportNote({ kind: "ok", text: `已导出 ${result.fileName}（${parts.join(" · ")}）` });
+    } catch (err) {
+      showExportNote({ kind: "error", text: `导出失败：${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting, showExportNote]);
 
   const ctx: CommandContext = useMemo(
     () => ({
       clearMessages,
       clearCanvas,
       clearSession,
-      exportSession: () => exportSession(messages, nodes, edges),
+      exportSession: () => {
+        void runExportBundle();
+      },
       addSystemMessage: () => {
         // System messages are visual-only; the store handles display
       },
     }),
-    [clearMessages, clearCanvas, clearSession, messages, nodes, edges]
+    [clearMessages, clearCanvas, clearSession, runExportBundle]
   );
 
   const { commands, execute } = useCommands(ctx);
@@ -206,6 +260,17 @@ export default function ChatInput({
               </span>
             );
           })}
+        </div>
+      )}
+
+      {/* /export 进度与结果反馈（T3.6） */}
+      {exportNote && (
+        <div
+          className={`px-2.5 py-1.5 rounded-md text-[11px] font-mono leading-relaxed break-all border bg-bg-card ${
+            exportNote.kind === "error" ? "border-error/40 text-error" : "border-border-default text-text-muted"
+          }`}
+        >
+          {exportNote.text}
         </div>
       )}
 

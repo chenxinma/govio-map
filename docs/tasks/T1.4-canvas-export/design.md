@@ -5,6 +5,13 @@
 > 状态：实现完成。`npm run build` + `npm run lint`（0 error）+ `npm run verify:export`（116 项断言）通过；
 > T1.1/T1.2/T1.3 验证脚本无回归（52 / 62 / 86 项）
 
+> 🔗 **与 T3.6 的关系（2026-11-17）**：本文描述的「导出交付报告」按钮链路（`CanvasToolbar` →
+> `src/utils/export-report.ts`）**一字未改**，`verify:export` 断言零回归。T3.6 只是把这份 HTML 作为
+> `report.html` **一并放进** `/export` 的会话 zip 包里当可读入口（用户裁决 ①），并在浏览器侧复用本文的
+> 纯函数（`buildDeliveryReportHtml` / `renderChartImages` / `collectPermissionDecisionIds` / `parseAuditEntries`）
+> 生成它；唯一不复用的是 `fetchAuditAppendix()`——它内部那份 `apiBase()` 还是端口 +1 硬编码（X25 遗留 2），
+> T3.6 自己拉审计通道。见 `docs/tasks/T3.6-export-session-bundle/design.md`。
+
 ## 1. 目标与范围
 
 把「画布上这一次分析」变成一份**可以发出去的交付物**：一个 HTML 文件，双击就能离线打开，里面既有给人看的结论（节点卡片 + 血缘图），也有给质疑者查的留痕（附录 A Manifest、附录 B 权限确认记录）。

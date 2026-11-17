@@ -2,6 +2,7 @@ import { createServer } from "http";
 import { setupWebSocket } from "./ws-handler.js";
 import { handleParquetApi } from "./parquet-api.js";
 import { handleShareApi } from "./share-api.js";
+import { handleBundleApi } from "./bundle-api.js";
 import { agentSetup } from "./agent.js";
 import { ensureModelsConfig } from "./models-config.js";
 import { LOOPBACK_HOST } from "./security.js";
@@ -33,6 +34,8 @@ export async function startBackend(port = 5174) {
   const httpServer = createServer(async (req, res) => {
     if (await handleParquetApi(req, res)) return;
     if (await handleShareApi(req, res)) return;
+    // T3.6 session 打包（/export）的只读文件集通道。
+    if (await handleBundleApi(req, res)) return;
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));
   });
