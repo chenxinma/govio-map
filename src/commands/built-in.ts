@@ -5,8 +5,8 @@ function handleClear(ctx: CommandContext) {
 }
 
 function handleClearCanvas(ctx: CommandContext) {
+  // 按设计文档只清画布，不动对话（2026-05-07 slash-commands-design 的 Action 定义）。
   ctx.clearCanvas();
-  ctx.clearMessages();
   ctx.addSystemMessage("已清理画布并释放所有数据");
 }
 

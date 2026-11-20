@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.md)
 
-Infinite-canvas data governance tool. Drive an AI agent (based on [pi-coding-agent](docs/pi/)) through natural-language conversation to run data queries, exploration, and analysis; results are arranged as visual card nodes on a canvas with data-lineage edges created automatically.
+Infinite-canvas data governance tool. Drive an AI agent (based on [pi-coding-agent](https://github.com/earendil-works/pi)) through natural-language conversation to run data queries, exploration, and analysis; results are arranged as visual card nodes on a canvas with data-lineage edges created automatically.
 
 ```
 SourceTable ──▶ SQL ──▶ DataFrame ──▶ Report / Chart
