@@ -84,12 +84,10 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
   // Per-request CORS headers: only local frontend origins are echoed back.
   const CORS_HEADERS = corsHeadersFor(req);
 
-  // 处理 CORS preflight
-  if (req.method === "OPTIONS") {
-    res.writeHead(204, CORS_HEADERS);
-    res.end();
-    return true;
-  }
+  // X26：CORS 预检不在本模块应答 —— 统一由 backend.ts 的 handleBackendRequest 在所有
+  // handle*Api 之前处理（见 security.ts 的 respondToCorsPreflight）。此处原先的首位
+  // OPTIONS 分支位于任何路径判断之前，事实上替整个服务器兑现了预检，使其它路由的跳源
+  // 可用性隐性依赖本模块与挂载顺序，已删除。
 
   // GET /api/sql-editor-init - 获取数据源和DataFrame列表
   if (req.url?.startsWith("/api/sql-editor-init") && req.method === "GET") {
@@ -294,13 +292,6 @@ export async function handleParquetApi(req: IncomingMessage, res: ServerResponse
   }
 
   if (!req.url?.startsWith("/api/preview")) return false;
-
-  // Handle CORS preflight
-  if (req.method === "OPTIONS") {
-    res.writeHead(204, CORS_HEADERS);
-    res.end();
-    return true;
-  }
 
   const url = new URL(req.url, "http://localhost");
   const dfName = url.searchParams.get("df");

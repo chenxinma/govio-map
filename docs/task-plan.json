@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-17T13:49:47+08:00",
+  "updatedAt": "2026-11-17T21:27:23+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1768,7 +1768,7 @@
     {
       "id": "X26",
       "title": "BUGFIX：CORS 预检靠 parquet-api 的全局 OPTIONS 分支兑现（挂载顺序隐性依赖 + bundle-api 死分支）",
-      "status": "in_progress",
+      "status": "accepted",
       "kr": null,
       "dependsOn": [
         "T3.5",
@@ -1797,6 +1797,12 @@
           "at": "2026-11-17T13:49:47+08:00",
           "by": "main-session",
           "note": "用户 2026-11-17 指示「安排 bugfix 执行」。以 pi subagent（worker agent，context:fork）派发，分支 bugfix-share-preflight 基于合并态 main 06523c5，预算 60min。取证事实已由主会话实测内联进 note，worker 不必重复。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-17T21:19:27+08:00",
+          "by": "main-session",
+          "note": "PR #49（merge 62c46bc）已由用户合并。主会话在**合并态 main** 独立复跑：build=0 / lint=0 / verify=0，verify 全跑后 git status --porcelain 干净；脚本断言逐项 92/71/119/148/39/54/77/13/58 = 671 不变。抽查确认：security.ts 为**纯新增**两个函数（isCorsPreflight / respondToCorsPreflight），corsHeadersFor 与 ALLOWED_ORIGIN_RE 一字未动；backend.ts 抽出具名导出 handleBackendRequest 且首行应答预检（使测试能断言生产用的同一条链）；parquet-api.ts:88、parquet-api.ts:299、bundle-api.ts:163 三处 OPTIONS 分支已删净（grep -c 三个文件均为 0）；断言三层（纯函数 / 真实链路 / 真 HTTP 127.0.0.1+端口0）含两条顺序无关断言与七个必预检端点全覆盖；非白名单 Origin 不回显 ACAO 三层各一条。**主会话另核覆盖面**：server/serve.ts（npm run serve → dist-server/cli.mjs）走同一个 startBackend，故生产模式同受本修复覆盖。唯一行为变化（非 /api/* 的 OPTIONS 由一律 204 改为落 404 兜底）已加断言钉住，并取证 grep -rn OPTIONS src/ 为空 ⇒ 无前端消费者依赖旧行为。ubuntu CI build+lint+verify pass（1m6s）、GitGuardian pass。断言数归属说明：X26 自身为 vitest 30·452 → 31·469（+1 文件/+17 例 = 新增 18 − 合并改写 1，删除 0 例）、UI 9·84 不变；合并态 main 实测 33·476 / 10·87 的额外增量来自**并行合入的 PR #50**（用户的另一条交互会话，非本链任务），已按 X23 约定一并同步进 verificationBaseline 并在 note 中标注归属。零新增依赖、src/ 零改动、share.ts/share-api.ts/ws-protocol.ts/scripts/ 零改动（PROTOCOL_VERSION 仍为 1）。"
         }
       ]
     },
@@ -1831,6 +1837,41 @@
           "at": "2026-11-17T13:49:47+08:00",
           "by": "main-session",
           "note": "用户 2026-11-17 指示纳入计划（不派发）。开放项：落点（UI 显示 sha256 / 旁文件 / 两者）、是否导入侧自动比对、是否升级到非对称签名（涉密钥管理，可能归口 T3.3）。派发前需用户裁决。"
+        }
+      ]
+    },
+    {
+      "id": "X28",
+      "title": "BUGFIX：模型/思考档链路——可用模型走 ModelRuntime、可搜索下拉 + 思考档设置、prompt 前回执闸门、会话模型不被前端覆盖、CLI --model/--thinking",
+      "status": "accepted",
+      "kr": null,
+      "dependsOn": [
+        "X2"
+      ],
+      "note": "**回填条目**（2026-11-17，用户批准）：本任务由用户的另一条交互会话直接实现，经 PR #50（分支 bugfix/model-thinking-sync，merge 6af1c8d，mergedAt 2026-11-17T07:28:22Z）合入 main，此前 task-plan 内**无任何记录**，只有 docs/tasks/BUGFIX-model-thinking-sync.md。为保持「计划文件是唯一事实源」，由主会话在 X26 验收时回填本条（现象/根因/修复细节以该 BUGFIX 文档为准，本条只做索引与验收记账）。四类缺陷：① chat 模型下拉含无有效凭证的模型、模型多时不可搜索、缺思考深度设置（modelOptions 直接 flatten models.json，不经 ModelRuntime.getAvailable；原生 <select>）；② 选完模型/思考档立刻发 prompt 会用上旧值（set_model/set_thinking_level 是 fire-and-forget 的异步 WS 往返，prompt 不等回执）；③ 续会话时前端把会话刚恢复的历史模型/思考档覆盖掉（applyModelSelection 无 localStorage 记忆时强制 set_model(options[0])）；④ npm run ask 永远用默认模型（cli.ts 无 --model/--thinking，getOrCreateSession 不透传创建选项）。",
+      "scope": [
+        "listAvailableModels 走 modelRuntime.getAvailable() 并附各模型 thinkingLevels（getSupportedThinkingLevels）；模型下拉换可搜索分组组合框 src/components/Chat/ModelSelect.tsx + 思考档选择",
+        "WS 协议**加法**扩展（src/types/ws-protocol.ts）：新增 get_available_models/available_models、set_thinking_level/thinking_level_set；session_ready 增两个可选字段 currentModel?/thinkingLevel? 作为事实基准；消息全集计数 20/28 同步更新；docs/specs/07-websocket-protocol.md 同步",
+        "src/utils/pending-ack.ts 回执闸门：send() 的 prompt 路径先等 model_set/thinking_level_set 回执（3s 超时兜底放行，不卡输入）",
+        "无 localStorage 记忆时尊重会话当前模型，相同则不发 set_model（消除覆盖）",
+        "getOrCreateSession(forceNew, opts?) 透传 model/thinkingLevel/modelRuntime；server/cli.ts 加 --model provider/id 与 --thinking level（非法值报错退出）",
+        "测试：新增 tests/integration/pending-ack.test.ts（4 例）与 tests/ui/model-select.test.tsx（3 例）；tests/integration/ws-protocol.test.ts、ws-handler.test.ts 同步"
+      ],
+      "acceptance": [
+        "模型下拉只列有有效凭证的可用模型（走 ModelRuntime.getAvailable），可搜索、可选思考档",
+        "选完模型/思考档立刻发 prompt 不会用上旧值（回执闸门，含超时兜底不卡输入）",
+        "续会话不会被前端覆盖会话自身的模型/思考档",
+        "npm run ask 支持 --model/--thinking 且实际生效，非法值报错退出",
+        "PROTOCOL_VERSION 保持 1（纯加法：新消息类型 + 新可选字段，向后兼容）；bump 政策已成文于 docs/specs/07-websocket-protocol.md「版本化」小节",
+        "npm run build/lint/verify 全绿；已走 GitHub PR（#50，用户合并）"
+      ],
+      "outputDir": "docs/tasks/BUGFIX-model-thinking-sync.md",
+      "history": [
+        {
+          "status": "accepted",
+          "at": "2026-11-17T21:27:23+08:00",
+          "by": "main-session",
+          "note": "**回填 + 主会话验收记账**（2026-11-17，X26 验收同一轮）。PR #50 与 X26（PR #49）并行合入，合并态 main 62c46bc 由主会话独立复跑：build=0 / lint=0 / verify=0，verify 全跑后 git status --porcelain 干净，脚本断言逐项 92/71/119/148/39/54/77/13/58 = 671 不变。本任务的断言贡献：tests/integration +1 文件/+4 例（pending-ack）、tests/ui +1 文件/+3 例（model-select），协议契约测试计数同步为 20/28。**口径澄清（本轮回填时一并更正 BUGFIX 文档）**：该文档原写「集成 372 + UI 87」——372 是「仅 tests/integration 目录」口径且测于 X26 合入之前，数字本身正确；两 PR 合并后实测为 tests/integration 23 文件 389 例（= 372 + X26 的 cors-preflight 17 例）、tests/ui 10 文件 87 例，而 verificationBaseline 用的 verify:integration 是**裸 vitest run（包含 tests/ui）**⇒ 记为 33 文件 476 例（389 + 87）。PROTOCOL_VERSION 经核仍为 1（src/types/ws-protocol.ts:35），新增 4 类消息与 session_ready 两个可选字段属加法兼容；据此主会话把「bump 政策」成文进 docs/specs/07-websocket-protocol.md（加法不 bump；改名/删除/语义变更/新增必填字段/$id 前缀变更必须 bump 并写迁移说明），用户 2026-11-17 批准。该任务自带遗留 2 条（见 BUGFIX 文档）：CLI 参数校验未单测（脚本入口，仅手动核对错误文案）；thinking 档位未持久化全局默认（persist 未传），换模型按 per-model/全局默认重算——如需「记住我的档位」另立任务。"
         }
       ]
     }
@@ -1878,12 +1919,14 @@
     "x25-share-link-origin": "https://github.com/chenxinma/govio-map/pull/45",
     "t35-live-share-view": "https://github.com/chenxinma/govio-map/pull/46",
     "t36-export-session-bundle": "https://github.com/chenxinma/govio-map/pull/47",
-    "t37-import-session-bundle": "https://github.com/chenxinma/govio-map/pull/48"
+    "t37-import-session-bundle": "https://github.com/chenxinma/govio-map/pull/48",
+    "bugfix-share-preflight": "https://github.com/chenxinma/govio-map/pull/49",
+    "bugfix-model-thinking-sync": "https://github.com/chenxinma/govio-map/pull/50"
   },
   "verificationBaseline": {
     "updatedAt": "2026-11-15T09:35:53+08:00",
     "source": "唯一事实源：CI 断言数看板（.github/workflows/scripts/assertion-dashboard.mjs）从这里读基线，脚本内不再硬编码数字（X23，解 X16 design.md 遗留 1）。",
-    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：T3.7（2026-11-17，PR #48 合并态 main 独立复跑：vitest 27·377 → 30·452、UI 7·62 → 9·84；脚本 671 逐项不变，verify:export 148 零改动、零新增依赖）。P3 串行链 T3.5→T3.6→T3.7 至此全部 accepted。",
+    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：X26 + PR #50（2026-11-17，合并态 main 62c46bc 独立复跑：脚本 671 逐项不变；vitest 30·452 → 33·476，其中 X26 贡献 +1 文件/+17 例（cors-preflight，30·452→31·469），PR #50「模型/思考档链路」贡献 +2 文件/+7 例（pending-ack 与 model-select）；UI 9·84 → 10·87，全部来自 PR #50 的 model-select.test.tsx。注意 verify:integration = 裸 vitest run，其文件/用例数**包含** tests/ui。PR #50 由用户的另一条交互会话直接实现并合并，task-plan 内暂无对应任务条目，仅有 docs/tasks/BUGFIX-model-thinking-sync.md。）",
     "scripts": {
       "verify:manifest": 92,
       "verify:rerun": 71,
@@ -1903,12 +1946,12 @@
     },
     "vitest": {
       "verify:integration": {
-        "files": 30,
-        "tests": 452
+        "files": 33,
+        "tests": 476
       },
       "verify:ui": {
-        "files": 9,
-        "tests": 84
+        "files": 10,
+        "tests": 87
       }
     }
   }
