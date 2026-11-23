@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-23T21:17:15+08:00",
+  "updatedAt": "2026-11-23T21:24:28+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1918,6 +1918,38 @@
           "at": "2026-11-23T21:17:15+08:00",
           "by": "main-session",
           "note": "PR #51 已由用户合并（merge 4b3d4ac）→ 元信息与 LICENSE 落入 main：license=MIT、description/keywords/homepage/repository/bugs/author 齐备，npm pack 含 LICENSE（57 文件 / 2.5 MB，.agents/skills/govio/assets 仍排除）。任务整体保持 in_progress：0.7.3 升版、npm publish、GitHub Release v0.7.3、占位版本 0.0.0-stage 清理均待用户触发/裁决。"
+        }
+      ]
+    },
+    {
+      "id": "X30",
+      "title": "BUGFIX：画布小地图（MiniMap）无法点击导航",
+      "status": "pending",
+      "kr": null,
+      "dependsOn": [],
+      "note": "用户 2026-11-23 报障：右下角小地图「应该可以点击」，实际点击无反应。实证（记录见 docs/tasks/BUGFIX-minimap-navigation.md）：Canvas.tsx:73 与 ShareView.tsx:213 两处 MiniMap 都只传 nodeColor/maskColor/className，未接 onClick；@xyflow/react@12.12.0 的 MiniMap 内置交互仅来自 @xyflow/system 的 XYMinimap（d3-zoom 的 drag 平移 + wheel 缩放），单击不移动视口，onClick 只回传指针坐标、不替你 setViewport → 点击无反应是该库的预期行为，不是回归。次要待证：拖拽/滚轮是否也失效（若失效则另有覆盖层/pointer-events 成因，须先实测取证）。本条只记录，未修复、未排期；用户当前重心在 0.7.3 发版（X29）。",
+      "scope": [
+        "修复前先做浏览器实测并留证：点击 / 拖拽 / 滚轮 三者在可编辑画布与分享视图下的实际表现（判定是「仅缺点击跳转」还是「整块不可交互」）",
+        "Canvas.tsx 与 ShareView.tsx 两处 MiniMap 同改：接 onClick + setCenter/setViewport 实现点击跳转，显式声明 pannable/zoomable，hover 给 pointer/grab 光标反馈",
+        "若实测拖拽也失效：先定位覆盖层/pointer-events/svg 尺寸成因并单独修，不得用点击跳转掩盖",
+        "分享视图（只读态）是否保留小地图导航需在 design 里裁决并写明（导航非数据副作用，倾向保留）",
+        "tests/ui 补 onClick → 视口变化的用例（jsdom 无法模拟 d3-zoom 拖拽，拖拽/滚轮必须列手动验证清单）",
+        "目标目录实际为单文件 docs/tasks/BUGFIX-minimap-navigation.md（沿用 BUGFIX-model-thinking-sync.md 单文件体例），不另建子目录"
+      ],
+      "acceptance": [
+        "报告与实测结论一致：明确「点击跳转缺失」与「拖拽/滚轮是否可用」的事实边界（有浏览器取证）",
+        "可编辑画布与分享视图均支持点击小地图跳转到对应位置，并保留拖拽平移 / 滚轮缩放",
+        "小地图 hover 有可操作的光标反馈；不引入新的层级遮挡（预览面板拖到右下角时行为明确）",
+        "npm run build / lint / verify 全绿，新增 UI 用例通过，既有断言零回归",
+        "代码改动走 GitHub PR（用户合并）；手动验证清单结论写入 verification 记录"
+      ],
+      "outputDir": "docs/tasks/BUGFIX-minimap-navigation.md",
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-11-23T21:21:00+08:00",
+          "by": "main-session",
+          "note": "用户 2026-11-23 报障并要求「先记录问题」。主会话只做静态取证（未在浏览器实测）：两处 MiniMap 均未接 onClick，xyflow v12 的 MiniMap 原生无单击跳转（XYMinimap 只挂 d3-zoom drag/wheel）。记录落 docs/tasks/BUGFIX-minimap-navigation.md，本条 status=pending，未派发、未修复。"
         }
       ]
     }
