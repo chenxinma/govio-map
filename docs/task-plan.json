@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-17T21:27:23+08:00",
+  "updatedAt": "2026-11-23T21:17:15+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1874,6 +1874,52 @@
           "note": "**回填 + 主会话验收记账**（2026-11-17，X26 验收同一轮）。PR #50 与 X26（PR #49）并行合入，合并态 main 62c46bc 由主会话独立复跑：build=0 / lint=0 / verify=0，verify 全跑后 git status --porcelain 干净，脚本断言逐项 92/71/119/148/39/54/77/13/58 = 671 不变。本任务的断言贡献：tests/integration +1 文件/+4 例（pending-ack）、tests/ui +1 文件/+3 例（model-select），协议契约测试计数同步为 20/28。**口径澄清（本轮回填时一并更正 BUGFIX 文档）**：该文档原写「集成 372 + UI 87」——372 是「仅 tests/integration 目录」口径且测于 X26 合入之前，数字本身正确；两 PR 合并后实测为 tests/integration 23 文件 389 例（= 372 + X26 的 cors-preflight 17 例）、tests/ui 10 文件 87 例，而 verificationBaseline 用的 verify:integration 是**裸 vitest run（包含 tests/ui）**⇒ 记为 33 文件 476 例（389 + 87）。PROTOCOL_VERSION 经核仍为 1（src/types/ws-protocol.ts:35），新增 4 类消息与 session_ready 两个可选字段属加法兼容；据此主会话把「bump 政策」成文进 docs/specs/07-websocket-protocol.md（加法不 bump；改名/删除/语义变更/新增必填字段/$id 前缀变更必须 bump 并写迁移说明），用户 2026-11-17 批准。该任务自带遗留 2 条（见 BUGFIX 文档）：CLI 参数校验未单测（脚本入口，仅手动核对错误文案）；thinking 档位未持久化全局默认（persist 未传），换模型按 per-model/全局默认重算——如需「记住我的档位」另立任务。"
         }
       ]
+    },
+    {
+      "id": "X29",
+      "title": "npm 包元信息补齐与 govio-map 0.7.3 发版",
+      "status": "in_progress",
+      "kr": null,
+      "dependsOn": [],
+      "note": "用户 2026-11-23 首次把 govio-map 正式发布到 npm（0.7.2 已占 latest）后发现 registry 上 License 等元信息全空。根因：package.json 只有 name/version，缺 description/author/repository/homepage/keywords/license，仓库也没有 LICENSE 文件；npm 只好从 README 首行抓 description（结果是「**简体中文** | [English](README.en.md)」）。元信息修正已单独开 PR #51（MIT + LICENSE 文件），版本号按用户指示保持 0.7.2 不动——npm 的 version 元数据发布后不可变、且 unpublish 会使该版本号永久作废，故元信息只能随下一次发版（0.7.3）才在 registry 生效。0.7.3 的发布时机由用户裁决：等当前在飞的一批任务完成后一并升版发布，不在本任务内催。另 registry 上存在用户早前发布的占位版本 0.0.0-stage（description「Temporary package placeholder for staged publishing」，不在 latest），待用户裁决是否 deprecate/unpublish。",
+      "scope": [
+        "PR #51（已完成，等用户合并）：package.json 补 description/keywords/homepage/repository/bugs/author/license=MIT + 新增 LICENSE（MIT，版权人 chenxin.ma）+ package-lock.json 根条目同步 license（仅 1 行，依赖树零变动）",
+        "0.7.3 升版：package.json version 0.7.2 → 0.7.3（按用户指示等在飞任务完成后执行；与元信息 PR 分开或同批由用户裁决）",
+        "补 docs/release-v0.7.3.md（沿用 release-v0.7.2.md 格式：变更摘要、npm 安装说明、0.7.2 元信息缺失的修正说明、已知取舍）",
+        "发布：npm publish --registry=https://registry.npmjs.org（全局 registry 是 npmmirror 只读镜像，必须显式覆盖；账号 chenxin.ma 开了 2FA，publish 需 OTP —— 用户提供验证码或用户自行在终端发布）；发布后用 npm view 复核 license/description/author/repository/keywords 落地与 tarball 内含 LICENSE",
+        "发布后同步 GitHub Release v0.7.3（tag + npm tgz 附件），对齐 v0.7.2 惯例（X20 history 末条）",
+        "占位版本 0.0.0-stage 的清理（npm deprecate 或 unpublish）待用户裁决后执行",
+        "GitHub 仓库主页元信息（description + topics）由主会话于 2026-11-23 直接写入，非本任务验收项，仅留痕"
+      ],
+      "acceptance": [
+        "registry 上 govio-map@0.7.3 的 license=MIT、description/author/repository/homepage/keywords 均有值，tarball 内含 LICENSE 且不含 .agents/skills/govio/assets",
+        "npm i -g govio-map@0.7.3 可安装，govio-map 命令可启动（bin → dist-server/cli.mjs）",
+        "package.json version=0.7.3；docs/release-v0.7.3.md 覆盖本轮全部合并 PR",
+        "npm run build / lint / verify 全绿，断言零回归（纯元信息与版本记账，无新增用例）；verify 全跑后 git status 干净",
+        "仓库改动走 GitHub PR（用户合并）；npm publish 由用户提供 OTP 或用户执行，主会话不得在无 OTP 情况下擅自重试",
+        "GitHub Release v0.7.3 已建（tag + tgz 附件），与 npm 上 0.7.3 一致"
+      ],
+      "outputDir": "docs/tasks/X29-npm-metadata-release/",
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-11-23T21:16:41+08:00",
+          "by": "main-session",
+          "note": "立项。用户 2026-11-23 指示先更新元信息、等当前一批任务完成后再升 0.7.3 发布，并要求写入任务计划。实证：npm view govio-map 显示 version=0.7.2 已发布（latest）、license/author/repository/homepage/keywords 均 null、description 为 README 首行；仓库无 LICENSE 文件。"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-23T21:16:41+08:00",
+          "by": "main-session",
+          "note": "元信息修正落地并开 PR #51（分支 chore/npm-metadata-license，commit 0420d3e）：package.json 补 description/keywords/homepage/repository/bugs/author/license=MIT，新增 LICENSE，lockfile 根条目同步 license 一行。验证：build/lint exit 0、npm ci --dry-run exit 0、npm pack --dry-run 显示 LICENSE 入包共 57 文件 2.5MB、git status 仅三文件。License 选型（MIT）待用户在 PR 上确认，若改 Apache-2.0/UNLICENSED 只需改两条文件。0.7.3 升版与 npm publish 等用户触发。"
+        },
+        {
+          "status": "in_progress",
+          "at": "2026-11-23T21:17:15+08:00",
+          "by": "main-session",
+          "note": "PR #51 已由用户合并（merge 4b3d4ac）→ 元信息与 LICENSE 落入 main：license=MIT、description/keywords/homepage/repository/bugs/author 齐备，npm pack 含 LICENSE（57 文件 / 2.5 MB，.agents/skills/govio/assets 仍排除）。任务整体保持 in_progress：0.7.3 升版、npm publish、GitHub Release v0.7.3、占位版本 0.0.0-stage 清理均待用户触发/裁决。"
+        }
+      ]
     }
   ],
   "pullRequests": {
@@ -1921,7 +1967,8 @@
     "t36-export-session-bundle": "https://github.com/chenxinma/govio-map/pull/47",
     "t37-import-session-bundle": "https://github.com/chenxinma/govio-map/pull/48",
     "bugfix-share-preflight": "https://github.com/chenxinma/govio-map/pull/49",
-    "bugfix-model-thinking-sync": "https://github.com/chenxinma/govio-map/pull/50"
+    "bugfix-model-thinking-sync": "https://github.com/chenxinma/govio-map/pull/50",
+    "x29-npm-metadata-release": "https://github.com/chenxinma/govio-map/pull/51"
   },
   "verificationBaseline": {
     "updatedAt": "2026-11-15T09:35:53+08:00",
