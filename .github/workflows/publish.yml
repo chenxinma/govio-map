@@ -13,7 +13,12 @@ name: Publish to npm (manual)
 #   兜底：仓库 secret NPM_TOKEN（Automation/Granular token，仅该包），存在时优先用它。
 #
 # 与 ci.yml 的关系：完全独立，**不改变** job 名 `build + lint + verify`（ruleset 27209918 的
-# required check），也不与 ci 抢 concurrency group。
+# required check），也不与 ci 抢 concurrency group。#
+# **发布与验证分离（X32）**：本 workflow 只负责「把包发出去」，发布成功即结束。
+# 「发布后有效性验证」（等 registry 从 validating 变 live、元信息、tarball 内容、provenance、
+# 安装与启动冒烟）由独立的 .github/workflows/verify-release.yml 手动触发。原因：npm 在 publish
+# 成功后要几分钟才把版本从 validating 变成可查询（实测 0.7.3 约 5.5 分钟），塞在同一个 job 里
+# 必然误报失败，且失败后无法「只重试验证」。
 
 on:
   workflow_dispatch:
@@ -189,30 +194,16 @@ jobs:
           echo "dry_run=true：跳过 npm publish，仅验证构建与打包口径"
           npm publish --dry-run --ignore-scripts --access public --registry=https://registry.npmjs.org
 
-      # ── 发布后自检：自检失败不得宣告发布成功 ──────────────────────────────
-      - name: Post-publish self check
-        if: ${{ inputs.dry_run == false }}
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          want="${INPUT_VERSION#v}"
-          for field in license description author repository homepage keywords dist.integrity; do
-            value="$(npm view "govio-map@${want}" "$field" --json 2>/dev/null || echo '')"
-            if [ -z "$value" ] || [ "$value" = "null" ] || [ "$value" = '""' ]; then
-              echo "::error title=元信息缺失::registry 上 govio-map@${want} 的 ${field} 为空"
-              exit 1
-            fi
-            echo "  $field = $value"
-          done
-          # 安装到临时 prefix 并确认 bin 可执行（不打全局到 runner 环境）
-          tmp_prefix="$(mktemp -d)"
-          npm i -g --prefix "$tmp_prefix" "govio-map@${want}" --registry=https://registry.npmjs.org
-          "$tmp_prefix/bin/govio-map" --version || node "$tmp_prefix/lib/node_modules/govio-map/dist-server/cli.mjs" --version
-          echo "自检通过：govio-map@${want} 可安装且 bin 可执行"
-
+      # ── 发布后：不做验证（X32 已拆到 verify-release.yml） ─────────────────
+      # 历史上这里跑「元信息 + npm i -g + --version」自检，两个缺陷：
+      #   1) publish 成功的瞬间版本还在 validating，`npm view` 必然 ETARGET → 自检误报失败；
+      #   2) 该 CLI 没有 --version（dist-server/cli.mjs 是 serve 入口，会一直跑服务），
+      #      真跑到这一步会把 job 拖到 timeout-minutes 上限。
+      # 故发布链路到此为止；生效验证见 verify-release.yml。
       # ── 产物：tgz + 校验和，供人工挂到 GitHub Release（不自动建 Release） ──
       - name: Upload tgz artifact
+        # 发布成功与否都要留证据（tgz 已在本步骤之前生成）
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: npm-tgz-${{ inputs.version }}
@@ -233,4 +224,7 @@ jobs:
             echo "| dry_run | \`${{ inputs.dry_run }}\` |"
             echo "| 认证方式 | \`${{ steps.auth.outputs.mode || '未判定' }}\` |"
             echo "| skills tag | \`${{ steps.skills.outputs.tag || '未取到' }}\` |"
+            echo ""
+            echo "> 发布成功后 npm 需要数分钟做 validating。生效验证（元信息 / tarball 内容 / provenance / 安装启动冒烟）"
+            echo "> 请另跑 `Verify published package (manual)` workflow，输入同一版本号。"
           } >> "$GITHUB_STEP_SUMMARY"
