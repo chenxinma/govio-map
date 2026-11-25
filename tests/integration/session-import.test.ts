@@ -29,7 +29,7 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import type { Node } from "@xyflow/react";
 
@@ -997,6 +997,64 @@ describe("HTTP：POST /api/session-import", () => {
     expect(res.json()!.error).toBe("checksum-mismatch");
     expect(res.body).not.toContain(SENTINEL);
     expect(res.body).not.toContain("第一句");
+  });
+});
+
+// ── 4.5 X27 外层整包校验和 ────────────────────────────────────────────────
+
+describe("X27 外层整包校验和（expectedBundleSha256）", () => {
+  it("相符：正常导入（与不给校验和的结果一致）", async () => {
+    const { path, zip } = await buildRealBundle();
+    const before = snapshotSessions();
+    const result = importSessionBundle(path, { now: () => FIXED_NOW, expectedBundleSha256: sha256Hex(zip) });
+    expect(result.sessionFile).toContain(join(".govio", "sessions"));
+    expect(snapshotSessions()).toEqual([...before, ...newFilesOf(result.sessionFile)].sort());
+  });
+
+  it("容忍大写与 sha256sum 整行粘贴", async () => {
+    const { path, zip } = await buildRealBundle();
+    const hex = sha256Hex(zip);
+    expect(() => importSessionBundle(path, { now: () => FIXED_NOW, expectedBundleSha256: hex.toUpperCase() })).not.toThrow();
+    const line = `${hex}  ${basename(path)}`;
+    expect(() => importSessionBundle(path, { now: () => FIXED_NOW, expectedBundleSha256: line })).not.toThrow();
+  });
+
+  it("不符：以 outer-checksum-mismatch 拒绝，且零文件写入", async () => {
+    const { path } = await buildRealBundle();
+    const before = snapshotSessions();
+    expectZeroWrite(
+      before,
+      () => importSessionBundle(path, { now: () => FIXED_NOW, expectedBundleSha256: "deadbeef".repeat(8) }),
+      "outer-checksum-mismatch",
+    );
+  });
+
+  it("格式非法：同样拒绝且零写入（不静默跳过校验）", async () => {
+    const { path } = await buildRealBundle();
+    const before = snapshotSessions();
+    expectZeroWrite(
+      before,
+      () => importSessionBundle(path, { now: () => FIXED_NOW, expectedBundleSha256: "not-a-hash" }),
+      "outer-checksum-mismatch",
+    );
+  });
+
+  it("HTTP：body 里带 sha256 → 强制比对；不带 → 行为不变", async () => {
+    const { path, zip } = await buildRealBundle();
+    const good = await callApi("POST", "/api/session-import", {
+      body: JSON.stringify({ path, sha256: sha256Hex(zip) }),
+    });
+    expect(good.status).toBe(200);
+    expect(good.json()!.ok).toBe(true);
+
+    const before = snapshotSessions();
+    const bad = await callApi("POST", "/api/session-import", {
+      body: JSON.stringify({ path, sha256: "0".repeat(64) }),
+    });
+    expect(bad.status).toBe(422);
+    expect(bad.json()!.error).toBe("outer-checksum-mismatch");
+    expect(snapshotSessions(), "外层校验失败必须零写入").toEqual(before);
+    expect(bad.body).not.toContain(SENTINEL);
   });
 });
 

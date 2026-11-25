@@ -180,9 +180,14 @@ export async function handleBundleApi(req: IncomingMessage, res: ServerResponse)
       send(400, { error: "invalid-request", message: "缺少 path 字段：用法 /import <bundle 路径>" });
       return true;
     }
+    // X27：整包 sha256（可选）。给了就必须相符；格式不对也与 importSessionBundle 同码。
+    const sha256 = (body as { sha256?: unknown } | null)?.sha256;
 
     try {
-      const result = importSessionBundle(path);
+      const result = importSessionBundle(
+        path,
+        typeof sha256 === "string" && sha256.trim() !== "" ? { expectedBundleSha256: sha256 } : {},
+      );
       send(200, { ok: true, ...result }, { "Cache-Control": "no-store" });
     } catch (err) {
       if (err instanceof BundleImportError) {

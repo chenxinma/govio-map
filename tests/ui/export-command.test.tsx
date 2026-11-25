@@ -83,6 +83,27 @@ describe("/export 命令接线", () => {
     expect(screen.getByText(/含交付报告/)).toBeTruthy();
   });
 
+  it("X27：反馈里显示整包 sha256 与旁文件名（交接核对用）", async () => {
+    stubSkillsFetch();
+    const hex = "d".repeat(64);
+    exportMock.exportSessionBundle.mockResolvedValue({
+      fileName: "e".repeat(32) + ".govio-bundle.zip",
+      bytes: 2048,
+      fileCount: 6,
+      token: "e".repeat(32),
+      sessionId: "s-4",
+      reportIncluded: true,
+      excludedParquet: { count: 0, bytes: 0 },
+      bundleSha256: hex,
+      checksumFileName: "e".repeat(32) + ".govio-bundle.zip.sha256",
+    });
+    renderInput();
+    fireEvent.click(openExportSuggestion());
+    const note = await screen.findByText(/整包 sha256/);
+    expect(note.textContent).toContain(hex);
+    expect(note.textContent).toContain(`e`.repeat(32) + ".govio-bundle.zip.sha256");
+  });
+
   it("排除了 parquet 时，反馈里如实说明（清单已记账）", async () => {
     stubSkillsFetch();
     exportMock.exportSessionBundle.mockResolvedValue({

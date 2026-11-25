@@ -9,7 +9,7 @@
  * 基址纪律（X25）：一律 `apiBaseFrom(window.location.origin) ?? ''`，绝不硬编码端口 +1。
  */
 import { apiBaseFrom } from "../utils/share-link";
-import type { ImportErrorCode, SessionImportResult } from "../types/bundle";
+import { normalizeBundleChecksum, type ImportErrorCode, type SessionImportResult } from "../types/bundle";
 
 /** 导入失败（后端拒绝或网络不通）——消息已经是给用户看的中文。 */
 export class SessionImportError extends Error {
@@ -27,6 +27,11 @@ export interface ImportBundleDeps {
   pageOrigin: string;
   /** 要导入的包路径（用户在 `/import` 后给的那一段）。 */
   bundlePath: string;
+  /**
+   * 外层整包 sha256（X27，可选）：来自 `<包名>.sha256` 旁文件或导出方告知的值。
+   * 给了就要求后端强制比对，不符则拒绝导入（零写入）。
+   */
+  expectedSha256?: string;
   /** 测试注入点。 */
   fetchImpl?: typeof fetch;
 }
@@ -49,6 +54,7 @@ const IMPORT_ERROR_TEXT: Record<ImportErrorCode, string> = {
   "entry-missing": "清单登记的文件在包里不存在（包不完整），已拒绝导入。",
   "entry-unexpected": "包内出现清单未登记的条目，已整包拒绝（防夹带）。",
   "checksum-mismatch": "文件校验和不符，包可能已损坏或被改动，已拒绝导入。",
+  "outer-checksum-mismatch": "整包校验和不符：手里的 zip 与导出方声称的不是同一份（传输损坏或被替换），已拒绝导入。",
   "payload-invalid": "包内 canvas.json / manifests.json 不是合法内容，已拒绝导入。",
   "transcript-invalid": "包内 session.jsonl 不是合法的 pi 会话记录，无法作为历史会话落地。",
   "target-conflict": "目标会话文件已存在，拒绝覆盖（导入一律生成新会话 id）。",
@@ -75,7 +81,16 @@ export async function importSessionBundle(deps: ImportBundleDeps): Promise<Sessi
   const apiBase = apiBaseFrom(deps.pageOrigin) ?? "";
   const bundlePath = typeof deps.bundlePath === "string" ? deps.bundlePath.trim() : "";
   if (bundlePath === "") {
-    throw new SessionImportError("用法：/import <bundle 路径>（T3.6 /export 产出的 .govio-bundle.zip）");
+    throw new SessionImportError("用法：/import <bundle 路径> [整包 sha256]（T3.6 /export 产出的 .govio-bundle.zip）");
+  }
+  // X27：给了外层校验和就先在本地把格式收敛掉（免得把一堆乱字符发给后端）。
+  const expectedSha256 = typeof deps.expectedSha256 === "string" && deps.expectedSha256.trim() !== ""
+    ? normalizeBundleChecksum(deps.expectedSha256)
+    : undefined;
+  if (deps.expectedSha256 && deps.expectedSha256.trim() !== "" && !expectedSha256) {
+    throw new SessionImportError(
+      "整包校验和格式不对：应为 64 位十六进制（可直接粘贴 .sha256 文件里的整行）",
+    );
   }
 
   let res: Response;
@@ -83,7 +98,7 @@ export async function importSessionBundle(deps: ImportBundleDeps): Promise<Sessi
     res = await fetchImpl(`${apiBase}/api/session-import`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: bundlePath }),
+      body: JSON.stringify(expectedSha256 ? { path: bundlePath, sha256: expectedSha256 } : { path: bundlePath }),
     });
   } catch (err) {
     throw new SessionImportError(

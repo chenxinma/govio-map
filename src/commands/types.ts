@@ -35,7 +35,10 @@ export interface CommandContext {
    * `/import <bundle 路径>`：把 T3.6 产出的包导入成一个历史会话（T3.7）。
    * 与 {@link CommandContext.exportSession} 同款约定：实现异步、handler 同步返回，
    * 进度/结果反馈由 ChatInput 展示（成功给会话名 + 节点数，失败给具体原因）。
+   *
+   * `expectedSha256`（X27，可选）：`<包名>.sha256` 旁文件里的值（或导出方告知的值）。
+   * 给了就要求后端强制比对整包校验和；不符则拒绝导入且零写入。
    */
-  importSession: (bundlePath: string) => void;
+  importSession: (bundlePath: string, expectedSha256?: string) => void;
   addSystemMessage: (content: string) => void;
 }

@@ -113,7 +113,11 @@ export default function ChatInput({
       if (result.excludedParquet.count > 0) {
         parts.push(`未含 ${result.excludedParquet.count} 个 parquet（清单已记账）`);
       }
-      showCommandNote({ kind: "ok", text: `已导出 ${result.fileName}（${parts.join(" · ")}）` });
+      // X27：把整包 sha256 原样显示（可选中复制）+ 旁文件名，交接时给接收方核对。
+      showCommandNote({
+        kind: "ok",
+        text: `已导出 ${result.fileName}（${parts.join(" · ")}）\n整包 sha256：${result.bundleSha256}\n同时下载了 ${result.checksumFileName}；接收方可在 /import 后面带上该值强制比对`,
+      });
     } catch (err) {
       showCommandNote({ kind: "error", text: `导出失败：${err instanceof Error ? err.message : String(err)}` });
     } finally {
@@ -127,13 +131,14 @@ export default function ChatInput({
    * 同样用**动态 import**：导入是低频操作，不该把它的代码与其错误码文案表塞进主 bundle。
    * 成功后调 `onSessionsChanged()` 让会话列表走既有 WS `session_list` 重拉一次。
    */
-  const runImportBundle = useCallback(async (bundlePath: string) => {
+  const runImportBundle = useCallback(async (bundlePath: string, expectedSha256?: string) => {
     if (commandBusy) return;
     setCommandBusy(true);
-    showCommandNote({ kind: "ok", text: `正在校验并导入 ${bundlePath} …` });
+    const withSum = expectedSha256 ? "（整包 sha256 已给出，将强制比对）" : "";
+    showCommandNote({ kind: "ok", text: `正在校验并导入 ${bundlePath} …${withSum}` });
     try {
       const { importSessionBundle, describeImportResult } = await import("../../commands/import-session");
-      const result = await importSessionBundle({ pageOrigin: window.location.origin, bundlePath });
+      const result = await importSessionBundle({ pageOrigin: window.location.origin, bundlePath, expectedSha256 });
       showCommandNote({ kind: "ok", text: describeImportResult(result) });
       onSessionsChanged();
     } catch (err) {
@@ -151,8 +156,8 @@ export default function ChatInput({
       exportSession: () => {
         void runExportBundle();
       },
-      importSession: (bundlePath: string) => {
-        void runImportBundle(bundlePath);
+      importSession: (bundlePath: string, expectedSha256?: string) => {
+        void runImportBundle(bundlePath, expectedSha256);
       },
       addSystemMessage: () => {
         // System messages are visual-only; the store handles display
