@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-25T21:35:00+08:00",
+  "updatedAt": "2026-11-25T21:55:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -162,7 +162,7 @@
     {
       "id": "X27",
       "title": "session bundle 外层完整性校验（闭合 bundle.json 无法自列校验和的剩余风险）",
-      "status": "done",
+      "status": "accepted",
       "kr": null,
       "dependsOn": [
         "T3.6",
@@ -196,6 +196,12 @@
           "at": "2026-11-25T21:35:00+08:00",
           "by": "main-session",
           "note": "主会话裁决落点（用户 2026-11-17 只要求纳入计划、未裁决）并实现：① 导出侧对最终 zip 字节算 SHA-256，UI 显示「整包 sha256」+ 下载 sha256sum 兼容旁文件 <包名>.sha256；② 导入侧 /import <路径> [sha256] 可选强制比对，在读包后解包前进行，不符/格式非法 → 新错误码 outer-checksum-mismatch（422）且零写入；③ 不做非对称签名（密钥管理归 T3.3，记 design 遗留）。不加校验和时行为逐字不变（decisions ⑤ 读宽写严）。验证：build/lint/verify 全绿，vitest 33·487（+11）、UI 10·90（+3），脚本断言 671 零回归；新增用例含「不符 → sessions 目录快照逐项不变」。文档：specs 06/08、USER-MANUAL 7.6/7.7。分支 chenxinma/x27-bundle-integrity，PR #53（CI 绿，待用户合并）。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-25T21:55:00+08:00",
+          "by": "main-session",
+          "note": "验收通过。① PR #53 已由用户合并（merge 382e64a）；② 合并态 main 21a6138 独立复跑：build/lint/verify 全绿，脚本断言 671 不变，vitest 34·495 / UI 11·98（与 X30+X27 合计新增吻合），工作区干净；③ 抽查实现：导出侧对 zip 字节求 sha256 并下载 sha256sum 兼容旁文件（formatBundleChecksum 两空格格式）、导入侧 expectedBundleSha256 在 readFile 之后 unzip 之前比对（零写入）、错误码 outer-checksum-mismatch 贯通 types→server→HTTP→前端文案；④ 落点裁决（UI 显示 + 旁文件 + 可选强制比对、不做签名）已随本任务 decisions 记录，用户未反对。遗留：非对称签名归 T3.3；旁文件不自动发现。"
         }
       ],
       "decisions": [
@@ -261,7 +267,7 @@
     {
       "id": "X30",
       "title": "BUGFIX：画布小地图（MiniMap）无法点击导航",
-      "status": "done",
+      "status": "accepted",
       "kr": null,
       "dependsOn": [],
       "note": "用户 2026-11-23 报障：右下角小地图「应该可以点击」，实际点击无反应。实证（记录见 docs/tasks/BUGFIX-minimap-navigation.md）：Canvas.tsx:73 与 ShareView.tsx:213 两处 MiniMap 都只传 nodeColor/maskColor/className，未接 onClick；@xyflow/react@12.12.0 的 MiniMap 内置交互仅来自 @xyflow/system 的 XYMinimap（d3-zoom 的 drag 平移 + wheel 缩放），单击不移动视口，onClick 只回传指针坐标、不替你 setViewport → 点击无反应是该库的预期行为，不是回归。次要待证：拖拽/滚轮是否也失效（若失效则另有覆盖层/pointer-events 成因，须先实测取证）。本条只记录，未修复、未排期；用户当前重心在 0.7.3 发版（X29）。",
@@ -293,6 +299,12 @@
           "at": "2026-11-25T21:35:00+08:00",
           "by": "main-session",
           "note": "主会话亲自实现（用户 2026-11-25 指令「在当前主 session 上完成 X27 X29 X30 X31」）。新增共享组件 src/components/Canvas/CanvasMiniMap.tsx（Canvas.tsx 与 ShareView.tsx 同改）：点击 → viewBox 线性换算成画布坐标 → setCenter(点, {zoom: 当前倍率, duration: 200})；显式 pannable/zoomable；className 加 cursor-pointer。浏览器实测（moli CDP + Chrome 145，1600×1100，dev server 真机）：点击左上/右下分别使视口移向左上/右下、拖拽平移且松手不被拉回指针处、hover 光标 pointer。**关键发现**：@xyflow/react v12 的 MiniMap 渲染出的 svg 上 React onClick 不派发（手调 props.onClick 正常、同组件自建探针 svg 正常），故弃用库回调，改在 display:contents wrapper 上接 click + 自算坐标（src/utils/minimap.ts 纯函数）。遗留：小地图滚轮缩放在真机未生效（修复前同样如此，未改其语义）。验证：build/lint/verify 全绿，vitest 34·484（+8）、UI 11·95（+8），脚本断言 671 零回归。分支 chenxinma/x30-minimap-navigation，PR #52（CI 绿，待用户合并）。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-25T21:55:00+08:00",
+          "by": "main-session",
+          "note": "验收通过。① PR #52 已由用户合并（merge cc768d0）；② 合并态 main 21a6138 独立复跑：build/lint/verify 全绿，脚本断言 671 逐项不变，vitest 34·495、UI 11·98（= 基线 +1 文件 +8 例，与本任务新增用例吻合），verify 全跑后 git status --porcelain 干净；③ 抽查实现：CanvasMiniMap 用 display:contents wrapper 接 click + viewBox 线性换算（src/utils/minimap.ts 纯函数）、显式 pannable/zoomable、cursor-pointer，Canvas.tsx 与 ShareView.tsx 均改为复用；④ **用户 2026-11-25 人工验证通过**（点击跳转与拖拽交互，用户确认；记录写入 docs/tasks/BUGFIX-minimap-navigation.md）。遗留仍开：小地图滚轮缩放在真机未生效（修复前同样如此，未改其语义），已在文档列为手动验证项。"
         }
       ]
     },
@@ -403,9 +415,9 @@
     "x29-release-0.7.3": "https://github.com/chenxinma/govio-map/pull/55"
   },
   "verificationBaseline": {
-    "updatedAt": "2026-11-15T09:35:53+08:00",
+    "updatedAt": "2026-11-25T21:55:00+08:00",
     "source": "唯一事实源：CI 断言数看板（.github/workflows/scripts/assertion-dashboard.mjs）从这里读基线，脚本内不再硬编码数字（X23，解 X16 design.md 遗留 1）。",
-    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：X26 + PR #50（2026-11-17，合并态 main 62c46bc 独立复跑：脚本 671 逐项不变；vitest 30·452 → 33·476，其中 X26 贡献 +1 文件/+17 例（cors-preflight，30·452→31·469），PR #50「模型/思考档链路」贡献 +2 文件/+7 例（pending-ack 与 model-select）；UI 9·84 → 10·87，全部来自 PR #50 的 model-select.test.tsx。注意 verify:integration = 裸 vitest run，其文件/用例数**包含** tests/ui。PR #50 由用户的另一条交互会话直接实现并合并，task-plan 内暂无对应任务条目，仅有 docs/tasks/BUGFIX-model-thinking-sync.md。）",
+    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：X26 + PR #50（2026-11-17，合并态 main 62c46bc 独立复跑：脚本 671 逐项不变；vitest 30·452 → 33·476，其中 X26 贡献 +1 文件/+17 例（cors-preflight，30·452→31·469），PR #50「模型/思考档链路」贡献 +2 文件/+7 例（pending-ack 与 model-select）；UI 9·84 → 10·87，全部来自 PR #50 的 model-select.test.tsx。注意 verify:integration = 裸 vitest run，其文件/用例数**包含** tests/ui。PR #50 由用户的另一条交互会话直接实现并合并，task-plan 内暂无对应任务条目，仅有 docs/tasks/BUGFIX-model-thinking-sync.md。） 同步（2026-11-25，合并态 main 21a6138 独立复跑）：PR #52（X30 小地图点击跳转）贡献 +1 UI 文件/+8 例；PR #53（X27 整包校验和）贡献 +11 例（其中 3 例落在 tests/ui）⇒ integration 33·476 → **34·495**、UI 10·87 → **11·98**；脚本断言 671 逐项不变（92/71/119/148/39/54/77/13 + 58）。PR #54（X31 workflow）与 #55（X29 升版）不改断言。",
     "scripts": {
       "verify:manifest": 92,
       "verify:rerun": 71,
@@ -425,12 +437,12 @@
     },
     "vitest": {
       "verify:integration": {
-        "files": 33,
-        "tests": 476
+        "files": 34,
+        "tests": 495
       },
       "verify:ui": {
-        "files": 10,
-        "tests": 87
+        "files": 11,
+        "tests": 98
       }
     }
   },
