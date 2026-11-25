@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-25T22:15:00+08:00",
+  "updatedAt": "2026-11-25T22:45:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -215,7 +215,7 @@
     {
       "id": "X29",
       "title": "npm 包元信息补齐与 govio-map 0.7.3 发版",
-      "status": "done",
+      "status": "accepted",
       "kr": null,
       "dependsOn": [],
       "note": "用户 2026-11-23 首次把 govio-map 正式发布到 npm（0.7.2 已占 latest）后发现 registry 上 License 等元信息全空。根因：package.json 只有 name/version，缺 description/author/repository/homepage/keywords/license，仓库也没有 LICENSE 文件；npm 只好从 README 首行抓 description（结果是「**简体中文** | [English](README.en.md)」）。元信息修正已单独开 PR #51（MIT + LICENSE 文件），版本号按用户指示保持 0.7.2 不动——npm 的 version 元数据发布后不可变、且 unpublish 会使该版本号永久作废，故元信息只能随下一次发版（0.7.3）才在 registry 生效。0.7.3 的发布时机由用户裁决：等当前在飞的一批任务完成后一并升版发布，不在本任务内催。另 registry 上存在用户早前发布的占位版本 0.0.0-stage（description「Temporary package placeholder for staged publishing」，不在 latest），待用户裁决是否 deprecate/unpublish。",
@@ -267,6 +267,12 @@
           "at": "2026-11-25T22:15:00+08:00",
           "by": "main-session",
           "note": "合并后进展：PR #55 已合并（merge 21a6138），main 上 package.json / lockfile = 0.7.3，release notes 与文档在位；合并态 main 独立复跑 build/lint/verify 全绿（671 / 34·495 / 11·98，工作区干净）。发布：已用 X31 的 publish workflow 演练成功（run 45629552187：pack 断言 38 文件 2385 KB ✓），真实发布 run 45630110495 因 **npmjs 未配置 Trusted Publishing binding** 被拒（E403 OIDC permission denied），registry 上仍只有 0.0.0-stage 与 0.7.2。下一步（阻塞在用户侧）：在 npmjs 为 govio-map 添加 trusted publisher（chenxinma/govio-map + publish.yml）或配置 NPM_TOKEN secret → 重跑 `gh workflow run publish.yml -f version=0.7.3 -f dry_run=false` → 自检通过后人工建 GitHub Release v0.7.3。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-25T22:45:00+08:00",
+          "by": "main-session",
+          "note": "验收通过。① PR #51（元信息 + LICENSE）与 PR #55（升版 0.7.3 + release notes）均已合并；② **registry 上 govio-map@0.7.3 已上线**且元信息齐全：license=MIT、description、author=chenxin.ma <chenxin.ma@qq.com>、repository=git+https://github.com/chenxinma/govio-map.git、homepage、keywords(6)、dist.integrity=sha512-yL+zAMeO…；③ 已上线 tarball 38 文件：含 LICENSE / dist / dist-server/cli.mjs / .pi/APPEND_SYSTEM.md / .agents 六个 govio 技能，**不含** .agents/skills/govio/assets；④ 可安装可运行：`npm i -g govio-map@0.7.3` 后启动打印 `[serve] Govio Map ready at http://localhost:5173`（服务常驻，无 --version 属设计）；⑤ GitHub Release **v0.7.3 已建**（tag v0.7.3，附件 govio-map-0.7.3.tgz 2,442,442 字节 = registry 上的同一份 tarball）；⑥ release notes `docs/release-v0.7.3.md` 覆盖 v0.7.2 之后全部合并项。遗留：npmjs 上占位版本 0.0.0-stage（不在 latest）是否 deprecate/unpublish 仍待用户裁决（unpublish 会使该号永久作废，建议 deprecate 或保持不动）。"
         }
       ]
     },
@@ -317,7 +323,7 @@
     {
       "id": "X31",
       "title": "GitHub Actions 手动发布 npmjs.com（workflow_dispatch + OIDC 免 token）",
-      "status": "done",
+      "status": "accepted",
       "kr": null,
       "dependsOn": [],
       "note": "用户 2026-11-23 要求「追加一个任务：github action 脚本用于发布 npmjs.com」。现状实证：仓库 `.github/workflows/` 只有 ci.yml（CI 门禁，job 名 `build + lint + verify` 是 ruleset 27209918 的 required check，ci.yml:43，不得改名/复用），**没有任何发布 workflow**；npm 发布一直是人工本地执行，账号 chenxin.ma 开了 2FA（publish 需 OTP，见 X29 scope），这正是要自动化的痛点。三个关键约束（均已取证）：① `.gitignore:11-12` 忽略 dist/dist-server，`.gitignore:27` 的裸 `skills` 模式把 `.agents/skills/**` 全部忽略（`git ls-files .agents` = 0 个文件）→ **CI 的 fresh checkout 里没有 `.agents`**，直接 `npm publish` 打出的 tarball 会缺 govio skills，与已发布 0.7.2 的包内容不等价；`.pi/APPEND_SYSTEM.md` 已 tracked（不受 .gitignore:35 `.pi/` 影响）。② skills 的可复现来源存在：`server/govio-installer.ts:169` 从 `https://github.com/<GOVIO_REPO>/releases/download/v<ver>/govio-skills.zip` 下载，CI 可复用同一 URL 预置（无需把 skills 入库）。③ 仓库 PUBLIC（`gh repo view` isPrivate=false）→ npm provenance 与 Trusted Publishing 都可用；本机 npm 11.18.0 / Node 24，CI 亦为 Node 24（ci.yml:67），npm ≥11.5.1 支持 OIDC Trusted Publishing（免长期 token、兼容 2FA 账号、附带 provenance）。另：`gh secret list` 无输出、`gh api repos/.../environments` total_count=0 → 当前既无 NPM_TOKEN secret 也无 environment 保护，两条认证路线都需从零配置。发版惯例：tag 为 `v<version>`（v0.7.2 已存在），GitHub Release 手工建、附件为 npm tgz（release-v0.7.2.md）。本条只立项，未实现、未派发。**用户 2026-11-23 追加约束：发布 workflow 不设置自动运行**——不得挂 `push: tags: v*`、`release: published` 等自动触发器，只能由人在 Actions 页面 / `gh workflow run` 手动触发（发版是用户裁决动作，自动跑会在用户未准备好时把版本号永久烧掉）。与 X29 的接口见 scope 末项（0.7.3 是否改由该 workflow 首发由用户裁决）。",
@@ -366,6 +372,45 @@
           "at": "2026-11-25T22:15:00+08:00",
           "by": "main-session",
           "note": "合并后实跑取证（PR #54 已合并 71926c2，workflow 已在默认分支注册）：① **dry-run 成功** run 45629552187（workflow_dispatch, main）：版本一致性通过（0.7.3）、registry 无该版本、skills 取 chenxinma/govio 最新 release **v0.7.2** 并预置 6 个 govio 技能、build 通过、pack 断言 ✓「govio-map-0.7.3.tgz，38 个文件，2385 KB」、auth 判定为 OIDC（仓库无 NPM_TOKEN secret）、publish 两个分支与自检按 dry_run 正确 skipped、tgz artifact 上传成功；② 闸门实测：版本不一致 guard → run 45630428955 在 step 6 失败；skills 预置 guard → run 45630483382（skills_version=v0.0.0）在 step 8 失败；**「版本已存在」guard 暂无法实跑**（需当前 package.json 版本已在 registry，等 0.7.3 发布后可用同版本重跑验证）；③ 真实发布尝试 run 45630110495 在 step 14 失败：`E403 OIDC permission denied for this action`——**npmjs 侧尚未为该包配置 Trusted Publishing binding**（provenance 已签名成功，仅授权环节被拒），registry 未产生 0.7.3（`npm view govio-map@0.7.3` 仍 404）。待用户在 npmjs 添加 binding（repo chenxinma/govio-map + workflow 文件名 publish.yml）或配置 NPM_TOKEN secret 后重跑 dry_run=false。本条 status 保持 done：workflow 与断言已交付并在 CI 实证，只差一次成功 publish 才能置 accepted。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-25T22:45:00+08:00",
+          "by": "main-session",
+          "note": "验收通过。① PR #54 已合并（merge 71926c2）；② **真实发布成功**：run 45631909269 的 OIDC publish 步骤成功（`+ govio-map@0.7.3`，provenance 已签名并写入 sigstore 透明日志），npmjs 上 validating 约 5.5 分钟后生效（14:15:26 publish → 14:21:05 registry HTTP 200）；③ 三项保护性闸门全部实测：版本不一致（run 45630428955，step 6 失败）、skills 预置失败（run 45630483382，step 8 失败）、版本已存在（run 45635622013，step 7 失败），均 fail 且日志给出明确原因；④ 产物一致性：registry tarball 38 文件 / 2.44MB，含 LICENSE、dist-server/cli.mjs、.pi/APPEND_SYSTEM.md、六个 govio 技能 SKILL.md，不含 .agents/skills/govio/assets，provenance 含 slsa.dev/provenance/v1 + npm publish attestation；⑤ 只有 workflow_dispatch（推 tag / 发 Release 均不触发），ci.yml job 名与 concurrency 未变；⑥ build/lint/verify 全绿。**已知缺陷已另立 X32**：原 `Post-publish self check`（publish 后立即 npm view + 用不存在的 --version）导致 run 45631909269 在包已发布成功的情况下判失败，已按用户指示拆成独立 verify workflow（PR #56）。"
+        }
+      ]
+    },
+    {
+      "id": "X32",
+      "title": "BUGFIX：发布与验证分离（publish 只发布 + 独立 verify-release.yml）",
+      "status": "done",
+      "kr": null,
+      "dependsOn": [
+        "X31"
+      ],
+      "note": "0.7.3 首次真实发布（run 45631909269）暴露 X31 的两处缺陷，用户 2026-11-25 指示「把版本发布和有效性验证流程分开」：① **时序错**：npm publish 成功后版本要 validating，实测 0.7.3 从 publish 成功（14:15:26）到 registry 可查询（14:21:05）约 5.5 分钟，原自检 2s 后就 `npm view` 必然 ETARGET → 包发成功了 run 却红，artifact 上传还被跳过；② **命令错**：自检用 `govio-map --version`，但 dist-server/cli.mjs 是 serve 入口（无 --version），真跑到那步会阻塞到 timeout-minutes。落点：publish.yml 只负责发布（删自检、artifact `if: always()`）；新增 .github/workflows/verify-release.yml（同样只有 workflow_dispatch）做发布后只读验证：轮询等 registry 200（默认上限 15 分钟）→ 元信息 7 字段 → 已上线 tarball 内容口径 → provenance（slsa v1 + npm publish attestation）→ 安装到临时 prefix 后带超时启动等 `Govio Map ready at` 横幅；口径抽成 .github/workflows/scripts/pack-rules.mjs 供发布前/后共用。验证：对已上线的 0.7.3 本地实跑全部断言通过（元信息齐全 / 38 文件 / provenance 2 条 / 启动冒烟 ready），本地 Windows 冒烟证明假 key 可起到 ready；两条 workflow YAML 均只含 workflow_dispatch；ci.yml 未改；build/lint/verify 671/34·495/11·98 零回归。",
+      "scope": [
+        "publish.yml 删除 Post-publish self check，只负责发布；artifact 上传改 if: always()，summary 指向验证 workflow",
+        "新增 verify-release.yml（仅 workflow_dispatch，输入 version / wait_minutes）：轮询 registry 生效 → 元信息 → tarball 内容 → provenance → 安装 + 启动冒烟",
+        "抽 .github/workflows/scripts/pack-rules.mjs 作为发布口径单一事实源；新增 verify-published-package.mjs / verify-published-metadata.mjs / verify-provenance.mjs",
+        "docs/release-process.md：§4 改为「只发布」，新增 §5「发布后验证（独立 workflow）」，写明 validating 实测时长与分开后的失败面",
+        "三件套落盘 docs/tasks/X32-publish-verify-split/"
+      ],
+      "acceptance": [
+        "publish.yml 发布成功即结束，不再因 registry 尚未生效而误报失败；tgz artifact 无论成败都上传",
+        "verify-release.yml 能独立、可重跑地完成 5 项只读验证，等待有上限且超时给明确人话",
+        "两条 workflow 均只有 workflow_dispatch；ci.yml 未改动",
+        "npm run build / lint / verify 全绿、断言零回归；改动走 GitHub PR（用户合并）",
+        "合并后在 main 上跑一次 verify-release.yml（version=0.7.3）留 run 链接"
+      ],
+      "outputDir": "docs/tasks/X32-publish-verify-split/",
+      "history": [
+        {
+          "status": "done",
+          "at": "2026-11-25T22:45:00+08:00",
+          "by": "main-session",
+          "note": "用户 2026-11-25 在 0.7.3 发布后直接指示拆分流程，主会话亲自实现（commit 32ef3da，分支 chenxinma/x32-publish-verify-split，PR #56）。本地已对已上线的 0.7.3 实跑全部新断言并通过；workflow_dispatch 需在默认分支注册，故 CI 实跑待 PR 合并后执行（合并后 gh workflow run verify-release.yml -f version=0.7.3）。"
         }
       ]
     }
@@ -387,7 +432,8 @@
       "#52 x30-minimap-navigation",
       "#53 x27-bundle-integrity",
       "#54 x31-npm-publish",
-      "#55 x29-release-0.7.3"
+      "#55 x29-release-0.7.3",
+      "#56 x32-publish-verify-split"
     ],
     "note": "#12-#17 全部合并入 main（14e39cf/3759971/1848b08/18ba6ab/fb237a2/3428f69）。相关功能分支（security/hardening、feature/phase1-trusted-analysis、feature/phase2-semantic-layer、fix/df-columns-fallback、chore/move-sql-discipline）已清理；docs/tech-roadmap 为已合并零提交分支，遗留未清理；docs/sync-readme-claudemd、feature/llm-config 为 2026-08 陈旧分支（含未合并提交），待用户裁决去留。 补充（2026-11-11）：X11 属 bugfix 直接 commit main（2fb6ea6 立项 / 8aca718 主修复 / 60b11d4 高度回归 / ebdd9cb 验收），未走 PR；X12 经 PR #28（merge 849ecf6）、X10 经 PR #29（merge a300128）合入，两者由 Orca worker 在独立 worktree 执行（X12=codex，X10=codex 首次未开工后按用户指令改 pi 重派）；#30（merge b2aa851）为用户侧 chat 折叠 UI 改动，非本计划任务。合并态 main 曾出现 lineageEdge 导入丢失（PR #29 与 hotfix 5af8555 的行级冲突解决错误，build+verify 阻断），已由 d2c3790 修复，详见 docs/tasks/BUGFIX-lineage-edge-import.md。#22-#27 未在本 map 记账。 补充（2026-11-12）：#31（merge ac8bab1，分支 feat/lineage-semantic-handles：血缘边形状/样式随 lineage.ts APPEARANCE 区分 + 语义血缘专用 Handle 统一下出上入、画布全局排版方案B（数据血缘 LR 分层 + 语义血缘同列纵向堆叠）、工具栏「整理画布」按钮）为用户侧改动，非本计划任务，未建 X 条目与三件套。主会话已在合并态 main 独立复跑门槛全绿（build/lint/verify 均 exit 0，verify 全跑后 git status --porcelain 干净），断言基线随之刷新：脚本 612 项 0 失败（semantic-lineage 45→48）、vitest integration 14 文件/155 例（新增 tests/integration/layout.test.ts、tests/ui/sql-query-node.test.tsx、tests/ui/canvas-toolbar.test.tsx）、UI 子集 4 文件/21 例；耗时实测 build 62s + lint 34s + verify 94s ≈ 190s。陈旧本地分支 chenxinma/chat-processed-fold（已合并）、docs/sync-readme-claudemd（2 未合并提交）、feature/llm-config（1 未合并提交）已按用户指令 2026-11-12 删除，远端无对应分支。 补充（2026-11-12 夜）：X14 经 PR #32（分支 chenxinma/x14-ci-gate，commit c68aefd + 主会话补录 23cfad6）、X13 经 PR #33（分支 chenxinma/x13-table-relations-ui，commit 8e762fa）交付，两者由 codex worker 在独立 Orca worktree 并行执行（首次派发因 codex 缺 OPENAI_API_KEY 卡在 turn_start_unobserved，用户补 key 后按 recovery-and-cleanup 重派：worker-release → task-update ready → worker-start --task 复用既有 worktree）。PR #32 首次真实 CI run 43242165890 success（pull_request 触发，job「build + lint + verify」1m1s），补录 commit 再触发 run 43242897266 success（synchronize，49s）→ 两种触发均已实证。PR #33 因 base(main) 尚无 workflow 文件（pull_request 取 base+head 合并态）暂无 CI check，需 #32 先合入。**合并顺序：先 #32 再 #33**；两 PR 均由用户合并，主会话不自行 merge。 补充（2026-11-13）：用户已合并 #33（X13，2026-11-13T05:42:25Z，merge 9783b92）与 #32（X14，2026-11-13T05:43:18Z，merge ab42d46）——实际合并顺序与建议相反（先 #33 后 #32），两 PR 文件集不相交（X14 只加 .github/+三件套，X13 只改 src/scripts/tests/docs），无冲突，合并态双向复跑均绿。#32 合入触发 main 的 push 门禁：run 43373860168 success（1m17s，ubuntu），脚本断言 616（=623-verify:cwd SKIP 7）、vitest 15 文件/193 例、UI 4 文件/31 例、registry 仅 registry.npmjs.org → X14 的三种触发（pull_request/synchronize/push main）全部实证。#33 因 base 无 workflow 未获 CI check（已在 PR 正文预告）。分支与 worktree 已清理：远端 chenxinma/x13-table-relations-ui、chenxinma/x14-ci-gate 删除，Orca worktree 以 rm --delete-branch 移除，本地仅剩 main。**新基线（合并态 main ab42d46）：脚本 623 项 0 失败（Windows）/ 616（ubuntu CI）、vitest 15 文件 193 例、UI 4 文件 31 例。** 分支保护尚未开启（gh api branches/main/protection → 404 Branch not protected），required check 名应为 build + lint + verify。 补充（2026-11-13 分支保护核查）：仓库已存在 ruleset「main」（id=27209918，target=branch，条件 refs/heads/main），规则含 deletion / non_fast_forward / required_status_checks（context = 「build + lint + verify」，integration_id=15368 即 GitHub Actions，strict=false），**但 enforcement = disabled（未生效）**，`gh api repos/.../branches/main/protection` 仍返回 404 Branch not protected、`rules/branches/main` 返回空。需用户在 Settings → Rules → Rulesets → main 把 Enforcement status 改为 **Active**（或授权主会话用 API 置 active）。 补充（2026-11-13 X15）：PR #34（分支 chenxinma/x15-relation-columns-only，commit 94ea04d）由**主会话亲自实现**（改动面小且已定位到行，未派 worker；单写者纪律：实施期间未派发其它 worker 改同批文件）。这是 X14 门禁上线后第一个功能 PR，CI 自动跑通：run 43456216218 success（pull_request 触发，job「build + lint + verify」54s），ubuntu 断言 617（=624-verify:cwd SKIP 7）、vitest 193 例 + UI 31 例全绿 → 门禁对功能 PR 已实际生效（但 ruleset enforcement 仍为 disabled，尚未真正阻断合并）。 补充（2026-11-13 X15.1）：PR #34 追加第二个 commit d652a4f（用户裁决「hover 显示 description 先保留」→ 画布关系行只留「目标表 + 字段关联」，图谱 description 改为整行 hover 的 title 按需查看；导出 HTML 有意保留「说明」列，静态交付物无 hover）。CI 经 synchronize 重跑：run 43460257999 success（1m7s），ubuntu 脚本断言 617（=624-verify:cwd SKIP 7）、vitest 194 例 + UI 31 例全绿。PR #34 仍 OPEN，待用户合并。 补充（2026-11-14 分支保护）：用户已把 ruleset「main」(id=27209918) 的 enforcement 置为 **active**（required check「build + lint + verify」+ deletion + non_fast_forward），并当场拦下主会话的文档记账直推（`remote rejected ... repository rule violations`）→ 该记账改走 PR #35（CI run 43460801904 success 1m12s）。随后按用户指令「文档修改 ruleset 加 bypass actor」，主会话经 `gh api -X PUT /repos/chenxinma/govio-map/rulesets/27209918` 加 `bypass_actors: [{actor_id: 5, actor_type: RepositoryRole, bypass_mode: always}]`（仓库 admin 角色）；**bypass 仅限纯文档记账**，代码改动（含 bugfix）仍必须走 PR，纪律已同步写进 AGENTS.md「合入 main 纪律（PR 门禁 + 分支保护）」与本文件 conventions.commitProtocol。PR #35 在 bypass 生效后已无必要 → 关闭并删分支，其记账 commit 78a800d 改由直推 main 落地。 补充（2026-11-14 X15 收尾）：用户已合并 #34（X15+X15.1，merge a54360e，16:20:06Z）与 #35（文档记账，merge a88a22a，16:20:38Z）；分支 chenxinma/x15-relation-columns-only、chore/plan-x151-bookkeeping 已删（远端 + 本地），本地仅剩 main。分支保护 active 后的首个文档直推（commit 586792f，AGENTS.md + task-plan 纪律修订）经 admin bypass 成功落地，且 main 的 push 触发 CI run 43462139558 success → bypass 与门禁并存验证通过。观察：#34 合并触发的 run 43461685410 被 concurrency 取消（同一 main ref 上紧随的 #35 推送 cancel-in-progress），最终态由后续 run 43461778446（success 1m9s，含 #34 全部改动）覆盖验证——属 workflow concurrency 配置的预期行为，已记入 X14 history。 补充（2026-11-16 X25）：PR #45（分支 chenxinma/x25-share-link-origin，commit 2fa1e57，含回合 main 的 92d6dcf）由主会话亲自实现，用户 2026-11-15T11:01:01Z 合并（merge ed2d9d0），CI「build + lint + verify」pass 1m17s（run 43706672396）。主会话 2026-11-16 在合并态 main 独立复跑门槛全绿后置 X25 = accepted（脚本 671 / vitest 21·289 / UI 4·37，与 verificationBaseline 吻合，verify 后工作区干净）。记账缺口说明：X25 条目与 T3.5/T3.6/T3.7 立项（14e11dc）分别写在两条并行分支上，故 main 曾出现「T3.5.dependsOn 引用 X25 但 crossCutting 无 X25」的悬空依赖表象——#45 合并后两者同在 main，依赖已闭合，无需补建条目。 补充（2026-11-25，主会话亲自实现 X27/X29/X30/X31，四分支并行、文件集互不相交）：#52 X30 小地图点击跳转、#53 X27 整包校验和、#54 X31 手动发布 workflow、#55 X29 升版 0.7.3 + release notes，四者 CI 均绿（#55 待跑完）。**合并顺序：#52 → #53 → #54 → #55**（#55 的 release notes 已把前三项写成本版包含；顺序反了会造成 notes 与实际包不符）。合并后主会话需：独立复跑门槛 → 同步 verificationBaseline（X30 与 X27 合计把 vitest 从 33·476/10·87 抬到 33·487/10·90，脚本断言仍 671）→ 置 accepted；随后才允许在 main 上 workflow_dispatch 发布 0.7.3。",
     "security": "https://github.com/chenxinma/govio-map/pull/12",
@@ -424,7 +470,8 @@
     "x30-minimap-navigation": "https://github.com/chenxinma/govio-map/pull/52",
     "x27-bundle-integrity": "https://github.com/chenxinma/govio-map/pull/53",
     "x31-npm-publish": "https://github.com/chenxinma/govio-map/pull/54",
-    "x29-release-0.7.3": "https://github.com/chenxinma/govio-map/pull/55"
+    "x29-release-0.7.3": "https://github.com/chenxinma/govio-map/pull/55",
+    "x32-publish-verify-split": "https://github.com/chenxinma/govio-map/pull/56"
   },
   "verificationBaseline": {
     "updatedAt": "2026-11-25T21:55:00+08:00",
