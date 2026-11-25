@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-23T21:24:28+08:00",
+  "updatedAt": "2026-11-23T21:40:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -1950,6 +1950,43 @@
           "at": "2026-11-23T21:21:00+08:00",
           "by": "main-session",
           "note": "用户 2026-11-23 报障并要求「先记录问题」。主会话只做静态取证（未在浏览器实测）：两处 MiniMap 均未接 onClick，xyflow v12 的 MiniMap 原生无单击跳转（XYMinimap 只挂 d3-zoom drag/wheel）。记录落 docs/tasks/BUGFIX-minimap-navigation.md，本条 status=pending，未派发、未修复。"
+        }
+      ]
+    },
+    {
+      "id": "X31",
+      "title": "GitHub Actions 自动发布 npmjs.com（tag 触发 + OIDC 免 token）",
+      "status": "pending",
+      "kr": null,
+      "dependsOn": [],
+      "note": "用户 2026-11-23 要求「追加一个任务：github action 脚本用于发布 npmjs.com」。现状实证：仓库 `.github/workflows/` 只有 ci.yml（CI 门禁，job 名 `build + lint + verify` 是 ruleset 27209918 的 required check，ci.yml:43，不得改名/复用），**没有任何发布 workflow**；npm 发布一直是人工本地执行，账号 chenxin.ma 开了 2FA（publish 需 OTP，见 X29 scope），这正是要自动化的痛点。三个关键约束（均已取证）：① `.gitignore:11-12` 忽略 dist/dist-server，`.gitignore:27` 的裸 `skills` 模式把 `.agents/skills/**` 全部忽略（`git ls-files .agents` = 0 个文件）→ **CI 的 fresh checkout 里没有 `.agents`**，直接 `npm publish` 打出的 tarball 会缺 govio skills，与已发布 0.7.2 的包内容不等价；`.pi/APPEND_SYSTEM.md` 已 tracked（不受 .gitignore:35 `.pi/` 影响）。② skills 的可复现来源存在：`server/govio-installer.ts:169` 从 `https://github.com/<GOVIO_REPO>/releases/download/v<ver>/govio-skills.zip` 下载，CI 可复用同一 URL 预置（无需把 skills 入库）。③ 仓库 PUBLIC（`gh repo view` isPrivate=false）→ npm provenance 与 Trusted Publishing 都可用；本机 npm 11.18.0 / Node 24，CI 亦为 Node 24（ci.yml:67），npm ≥11.5.1 支持 OIDC Trusted Publishing（免长期 token、兼容 2FA 账号、附带 provenance）。另：`gh secret list` 无输出、`gh api repos/.../environments` total_count=0 → 当前既无 NPM_TOKEN secret 也无 environment 保护，两条认证路线都需从零配置。发版惯例：tag 为 `v<version>`（v0.7.2 已存在），GitHub Release 手工建、附件为 npm tgz（release-v0.7.2.md）。本条只立项，未实现、未派发；与 X29 的接口见 scope 末项（0.7.3 是否改由该 workflow 首发由用户裁决）。",
+      "scope": [
+        "新增独立的 `.github/workflows/publish.yml`：触发 = 推送 `v*` tag + `workflow_dispatch`（带 dry-run 布尔输入，默认 true），不与 ci.yml 合并、不改其 job 名（required check 名固定）",
+        "发布前校验链（任一条不满足即 fail，先于任何 publish 动作）：tag 名 `v<version>` 必须等于 package.json version；`npm view govio-map@<version> version` 一旦有值即中止（npm 版本不可变、unpublish 会让版本号永久作废）；打印 `npm pack --dry-run` 文件清单",
+        "构建与打包：checkout → setup-node 24（cache: npm）→ 与 ci.yml 同款的 registry 覆盖（lockfile 里 1160+ 条 tarball 指向 registry.npmmirror.com，需 `npm config set replace-registry-host always`）→ `npm ci --no-audit --no-fund` → `npm run build`；注意 package.json:41 的 `prepublishOnly = npm run build` 会被 npm publish 再触发一次，design 里明确消除双跑或明示接受",
+        "`.agents` 补齐（本任务核心非显然项）：发布前用 govio release 的 `govio-skills.zip`（与 server/govio-installer.ts:169 同源）解压到 `.agents/skills/`，随后断言 tarball 内含 `.agents/skills/govio/SKILL.md` 且**不含** `.agents/skills/govio/assets`（对齐 X29 验收与 release-v0.7.2 的产物口径）；zip 的版本取值来源（固定版本 vs 跟随 govio 最新 release）在 design 裁决并写明依据",
+        "认证方案二选一实现，design 记录取舍：优先 Trusted Publishing（OIDC，npmjs 侧绑定 repo + workflow 文件名，`permissions: id-token: write`，`npm publish --provenance`，无长期凭证）；兜底 `NODE_AUTH_TOKEN`（Automation/Granular token，最小化到该包）——文档写清绑定步骤、轮换与泄露撤销流程",
+        "发布后自检（自检失败不得宣告发布成功）：`npm view govio-map@<version>` 的 license/description/author/repository/keywords/dist.integrity，走 OIDC 时再验 provenance；`npm i -g` 到临时前缀验证 `govio-map` bin 可启动",
+        "GitHub Release：tag + `npm pack` 产物 tgz 附件（对齐 v0.7.2 惯例，与 X29 同口径）；若引入第三方 action 一律 pin commit SHA（沿 X16 §2 体例）",
+        "文档：新增发版流程说明（tag → workflow → registry → Release 的人工触发步骤、dry-run 用法、失败回滚口径：禁止用 unpublish 做常规回滚），并写清包内 `.agents` 由 zip 预置而非入库",
+        "与 X29 的接口：0.7.3 首次发布是否改由本 workflow 执行（用户裁决）——若改，X29 的「用户提供 OTP / 人工发布」条目降级为兜底路径；两种路径的产物一致性对比结论写入 design 遗留"
+      ],
+      "acceptance": [
+        "`workflow_dispatch` dry-run 能在 Actions 上跑通并留 run 链接：打印 tarball 文件清单，断言 `.agents/skills/govio/SKILL.md` 存在、无 `assets/`、`dist-server/cli.mjs` 在包内，且全程未执行 publish",
+        "真实发布（首个非 latest 试发版或 0.7.3，由用户裁决）由 workflow 完成：registry 上该版本 tarball 文件集与本地 `npm pack` 一致（含 `.agents`/`.pi`，不含 assets），走 OIDC 时 npmjs 页面可见 provenance",
+        "保护性校验实测生效（各留 run 链接）：tag 与 package.json version 不匹配、目标版本已存在、skills 未预置三种情况均 fail 且日志指明原因，无「静默半发布」",
+        "发布全程无需人工 OTP；认证方式的绑定/轮换/撤销步骤写入文档（用 token 时权限最小化到该包并明确轮换责任人）",
+        "main 上 ci.yml 的 required check 名与行为不变（ruleset 27209918 不受影响），新增 workflow 不抢占 concurrency group",
+        "`npm run build / lint / verify` 全绿、断言零回归；verify 全跑后 `git status --porcelain` 干净",
+        "改动（.github/workflows + 取数脚本 + 文档）走 GitHub PR（用户合并）；新增第三方 action 全部 pin commit SHA"
+      ],
+      "outputDir": "docs/tasks/X31-npm-publish-workflow/",
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-11-23T21:40:00+08:00",
+          "by": "main-session",
+          "note": "立项（用户 2026-11-23 指令「追加一个任务：github action 脚本用于发布 npmjs.com」）。主会话只做静态取证、未实现：.github/workflows 仅 ci.yml 无发布链；CI fresh checkout 缺 `.agents`（.gitignore:27 裸 skills 模式，git ls-files .agents = 0）故需从 govio-skills.zip（govio-installer.ts:169 同源）预置；仓库 PUBLIC + npm 11.18 + Node 24 → Trusted Publishing/--provenance 可行；gh secret list 无输出、environments total_count=0，认证需从零配置。status=pending，未派发。"
         }
       ]
     }
