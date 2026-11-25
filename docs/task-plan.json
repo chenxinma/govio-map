@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-25T22:45:00+08:00",
+  "updatedAt": "2026-11-25T23:05:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -273,6 +273,12 @@
           "at": "2026-11-25T22:45:00+08:00",
           "by": "main-session",
           "note": "验收通过。① PR #51（元信息 + LICENSE）与 PR #55（升版 0.7.3 + release notes）均已合并；② **registry 上 govio-map@0.7.3 已上线**且元信息齐全：license=MIT、description、author=chenxin.ma <chenxin.ma@qq.com>、repository=git+https://github.com/chenxinma/govio-map.git、homepage、keywords(6)、dist.integrity=sha512-yL+zAMeO…；③ 已上线 tarball 38 文件：含 LICENSE / dist / dist-server/cli.mjs / .pi/APPEND_SYSTEM.md / .agents 六个 govio 技能，**不含** .agents/skills/govio/assets；④ 可安装可运行：`npm i -g govio-map@0.7.3` 后启动打印 `[serve] Govio Map ready at http://localhost:5173`（服务常驻，无 --version 属设计）；⑤ GitHub Release **v0.7.3 已建**（tag v0.7.3，附件 govio-map-0.7.3.tgz 2,442,442 字节 = registry 上的同一份 tarball）；⑥ release notes `docs/release-v0.7.3.md` 覆盖 v0.7.2 之后全部合并项。遗留：npmjs 上占位版本 0.0.0-stage（不在 latest）是否 deprecate/unpublish 仍待用户裁决（unpublish 会使该号永久作废，建议 deprecate 或保持不动）。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-25T23:05:00+08:00",
+          "by": "main-session",
+          "note": "补充（0.0.0-stage 处置，用户 2026-11-25 裁决「npm deprecate」）：主会话尝试执行失败——本地 ~/.npmrc 的 registry.npmjs.org token 已失效（`npm whoami` 401；`npm deprecate govio-map@0.0.0-stage` 返回 E404「Not found」，npm 对无权限写操作统一回 404），且 Trusted Publishing（OIDC）目前只覆盖 `npm publish` 与可选 `npm dist-tag`，**不覆盖 deprecate**；npm 文档明确「修改包设置需要 2FA」。需用户侧认证之一：① npmjs 网页 Package → Versions → 0.0.0-stage → Deprecate（推荐，浏览器过 2FA）；② 本地 `npm login --registry=https://registry.npmjs.org` 后由主会话执行 `npm deprecate \"govio-map@0.0.0-stage\" \"占位版本，请使用最新正式版（placeholder — use the latest govio-map release）\" --otp=<6位码>`；③ 提供该包写权限的 granular token（2FA-bypass token 正被 npm 收紧，不推荐）。该项属 scope 内的用户裁决项、非验收门槛，故本条 accepted 不受影响；完成后可用 `npm view govio-map@0.0.0-stage deprecated` 复核。"
         }
       ]
     },
@@ -384,7 +390,7 @@
     {
       "id": "X32",
       "title": "BUGFIX：发布与验证分离（publish 只发布 + 独立 verify-release.yml）",
-      "status": "done",
+      "status": "accepted",
       "kr": null,
       "dependsOn": [
         "X31"
@@ -411,6 +417,12 @@
           "at": "2026-11-25T22:45:00+08:00",
           "by": "main-session",
           "note": "用户 2026-11-25 在 0.7.3 发布后直接指示拆分流程，主会话亲自实现（commit 32ef3da，分支 chenxinma/x32-publish-verify-split，PR #56）。本地已对已上线的 0.7.3 实跑全部新断言并通过；workflow_dispatch 需在默认分支注册，故 CI 实跑待 PR 合并后执行（合并后 gh workflow run verify-release.yml -f version=0.7.3）。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-25T23:05:00+08:00",
+          "by": "main-session",
+          "note": "验收通过。① PR #56 已由用户合并（merge c20dc9f，verify-release.yml 已在默认分支注册）；② **CI 实跑绿**：run 45636529058（workflow_dispatch，version=0.7.3）全部步骤 success——等 registry 生效（已 live，秒级）→ 元信息 7 字段 → 已上线 tarball 内容口径 → provenance（slsa v1 + npm publish attestation）→ 安装临时 prefix + 启动冒烟（ready 横幅）→ summary；③ 抽查实现：publish.yml 已无 Post-publish self check、artifact 上传为 always()、两条 workflow `on` 均仅 workflow_dispatch（YAML 解析核对）、ci.yml 未动、口径由 pack-rules.mjs 单一提供；④ 合并态 main 本地复跑 build/lint/verify 全绿（671 / 34·495 / 11·98）。"
         }
       ]
     }
