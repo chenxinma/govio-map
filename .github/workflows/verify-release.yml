@@ -1,0 +1,166 @@
+name: Verify published package (manual)
+
+# X32：发布**后**的有效性验证，与 publish.yml 完全分离。
+#
+# 为什么分离：
+#  - npm 在 publish 成功后要把新版本「validating」（安全扫描 + provenance 记录），实测 0.7.3 约 5.5 分钟
+#    才变成可查询。publish 里紧接着 `npm view` 必然 ETARGET，只能误报失败；
+#  - 失败后应该能「只重试验证」，不该重跑（更不该重发）发布；
+#  - 该 CLI 没有 --version（dist-server/cli.mjs 是 serve 入口），旧自检真跑到那一步会把 job 拖到超时。
+#
+# 触发：**只有 workflow_dispatch**（与发布同样不自动运行）。典型时机 = 收到 npm 成功邮件 / npmjs 页面上
+# 版本从 validating 变为正常之后；脚本自身也会轮询等待（上限可配）。
+#
+# 校验内容（每项都是发布口径的硬断言）：
+#   1. registry 上该版本可见（轮询）；
+#   2. 元信息完整（license/description/author/repository/homepage/keywords/dist.integrity）；
+#   3. 已上线 tarball 的内容与本仓发布口径一致（复用 .github/workflows/scripts/pack-rules.mjs）；
+#   4. provenance（slsa + npm publish attestation）；
+#   5. 安装到临时 prefix 后能真正启动（等 `Govio Map ready at` 横幅，带超时）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '要验证的已发布版本号（如 0.7.3；可带 v 前缀）'
+        required: true
+        type: string
+      wait_minutes:
+        description: '等待 registry 生效的最长分钟数（npm validating 通常 2–10 分钟）'
+        required: true
+        type: string
+        default: '15'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-npm-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: verify published package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+
+      - name: Use public npm registry (no local mirror)
+        run: |
+          npm config set registry https://registry.npmjs.org
+          npm config set replace-registry-host always
+
+      # ── 1. 等版本可见（validating → live） ────────────────────────────────
+      - name: Wait until the version is available on the registry
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          WAIT_MINUTES: ${{ inputs.wait_minutes }}
+        run: |
+          set -euo pipefail
+          want="${INPUT_VERSION#v}"
+          echo "版本 = ${want}，最长等待 ${WAIT_MINUTES} 分钟"
+          deadline=$(( $(date +%s) + WAIT_MINUTES * 60 ))
+          while :; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/govio-map/${want}" || true)"
+            if [ "$code" = "200" ]; then
+              echo "registry 已就绪（HTTP 200）"
+              break
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error title=版本尚未生效::等了 ${WAIT_MINUTES} 分钟仍未在 registry 上看到 govio-map@${want}（最后一次 HTTP ${code}）。若仍在 validating，稍后重跑本 workflow；若 npmjs 显示被拒，需要重新发布新版本。"
+              exit 1
+            fi
+            echo "  尚未就绪（HTTP ${code}），30s 后重试…"
+            sleep 30
+          done
+
+      # ── 2. 元信息完整性 ──────────────────────────────────────────────────
+      - name: Assert registry metadata is complete
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          want="${INPUT_VERSION#v}"
+          npm view "govio-map@${want}" --json --registry=https://registry.npmjs.org > "$RUNNER_TEMP/meta.json"
+          node .github/workflows/scripts/verify-published-metadata.mjs "$RUNNER_TEMP/meta.json"
+
+      # ── 3. 已上线 tarball 的内容口径 ─────────────────────────────────────
+      - name: Download published tarball and assert contents
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          want="${INPUT_VERSION#v}"
+          url="https://registry.npmjs.org/govio-map/-/govio-map-${want}.tgz"
+          curl -sSL --fail --retry 3 -o "$RUNNER_TEMP/pkg.tgz" "$url"
+          ls -l "$RUNNER_TEMP/pkg.tgz"
+          sha256sum "$RUNNER_TEMP/pkg.tgz" | tee "$RUNNER_TEMP/pkg.tgz.sha256"
+          tar -tzf "$RUNNER_TEMP/pkg.tgz" | sed 's|^package/||' \
+            | node .github/workflows/scripts/verify-published-package.mjs
+
+      # ── 4. provenance ────────────────────────────────────────────────────
+      - name: Assert provenance attestations exist
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          want="${INPUT_VERSION#v}"
+          curl -sS --fail "https://registry.npmjs.org/-/npm/v1/attestations/govio-map@${want}" -o "$RUNNER_TEMP/att.json"
+          node .github/workflows/scripts/verify-provenance.mjs "$RUNNER_TEMP/att.json"
+
+      # ── 5. 安装 + 启动冒烟 ───────────────────────────────────────────────
+      - name: Install into temp prefix and smoke-test startup
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          want="${INPUT_VERSION#v}"
+          prefix="$RUNNER_TEMP/prefix"
+          npm i -g --prefix "$prefix" "govio-map@${want}" --registry=https://registry.npmjs.org --no-audit --no-fund
+          bin="$prefix/bin/govio-map"
+          test -x "$bin" || { echo "::error title=bin 缺失::$bin 不存在或不可执行"; ls -la "$prefix"; exit 1; }
+
+          workdir="$RUNNER_TEMP/smoke"
+          mkdir -p "$workdir"
+          log="$RUNNER_TEMP/smoke.log"
+          cd "$workdir"
+          # 冒烟只需「能起来」：给一个明显假的 provider key（不是真实凭据），
+          # 断言 ready 横幅后立即结束进程——该 CLI 没有 --version，会一直跑服务。
+          set +e
+          ANTHROPIC_API_KEY="test-only-not-a-real-key" "$bin" > "$log" 2>&1 &
+          pid=$!
+          for _ in $(seq 1 60); do
+            grep -q "Govio Map ready at" "$log" && break
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 2
+          done
+          kill "$pid" 2>/dev/null
+          wait "$pid" 2>/dev/null
+          set -e
+          tail -n 30 "$log"
+          if ! grep -q "Govio Map ready at" "$log"; then
+            echo "::error title=启动冒烟失败::安装后的 CLI 未在 120s 内打印 'Govio Map ready at'（详见上面日志）"
+            exit 1
+          fi
+          echo "  ✓ 安装后可以启动（ready 横幅已打印）"
+
+      - name: Summary
+        if: ${{ always() }}
+        run: |
+          {
+            echo "### 发布后验证（只读，不发布任何东西）"
+            echo ""
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| 版本 | \`${{ inputs.version }}\` |"
+            echo "| 等待上限 | \`${{ inputs.wait_minutes }}\` 分钟 |"
+            echo "| 结论 | 见上方各步骤状态 |"
+          } >> "$GITHUB_STEP_SUMMARY"
