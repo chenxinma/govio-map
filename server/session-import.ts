@@ -46,6 +46,7 @@ import {
   MAX_IMPORT_UNCOMPRESSED_BYTES,
   MAX_IMPORT_ZIP_BYTES,
   isSafeBundlePath,
+  normalizeBundleChecksum,
   type BundleExcludedParquet,
   type BundleManifest,
   type ImportErrorCode,
@@ -91,6 +92,14 @@ export interface ImportSessionBundleOptions {
    * 是这一个目录（包内路径不参与拼接），所以它**不削弱** decisions ⑤ 的写侧约束。
    */
   sessionDir?: string;
+  /**
+   * 期望的**整包** sha256（X27 旁文件值，64 位 hex）。给了就必须相符。
+   *
+   * 发生在读包之后、解包之前，与 decisions ④ 一致（不符则不碰任何文件）；
+   * 与清单内的逐文件校验和互补：这一层保护的是「zip 字节本身未被改动」，
+   * 也就是 `bundle.json` 无法自列校验和所造成的剩余风险。
+   */
+  expectedBundleSha256?: string;
   /**
    * 写盘实现注入点（与 `now` / `newSessionId` 同款测试缝）。
    *
@@ -416,6 +425,25 @@ export function importSessionBundle(
   }
   const entries = inspectBundleEntries(zipBytes);
   assertBundleEntryLimits(entries, { maxFileCount, maxUncompressedBytes });
+
+  // ── 阶段 1.5：外层整包校验和（X27；仍在解包前，失败零写入） ────────────────
+  if (opts.expectedBundleSha256) {
+    const expected = normalizeBundleChecksum(opts.expectedBundleSha256);
+    if (!expected) {
+      throw new BundleImportError(
+        "outer-checksum-mismatch",
+        "整包校验和格式不对（应为 64 位 hex，或 sha256sum 输出的一整行）",
+      );
+    }
+    const actual = sha256Hex(zipBytes);
+    if (actual !== expected) {
+      throw new BundleImportError(
+        "outer-checksum-mismatch",
+        "整包校验和不符：手里的 zip 与导出方声称的不是同一份（传输损坏或被替换），已拒绝导入",
+        `expected ${expected}, actual ${actual}`,
+      );
+    }
+  }
 
   // ── 阶段 2：解压 + 清单/校验和逐项核对（仍全程在内存） ─────────────────────
   let unzipped: Unzipped;

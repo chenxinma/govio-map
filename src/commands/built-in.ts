@@ -1,4 +1,5 @@
 import type { SlashCommand, CommandContext } from "./types";
+import { normalizeBundleChecksum } from "../types/bundle";
 
 function handleClear(ctx: CommandContext) {
   ctx.clearSession();
@@ -19,11 +20,21 @@ function handleImport(ctx: CommandContext, args: string) {
   // T3.7：/import <bundle 路径> = 把 T3.6 产出的包导入成一个历史会话。
   // 路径由**服务端**读（浏览器读不到任意本地路径）；空参数的用法提示在 ChatInput 侧拦下，
   // 这里再兜一道，保证 handler 单独被调用时也不会把空串发给后端。
-  if (!args.trim()) {
-    ctx.addSystemMessage("用法：/import <bundle 路径>（T3.6 /export 产出的 .govio-bundle.zip）");
+  //
+  // X27：可选第二个参数 = 整包 sha256（`<包名>.sha256` 旁文件里的 64 位 hex）。
+  // 路径可含空格，所以只在**最后一个空白分隔段**看起来像校验和时才拆出来，其余整段算路径。
+  const trimmed = args.trim();
+  if (!trimmed) {
+    ctx.addSystemMessage("用法：/import <bundle 路径> [整包 sha256]（T3.6 /export 产出的 .govio-bundle.zip）");
     return;
   }
-  ctx.importSession(args.trim());
+  const parts = trimmed.split(/\s+/);
+  const maybeSum = parts.length > 1 ? normalizeBundleChecksum(parts[parts.length - 1]) : null;
+  if (maybeSum) {
+    ctx.importSession(parts.slice(0, -1).join(" "), maybeSum);
+    return;
+  }
+  ctx.importSession(trimmed);
 }
 
 export function getBuiltInCommands(): SlashCommand[] {
@@ -48,7 +59,7 @@ export function getBuiltInCommands(): SlashCommand[] {
     },
     {
       name: "import",
-      description: "导入会话打包文件为历史会话：/import <bundle 路径>",
+      description: "导入会话打包文件为历史会话：/import <bundle 路径> [整包 sha256]",
       category: "builtin",
       args: { placeholder: "bundle 路径", required: true },
       handler: handleImport,

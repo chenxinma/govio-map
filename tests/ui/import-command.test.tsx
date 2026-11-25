@@ -92,6 +92,7 @@ describe("命令参数通道（parseSlashCommand）", () => {
     const importCmd = commands.find((c) => c.name === "import");
     expect(importCmd?.args).toEqual({ placeholder: "bundle 路径", required: true });
     expect(importCmd?.description).toContain("/import <bundle 路径>");
+    expect(importCmd?.description, "X27：描述里要露出可选的整包 sha256").toContain("[整包 sha256]");
     for (const name of ["export", "clear", "clear-canvas"]) {
       expect(commands.find((c) => c.name === name)?.args, `${name} 不应声明参数`).toBeUndefined();
     }
@@ -150,6 +151,28 @@ describe("/import 命令接线", () => {
     });
     expect(onSend, "命令不该被发给 agent").not.toHaveBeenCalled();
     expect(textarea.value).toBe("");
+  });
+
+  it("X27：/import <含空格路径> <sha256> 拆出校验和并交给下层", async () => {
+    stubSkillsFetch();
+    importMock.importSessionBundle.mockResolvedValue(OK_RESULT);
+    const hex = "a".repeat(64);
+    const { textarea } = renderInput();
+    typeAndEnter(textarea, `/import D:/my downloads/c.govio-bundle.zip ${hex}`);
+    await waitFor(() => expect(importMock.importSessionBundle).toHaveBeenCalledTimes(1));
+    expect(importMock.importSessionBundle.mock.calls[0][0]).toMatchObject({
+      bundlePath: "D:/my downloads/c.govio-bundle.zip",
+      expectedSha256: hex,
+    });
+  });
+
+  it("X27：不带校验和时 expectedSha256 保持 undefined（旧用法零变化）", async () => {
+    stubSkillsFetch();
+    importMock.importSessionBundle.mockResolvedValue(OK_RESULT);
+    const { textarea } = renderInput();
+    typeAndEnter(textarea, "/import /a/b.zip");
+    await waitFor(() => expect(importMock.importSessionBundle).toHaveBeenCalledTimes(1));
+    expect(importMock.importSessionBundle.mock.calls[0][0].expectedSha256).toBeUndefined();
   });
 
   it("成功反馈给会话名与节点数，并刷新会话列表（既有 WS 通道）", async () => {

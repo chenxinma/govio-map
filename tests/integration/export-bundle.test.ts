@@ -129,6 +129,8 @@ interface ExportRunResult {
 interface Harness {
   outcome: ExportRunResult;
   downloads: Array<{ fileName: string; bytes: Uint8Array }>;
+  /** X27 旁文件（`.sha256` 文本）下载 */
+  textDownloads: Array<{ fileName: string; text: string }>;
   requestedUrls: string[];
   reportInputs: Array<{ nodes: Node[]; edges: Edge[]; exportedAt: string; appVersion?: string; apiBase: string }>;
   entries: Record<string, Uint8Array>;
@@ -145,6 +147,7 @@ async function runExport(
   } = {},
 ): Promise<Harness> {
   const downloads: Array<{ fileName: string; bytes: Uint8Array }> = [];
+  const textDownloads: Array<{ fileName: string; text: string }> = [];
   const requestedUrls: string[] = [];
   const reportInputs: Harness["reportInputs"] = [];
   const fetchImpl = vi.fn(async (url: string) => {
@@ -161,6 +164,7 @@ async function runExport(
     fetchImpl,
     hashBytes: async (bytes) => sha256Hex(bytes),
     download: (fileName, bytes) => downloads.push({ fileName, bytes }),
+    downloadText: (fileName, text) => textDownloads.push({ fileName, text }),
     buildReport: async (input) => {
       reportInputs.push(input);
       return REPORT_HTML;
@@ -175,12 +179,57 @@ async function runExport(
   return {
     outcome,
     downloads,
+    textDownloads,
     requestedUrls,
     reportInputs,
     entries,
     manifest: JSON.parse(strFromU8(manifestRaw)) as BundleManifest,
   };
 }
+
+describe("X27 外层整包校验和（旁文件）", () => {
+  it("bundleSha256 = 对下载 zip 字节的 sha256；旁文件按 sha256sum 格式命名与成文", async () => {
+    const f = sessionFile("2026-11-17T02-10-00-000Z_sess-x27");
+    saveCanvas(f, [dfNode("gov-1", "df_a")], []);
+    const h = await runExport(payloadFor(f));
+
+    expect(h.downloads).toHaveLength(1);
+    expect(h.outcome.bundleSha256).toBe(sha256Hex(h.downloads[0].bytes));
+    expect(h.outcome.checksumFileName).toBe(`${h.outcome.fileName}.sha256`);
+    expect(h.textDownloads).toEqual([
+      { fileName: `${h.outcome.fileName}.sha256`, text: `${h.outcome.bundleSha256}  ${h.outcome.fileName}\n` },
+    ]);
+    // 旁文件内容可直接喂给 sha256sum -c
+    expect(h.textDownloads[0].text.trimEnd().split(/\s+/)).toEqual([h.outcome.bundleSha256, h.outcome.fileName]);
+  });
+
+  it("同一会话两次导出：整包 sha256 一致（可复现归档）", async () => {
+    const f = sessionFile("2026-11-17T02-10-01-000Z_sess-x27-2");
+    saveCanvas(f, [dfNode("gov-1", "df_a")], []);
+    const payload = payloadFor(f);
+    const a = await runExport(payload);
+    const b = await runExport(payload);
+    expect(a.outcome.bundleSha256).toBe(b.outcome.bundleSha256);
+    expect(Buffer.from(a.downloads[0].bytes).equals(Buffer.from(b.downloads[0].bytes))).toBe(true);
+  });
+
+  it("包内任何文件都改变整包校验和（旁文件保护的是 zip 字节，不是清单内容）", async () => {
+    const f = sessionFile("2026-11-17T02-10-02-000Z_sess-x27-3");
+    saveCanvas(f, [dfNode("gov-1", "df_a")], []);
+    const base = payloadFor(f);
+    const changed: SessionBundlePayload = {
+      ...base,
+      files: base.files.map((file) =>
+        file.path === BUNDLE_CANVAS_PATH
+          ? { ...file, contentBase64: Buffer.from(JSON.stringify({ nodes: [], edges: [] })).toString("base64") }
+          : file,
+      ),
+    };
+    const a = await runExport(base);
+    const b = await runExport(changed);
+    expect(a.outcome.bundleSha256).not.toBe(b.outcome.bundleSha256);
+  });
+});
 
 describe("包结构与 bundle.json 契约", () => {
   it("五类会话文件 + report.html + bundle.json 全在包里，包名 = <token>.govio-bundle.zip", async () => {

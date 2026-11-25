@@ -42,7 +42,7 @@ interface CommandContext {
   /** 打包导出当前会话为 zip（异步实现，进度/结果反馈由 ChatInput 展示） */
   exportSession(): void;
   /** 导入会话包为历史会话（T3.7；同款异步约定） */
-  importSession(bundlePath: string): void;
+  importSession(bundlePath: string, expectedSha256?: string): void;
   addSystemMessage(content: string): void;
 }
 ```
@@ -67,7 +67,7 @@ T3.7 加了一个**最小**参数通道，关键约束：
 | /clear | 清空聊天消息 | `ctx.clearMessages()` |
 | /clear-canvas | 清空画布和消息 | `ctx.clearCanvas()` + `ctx.clearMessages()` |
 | /export | 打包导出当前会话为 zip（画布 + 对话 + 留痕 + 交付报告） | `ctx.exportSession()` |
-| /import `<bundle 路径>` | 导入会话打包文件为历史会话（T3.7，**带参数**） | `ctx.importSession(args)` |
+| /import `<bundle 路径>` `[整包 sha256]` | 导入会话打包文件为历史会话（T3.7，**带参数**）；可选的第二个参数见 X27 | `ctx.importSession(args)` |
 
 内置命令有 `handler`，选中时直接执行；声明了 `args` 的（当前只有 `/import`）选中时先预填命令等用户补参数。
 
@@ -133,22 +133,32 @@ const { commands, execute } = useCommands(ctx);
 2. 用**包内 `canvas.json`**（不是画布 store 的实时状态）生成 `report.html`，保证包内自洽；
 3. WebCrypto 补算 `report.html` 的 sha256 → 组装 `bundle.json`（它不列自己）；
 4. fflate `zipSync`（条目 mtime 固定为 `exportedAt` ⇒ 同内容两次打包字节一致）；
-5. Blob + `a[download]` 下载（**仅浏览器下载**，不写工作目录）。
+5. Blob + `a[download]` 下载（**仅浏览器下载**，不写工作目录）；
+6. **X27 外层完整性**：对最终 zip 字节算 sha256（`bundleSha256`），另下载一个 `sha256sum` 兼容的旁文件
+   `<token>.govio-bundle.zip.sha256`（内容 = `<64 hex>  <包文件名>
+`）。为什么需要外层：`bundle.json`
+   只能列**除自己以外**的文件（自引用无法求校验和），所以「清单与文件自洽」不等于「整包未被改动」。
 
 ### 反馈
 
 `ChatInput` 在输入框上方展示一句话进度/结果（与 CanvasToolbar 的导出提示同款形态，8s 自动消失）：
-打包中 / `已导出 <文件名>（X KB · N 个文件 · 含交付报告 · 未含 M 个 parquet）` / `导出失败：<原因>`。
+打包中 / `已导出 <文件名>（X KB · N 个文件 · 含交付报告 · 未含 M 个 parquet）` + 第二行
+`整包 sha256：<64 hex>`（X27，可选中复制）与旁文件名 / `导出失败：<原因>`。
 失败原因都是人话（无活动会话 / 会话已删 / 超限 / 载荷版本不符 / 非安全上下文无法算校验和），不静默失败。
 打包进行中重复触发不会并发第二次。
 
 ## import-session.ts
 
-**T3.7 新增**：`/import <bundle 路径>` 把 T3.6 产出的 `<token>.govio-bundle.zip` 导入成一个**历史会话**。
+**T3.7 新增 / X27 扩展**：`/import <bundle 路径> [整包 sha256]` 把 T3.6 产出的
+`<token>.govio-bundle.zip` 导入成一个**历史会话**。第二个参数（可选，X27）是 `<包名>.sha256` 旁文件里的
+64 位 hex（也容忍 `sha256sum` 整行粘贴），给了就由服务端强制比对整包校验和，不符即拒绝且零写入。
 浏览器读不到任意本地路径，所以路径交给**服务端**读（`POST /api/session-import`）；校验（格式版本 /
 文件清单 / 逐文件 sha256 / 清单外条目）与原子落盘全在服务端（`server/session-import.ts`，
 路由与错误码表见 `docs/specs/06-backend.md`）。本模块只做三件事：发请求、把错误码翻成人话
 （`IMPORT_ERROR_TEXT`）、把成功结果整理成一句可展示的反馈（`describeImportResult`）。
+
+参数拆分：路径可含空格，所以只在**最后一个空白分隔段**看起来像 64 位 hex 时才当作校验和，
+其余整段算路径（`/import D:/my downloads/x.zip <hex>` 可用）。
 
 用户裁决：包可**从任意路径**读（如 `D:/Downloads/xxx.govio-bundle.zip`），但**写入严格限定**
 `.govio/sessions/`；校验全绿前零文件写入；id 冲突一律生成新 id（不提供覆盖）。

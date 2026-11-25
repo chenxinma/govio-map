@@ -562,7 +562,7 @@ T3.6 的包可被**反向导入**，落地为 `.govio/sessions/` 里的一个历
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/api/session-import` | POST | body `{ "path": "<bundle 路径>" }`；成功 → **200** `{ ok:true, sessionId, sessionFile, sessionName, messageCount, nodeCount, edgeCount, manifestCount, importedFrom, filesWritten, missing, excludedParquet, storageProfile? }` |
+| `/api/session-import` | POST | body `{ "path": "<bundle 路径>", "sha256"?: "<64 hex>" }`（`sha256` 为 X27 可选的外层整包校验和，给了就强制比对）；成功 → **200** `{ ok:true, sessionId, sessionFile, sessionName, messageCount, nodeCount, edgeCount, manifestCount, importedFrom, filesWritten, missing, excludedParquet, storageProfile? }` |
 | `/api/session-import` | OPTIONS | **204** 跨源预检（POST + `Content-Type: application/json` 不是 CORS 简单请求，dev 下 5173→5174 必先预检）。**由 `backend.ts` 的预检单一来源应答**（X26），不在本模块；白名单沿用 `security.ts` 既有配置。隔离调用 `handleBundleApi` 时 OPTIONS 走方法白名单 → **405** |
 | `/api/session-import` | 其它 | **405** |
 
@@ -592,6 +592,7 @@ T3.6 的包可被**反向导入**，落地为 `.govio/sessions/` 里的一个历
 | 422 | `entry-missing` | 清单登记的文件在包里不存在（含缺 `session.jsonl`） |
 | 422 | `entry-unexpected` | 包内出现清单未登记的条目（口径 ⑥：整包拒绝，防夹带） |
 | 422 | `checksum-mismatch` | 逐文件 sha256 或字节数与清单不符 |
+| 422 | `outer-checksum-mismatch` | 请求里给的整包 sha256 与手里的 zip 不符，或该值格式非法（X27；发生在解包前，零写入） |
 | 422 | `payload-invalid` | 包内 `canvas.json` / `manifests.json` 解析失败或形状不符 |
 | 422 | `transcript-invalid` | `session.jsonl` 首条不是合法 pi session header |
 | 500 | `write-failed` | 校验全绿后落盘失败（已回滚，零残留） |

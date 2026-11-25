@@ -33,7 +33,9 @@ import {
   BUNDLE_MANIFEST_PATH,
   BUNDLE_REPORT_PATH,
   BUNDLE_VERSION,
+  bundleChecksumFileName,
   bundleFileName,
+  formatBundleChecksum,
   isSafeBundlePath,
   type BundleManifest,
   type SessionBundlePayload,
@@ -51,6 +53,13 @@ export interface ExportBundleOutcome {
   /** 是否生成了 report.html（空画布时不生成，原因写进 bundle.json 的 reportOmitted） */
   reportIncluded: boolean;
   excludedParquet: { count: number; bytes: number };
+  /**
+   * 整包 sha256（X27）：对下载的 zip 字节本身求的哈希。
+   * 旁文件 `<包名>.sha256` 的内容就是它，接收方导入时可用 `/import <包> <sha256>` 强制比对。
+   */
+  bundleSha256: string;
+  /** 旁文件名（`<包名>.sha256`） */
+  checksumFileName: string;
 }
 
 export interface ExportBundleDeps {
@@ -61,6 +70,8 @@ export interface ExportBundleDeps {
   fetchImpl?: typeof fetch;
   hashBytes?: (bytes: Uint8Array) => Promise<string>;
   download?: (fileName: string, bytes: Uint8Array) => void;
+  /** 下载旁文件（`.sha256` 文本）；测试可替身 */
+  downloadText?: (fileName: string, text: string) => void;
   buildReport?: (input: { nodes: Node[]; edges: Edge[]; exportedAt: string; appVersion?: string; apiBase: string }) => Promise<string>;
   now?: () => Date;
 }
@@ -105,6 +116,23 @@ function downloadZip(fileName: string, bytes: Uint8Array): void {
   a.click();
   a.remove();
   // 立即 revoke 会在部分浏览器上取消下载，留一点余量（与 export-report.ts 同款取舍）。
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/** 默认下载文本（X27 旁文件）：text/plain，不走 zip 那个 `application/zip` 类型。 */
+function downloadTextFile(fileName: string, text: string): void {
+  // 非浏览器环境（node 集成测试 / SSR）没有 document，旁文件无从下载：跳过即可，
+  // 包本身已经通过调用方注入的 `download` 落地，校验值仍在返回值里。
+  if (typeof document === "undefined") return;
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
@@ -222,6 +250,7 @@ export async function exportSessionBundle(deps: ExportBundleDeps): Promise<Expor
   const fetchImpl = deps.fetchImpl ?? fetch;
   const hashBytes = deps.hashBytes ?? subtleSha256;
   const download = deps.download ?? downloadZip;
+  const downloadText = deps.downloadText ?? downloadTextFile;
   const buildReport = deps.buildReport ?? ((input: Parameters<NonNullable<ExportBundleDeps["buildReport"]>>[0]) => buildReportHtml(input, fetchImpl));
   const apiBase = apiBaseFrom(deps.pageOrigin) ?? "";
 
@@ -281,6 +310,12 @@ export async function exportSessionBundle(deps: ExportBundleDeps): Promise<Expor
   const fileName = bundleFileName(payload.token);
   download(fileName, zipped);
 
+  // X27：整包校验和（对**最终 zip 字节**求哈希，不是对清单内容），并落一个 sha256sum 兼容的旁文件。
+  // 为什么另发旁文件而不塞进包内：包内任何文件都改变 zip 字节 ⇒ 校验和无法自洽（自引用不可算）。
+  const bundleSha256 = await hashBytes(zipped);
+  const checksumFileName = bundleChecksumFileName(fileName);
+  downloadText(checksumFileName, formatBundleChecksum(bundleSha256, fileName));
+
   return {
     fileName,
     bytes: zipped.byteLength,
@@ -289,5 +324,7 @@ export async function exportSessionBundle(deps: ExportBundleDeps): Promise<Expor
     sessionId: payload.sessionId,
     reportIncluded,
     excludedParquet: { count: payload.excluded?.parquet?.count ?? 0, bytes: payload.excluded?.parquet?.bytes ?? 0 },
+    bundleSha256,
+    checksumFileName,
   };
 }

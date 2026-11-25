@@ -48,6 +48,32 @@ export function bundleFileName(token: string): string {
 }
 
 /**
+ * 外层校验和旁文件名（X27）：`<包名>.sha256`，内容为 `sha256sum` 兼容的一行
+ * `<64 位小写 hex>  <包文件名>`。
+ *
+ * 为什么需要外层：`bundle.json` 只能列**除自己以外**的文件（自引用无法求校验和），
+ * 所以「清单与文件自洽」不等于「整包未被改动」。旁文件给出整包校验值，接收方
+ * 用 `sha256sum -c` 或人工比对即可确认手里这份 zip 与导出方产出的一致。
+ */
+export function bundleChecksumFileName(bundleName: string): string {
+  return `${bundleName}.sha256`;
+}
+
+/** 整包校验和的一行文本（sha256sum 兼容：两空格分隔，末尾换行）。 */
+export function formatBundleChecksum(hex: string, bundleName: string): string {
+  return `${hex}  ${bundleName}\n`;
+}
+
+/** 64 位小写 hex（整包 sha256）的判定与归一：容忍用户粘贴大写或 `sha256sum` 整行。 */
+export function normalizeBundleChecksum(raw: string): string | null {
+  if (typeof raw !== "string") return null;
+  // 允许整行粘贴（`<hex>  <文件名>`）：只取第一段
+  const first = raw.trim().split(/\s+/)[0] ?? "";
+  const hex = first.toLowerCase();
+  return /^[0-9a-f]{64}$/.test(hex) ? hex : null;
+}
+
+/**
  * 包内路径是否安全（**两端共用**：打包时自查，T3.7 解包前再校一次）。
  *
  * 只允许单层、正斜杠、相对路径：拒绝对路径、`..` 穿越、盘符、反斜杠、空段与尾斜杠。
@@ -182,6 +208,12 @@ export const IMPORT_ERROR_CODES = [
   "entry-unexpected",
   /** 逐文件 sha256 或字节数与清单不符。 */
   "checksum-mismatch",
+  /**
+   * 调用方给了整包 sha256（X27 旁文件 / 人工比对值）但与手里的 zip 不符：
+   * 包在传输中被改坏，或来源与声称的产出不一致——比 `checksum-mismatch` 更外层，
+   * 发生在解包**之前**，同样零写入。
+   */
+  "outer-checksum-mismatch",
   /** 包内某个 JSON 工件（`canvas.json` / `manifests.json`）解析失败或形状不符。 */
   "payload-invalid",
   /** `session.jsonl` 不是合法 pi transcript（首条不是 session header）。 */
