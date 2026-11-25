@@ -51,6 +51,7 @@ npm run preview  # Preview production build
 | 任务计划 | `docs/task-plan.json` | 唯一事实源：phases（P1-P3，对齐 docs/ROADMAP.md）+ crossCutting（X1-Xn）；每任务含 id/title/kr/status/dependsOn/outputDir/scope/acceptance/history |
 | 任务交付物 | `docs/tasks/<任务ID-短名>/` | 三件套必交：`design.md`（方案与取舍 + 「遗留问题」小节）、`CHANGES.md`（文件清单+每处摘要）、`verification.md`（验证命令与关键输出） |
 | 审查/修复记录 | `docs/tasks/REVIEW-R<n>-fixes.md`、`docs/tasks/BUGFIX-*.md` | 审查循环与验收后 bug 的留痕 |
+| 任务归档 | `docs/task-archive.json` | 已完成（status=accepted）任务的完整条目（含 decisions/history 全文）；plan 只留未完成任务与全局台账 |
 
 ### 状态机与写权
 
@@ -61,6 +62,18 @@ pending → in_progress → done → accepted / rejected
 - 状态变更必须同步追加 `history` 条目 `{status, at(ISO), by, note}` 并刷新顶层 `updatedAt`
 - **worker 只能改自己的任务条目**，完成置 `done`，绝不自置 `accepted`；`accepted/rejected` 只能由主会话写入
 - 同一分支同一时刻**只允许一个写者**（单 worker 串行，或主会话亲自改），避免 `git add -A` 互扰
+
+### 任务归档（人工定期触发）
+
+`docs/task-plan.json` 只承载「还要做的事」；已完结条目移入 `docs/task-archive.json` 防止计划文件无限膨胀。
+
+- **触发方式：人工定期**（用户 2026-11-23 指令「后续定期人工触发任务归档」）。不设自动归档、不挂 CI/cron——归档与会话验收记账同属主会话的写操作，自动化会和单写者纪律冲突
+- **归档判据：仅 `status=accepted`**。`done` 是 worker 自报完成、尚未验收，不得归档；`pending / in_progress / rejected` 一律留在 plan（rejected 留作后续决议依据）
+- **搬移范围**：`phases[].tasks[]` 与 `crossCutting[]` 的条目**原样**搬入 archive（scope/acceptance/note/decisions/history 全字段保留，仅追加 `archived{at,by,batch,container,phase}` 元数据）。phases 保留元信息（name/status/northStar/exitNote/reviewLoop）并追加 `archivedTaskIds`
+- **留在 plan 的全局台账**：`verificationBaseline`（CI 看板单一来源，`.github/workflows/scripts/assertion-dashboard.mjs` 直接读）、`pullRequests`（永久 PR 台账）、`roadmap`、`statusFlow`、`conventions`、`archive` 指针
+- **悬空依赖是允许的**：未完成任务的 `dependsOn` 可以指向已归档 id（已 accepted 即视为满足），解析依赖时查 `task-archive.json → tasks[]`；不要把已归档依赖从 `dependsOn` 里删掉，否则丢失依赖语义
+- **校验口径**（每次归档后必做）：两文件 `jq empty`；plan 中零 `accepted` 残留；id 跨两文件不重不漏；`git status` 仅这两个文件；若同时改到 `scripts/`、`package.json` 等则按代码 PR 走
+- 完整步骤见 `task-plan.json → archive.protocol`
 
 ### 主会话：派发协议
 
