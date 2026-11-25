@@ -18,7 +18,6 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MiniMap,
   ReactFlow,
   ReactFlowProvider,
   type Edge,
@@ -28,6 +27,7 @@ import '@xyflow/react/dist/style.css';
 import { useCanvasStore } from '../../store/canvas-store';
 import { nodeTypes } from '../Nodes';
 import LineageLegend from '../Canvas/LineageLegend';
+import CanvasMiniMap from '../Canvas/CanvasMiniMap';
 import { lineageEdgeDefaults } from '../../utils/lineage';
 import { ReadOnlyCanvasContext } from '../../hooks/useReadOnlyCanvas';
 import { neutralizeCanvasPersistence } from './canvas-persistence';
@@ -210,7 +210,8 @@ export default function ShareView({ token }: { token: string }) {
               >
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#e0e0e0" />
                 <Controls showInteractive={false} className="!bg-bg-surface !border-border-default !rounded-lg" />
-                <MiniMap
+                {/* 只读页保留小地图导航：单纯移动视口，不产生任何数据副作用（X30） */}
+                <CanvasMiniMap
                   nodeColor={(node) => {
                     switch (node.type) {
                       case 'sourceTable': return 'hsl(270, 60%, 60%)';
@@ -221,8 +222,6 @@ export default function ShareView({ token }: { token: string }) {
                       default: return '#a7a7a7';
                     }
                   }}
-                  maskColor="rgba(0, 0, 0, 0.08)"
-                  className="!bg-bg-primary !border-border-default !rounded-lg"
                 />
                 <LineageLegend />
               </ReactFlow>

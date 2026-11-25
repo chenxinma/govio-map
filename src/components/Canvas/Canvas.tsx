@@ -4,7 +4,6 @@ import {
   ReactFlowProvider,
   Background,
   Controls,
-  MiniMap,
   BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -12,6 +11,7 @@ import { useCanvasStore } from '../../store/canvas-store';
 import { nodeTypes } from '../Nodes';
 import FloatingPreviewPanel from './FloatingPreviewPanel';
 import CanvasToolbar from './CanvasToolbar';
+import CanvasMiniMap from './CanvasMiniMap';
 import NodeFindBar from './NodeFindBar';
 import LineageLegend from './LineageLegend';
 import { lineageEdgeDefaults } from '../../utils/lineage';
@@ -70,7 +70,7 @@ export default function Canvas() {
           showInteractive={false}
           className="!bg-bg-surface !border-border-default !rounded-lg"
         />
-        <MiniMap
+        <CanvasMiniMap
           nodeColor={(node) => {
             switch (node.type) {
               case 'sourceTable': return 'hsl(270, 60%, 60%)';
@@ -81,8 +81,6 @@ export default function Canvas() {
               default: return '#a7a7a7';
             }
           }}
-          maskColor="rgba(0, 0, 0, 0.08)"
-          className="!bg-bg-primary !border-border-default !rounded-lg"
         />
         <LineageLegend />
       </ReactFlow>
