@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-23T22:10:00+08:00",
+  "updatedAt": "2026-11-25T21:35:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -162,7 +162,7 @@
     {
       "id": "X27",
       "title": "session bundle 外层完整性校验（闭合 bundle.json 无法自列校验和的剩余风险）",
-      "status": "pending",
+      "status": "done",
       "kr": null,
       "dependsOn": [
         "T3.6",
@@ -190,13 +190,26 @@
           "at": "2026-11-17T13:49:47+08:00",
           "by": "main-session",
           "note": "用户 2026-11-17 指示纳入计划（不派发）。开放项：落点（UI 显示 sha256 / 旁文件 / 两者）、是否导入侧自动比对、是否升级到非对称签名（涉密钥管理，可能归口 T3.3）。派发前需用户裁决。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-25T21:35:00+08:00",
+          "by": "main-session",
+          "note": "主会话裁决落点（用户 2026-11-17 只要求纳入计划、未裁决）并实现：① 导出侧对最终 zip 字节算 SHA-256，UI 显示「整包 sha256」+ 下载 sha256sum 兼容旁文件 <包名>.sha256；② 导入侧 /import <路径> [sha256] 可选强制比对，在读包后解包前进行，不符/格式非法 → 新错误码 outer-checksum-mismatch（422）且零写入；③ 不做非对称签名（密钥管理归 T3.3，记 design 遗留）。不加校验和时行为逐字不变（decisions ⑤ 读宽写严）。验证：build/lint/verify 全绿，vitest 33·487（+11）、UI 10·90（+3），脚本断言 671 零回归；新增用例含「不符 → sessions 目录快照逐项不变」。文档：specs 06/08、USER-MANUAL 7.6/7.7。分支 chenxinma/x27-bundle-integrity，PR #53（CI 绿，待用户合并）。"
         }
+      ],
+      "decisions": [
+        "① 落点 = UI 显示整包 sha256（可复制）+ 额外下载 .sha256 旁文件（两者都做，成本几乎相同；主会话裁决，用户可改）",
+        "② 校验对象 = 最终 zip 字节的 SHA-256（包内任何文件变化都会改变该值），旁文件格式 `<64 hex>  <包名>\n`（sha256sum -c 兼容）",
+        "③ 导入侧仅在显式给出时比对（/import <路径> [sha256]），不给时行为逐字不变（decisions ⑤ 读宽写严）；不符/格式非法 → outer-checksum-mismatch，解包前拒绝、零写入",
+        "④ 参数拆分：最后一个空白分隔段像 64 位 hex 才当校验和，其余整段算路径（路径可含空格，既有能力不退化）",
+        "⑤ 不做非对称签名：需源实例私钥 + 接收方公钥的分发与轮换，属密钥管理，归口 T3.3 一并设计"
       ]
     },
     {
       "id": "X29",
       "title": "npm 包元信息补齐与 govio-map 0.7.3 发版",
-      "status": "in_progress",
+      "status": "done",
       "kr": null,
       "dependsOn": [],
       "note": "用户 2026-11-23 首次把 govio-map 正式发布到 npm（0.7.2 已占 latest）后发现 registry 上 License 等元信息全空。根因：package.json 只有 name/version，缺 description/author/repository/homepage/keywords/license，仓库也没有 LICENSE 文件；npm 只好从 README 首行抓 description（结果是「**简体中文** | [English](README.en.md)」）。元信息修正已单独开 PR #51（MIT + LICENSE 文件），版本号按用户指示保持 0.7.2 不动——npm 的 version 元数据发布后不可变、且 unpublish 会使该版本号永久作废，故元信息只能随下一次发版（0.7.3）才在 registry 生效。0.7.3 的发布时机由用户裁决：等当前在飞的一批任务完成后一并升版发布，不在本任务内催。另 registry 上存在用户早前发布的占位版本 0.0.0-stage（description「Temporary package placeholder for staged publishing」，不在 latest），待用户裁决是否 deprecate/unpublish。",
@@ -236,13 +249,19 @@
           "at": "2026-11-23T21:17:15+08:00",
           "by": "main-session",
           "note": "PR #51 已由用户合并（merge 4b3d4ac）→ 元信息与 LICENSE 落入 main：license=MIT、description/keywords/homepage/repository/bugs/author 齐备，npm pack 含 LICENSE（57 文件 / 2.5 MB，.agents/skills/govio/assets 仍排除）。任务整体保持 in_progress：0.7.3 升版、npm publish、GitHub Release v0.7.3、占位版本 0.0.0-stage 清理均待用户触发/裁决。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-25T21:35:00+08:00",
+          "by": "main-session",
+          "note": "完成可做的部分：① package.json/package-lock.json version 0.7.2→0.7.3（lockfile 仅顶层两处，依赖树零变动）；② 新增 docs/release-v0.7.3.md（覆盖 v0.7.2 之后合并的 T3.5/T3.6/T3.7、X25、X26、#50、#51，以及本版新增 X30/X27/X31，含验证基线 671 / 33·487 / 10·90、已知取舍与包内容口径）；③ 三件套落盘。**合并顺序硬约束**：本分支须在 #52/#53/#54 之后合并，否则 release notes 会声称包含实际未进包的改动。**发布动作未执行**：npm publish 依赖 npmjs 侧认证（Trusted Publishing binding 或 NPM_TOKEN），且用户曾裁决发布时机由用户触发；步骤见 docs/release-process.md 与 docs/tasks/X29-npm-metadata-release/design.md。GitHub Release v0.7.3 亦待发布后人工创建；占位版本 0.0.0-stage 清理待用户裁决。验证：build/lint/verify 全绿（纯版本号+文档，671/33·476/10·87 零回归）。PR #55（待 #52-#54 先合并）。"
         }
       ]
     },
     {
       "id": "X30",
       "title": "BUGFIX：画布小地图（MiniMap）无法点击导航",
-      "status": "pending",
+      "status": "done",
       "kr": null,
       "dependsOn": [],
       "note": "用户 2026-11-23 报障：右下角小地图「应该可以点击」，实际点击无反应。实证（记录见 docs/tasks/BUGFIX-minimap-navigation.md）：Canvas.tsx:73 与 ShareView.tsx:213 两处 MiniMap 都只传 nodeColor/maskColor/className，未接 onClick；@xyflow/react@12.12.0 的 MiniMap 内置交互仅来自 @xyflow/system 的 XYMinimap（d3-zoom 的 drag 平移 + wheel 缩放），单击不移动视口，onClick 只回传指针坐标、不替你 setViewport → 点击无反应是该库的预期行为，不是回归。次要待证：拖拽/滚轮是否也失效（若失效则另有覆盖层/pointer-events 成因，须先实测取证）。本条只记录，未修复、未排期；用户当前重心在 0.7.3 发版（X29）。",
@@ -268,13 +287,19 @@
           "at": "2026-11-23T21:21:00+08:00",
           "by": "main-session",
           "note": "用户 2026-11-23 报障并要求「先记录问题」。主会话只做静态取证（未在浏览器实测）：两处 MiniMap 均未接 onClick，xyflow v12 的 MiniMap 原生无单击跳转（XYMinimap 只挂 d3-zoom drag/wheel）。记录落 docs/tasks/BUGFIX-minimap-navigation.md，本条 status=pending，未派发、未修复。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-25T21:35:00+08:00",
+          "by": "main-session",
+          "note": "主会话亲自实现（用户 2026-11-25 指令「在当前主 session 上完成 X27 X29 X30 X31」）。新增共享组件 src/components/Canvas/CanvasMiniMap.tsx（Canvas.tsx 与 ShareView.tsx 同改）：点击 → viewBox 线性换算成画布坐标 → setCenter(点, {zoom: 当前倍率, duration: 200})；显式 pannable/zoomable；className 加 cursor-pointer。浏览器实测（moli CDP + Chrome 145，1600×1100，dev server 真机）：点击左上/右下分别使视口移向左上/右下、拖拽平移且松手不被拉回指针处、hover 光标 pointer。**关键发现**：@xyflow/react v12 的 MiniMap 渲染出的 svg 上 React onClick 不派发（手调 props.onClick 正常、同组件自建探针 svg 正常），故弃用库回调，改在 display:contents wrapper 上接 click + 自算坐标（src/utils/minimap.ts 纯函数）。遗留：小地图滚轮缩放在真机未生效（修复前同样如此，未改其语义）。验证：build/lint/verify 全绿，vitest 34·484（+8）、UI 11·95（+8），脚本断言 671 零回归。分支 chenxinma/x30-minimap-navigation，PR #52（CI 绿，待用户合并）。"
         }
       ]
     },
     {
       "id": "X31",
       "title": "GitHub Actions 手动发布 npmjs.com（workflow_dispatch + OIDC 免 token）",
-      "status": "pending",
+      "status": "done",
       "kr": null,
       "dependsOn": [],
       "note": "用户 2026-11-23 要求「追加一个任务：github action 脚本用于发布 npmjs.com」。现状实证：仓库 `.github/workflows/` 只有 ci.yml（CI 门禁，job 名 `build + lint + verify` 是 ruleset 27209918 的 required check，ci.yml:43，不得改名/复用），**没有任何发布 workflow**；npm 发布一直是人工本地执行，账号 chenxin.ma 开了 2FA（publish 需 OTP，见 X29 scope），这正是要自动化的痛点。三个关键约束（均已取证）：① `.gitignore:11-12` 忽略 dist/dist-server，`.gitignore:27` 的裸 `skills` 模式把 `.agents/skills/**` 全部忽略（`git ls-files .agents` = 0 个文件）→ **CI 的 fresh checkout 里没有 `.agents`**，直接 `npm publish` 打出的 tarball 会缺 govio skills，与已发布 0.7.2 的包内容不等价；`.pi/APPEND_SYSTEM.md` 已 tracked（不受 .gitignore:35 `.pi/` 影响）。② skills 的可复现来源存在：`server/govio-installer.ts:169` 从 `https://github.com/<GOVIO_REPO>/releases/download/v<ver>/govio-skills.zip` 下载，CI 可复用同一 URL 预置（无需把 skills 入库）。③ 仓库 PUBLIC（`gh repo view` isPrivate=false）→ npm provenance 与 Trusted Publishing 都可用；本机 npm 11.18.0 / Node 24，CI 亦为 Node 24（ci.yml:67），npm ≥11.5.1 支持 OIDC Trusted Publishing（免长期 token、兼容 2FA 账号、附带 provenance）。另：`gh secret list` 无输出、`gh api repos/.../environments` total_count=0 → 当前既无 NPM_TOKEN secret 也无 environment 保护，两条认证路线都需从零配置。发版惯例：tag 为 `v<version>`（v0.7.2 已存在），GitHub Release 手工建、附件为 npm tgz（release-v0.7.2.md）。本条只立项，未实现、未派发。**用户 2026-11-23 追加约束：发布 workflow 不设置自动运行**——不得挂 `push: tags: v*`、`release: published` 等自动触发器，只能由人在 Actions 页面 / `gh workflow run` 手动触发（发版是用户裁决动作，自动跑会在用户未准备好时把版本号永久烧掉）。与 X29 的接口见 scope 末项（0.7.3 是否改由该 workflow 首发由用户裁决）。",
@@ -311,6 +336,12 @@
           "at": "2026-11-23T21:52:00+08:00",
           "by": "main-session",
           "note": "用户追加约束：发布 workflow 不设置自动运行。按此修订条目——title 改为「手动发布（workflow_dispatch + OIDC）」，触发方式收敛为仅 workflow_dispatch（显式禁 push tag / release / schedule），版本一致性改由输入项与 package.json 自查比对，GitHub Release 也不自动建（只产出 tgz artifact 供人工挂载），并新增「标签/Release 不触发发布」的验收项。status 仍为 pending，未派发。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-25T21:35:00+08:00",
+          "by": "main-session",
+          "note": "新增 .github/workflows/publish.yml（**仅 workflow_dispatch**，用户 2026-11-23 明确要求不自动运行）：输入 version/dry_run(默认 true)/skills_version；闸门=版本一致→版本未占用→从 govio release 的 govio-skills.zip 预置 .agents/skills（并删 govio/assets）→build→npm pack --dry-run + 产物断言；认证优先 Trusted Publishing（OIDC + --provenance），NPM_TOKEN 兜底；发布后自检 7 个元信息字段 + 临时 prefix 安装验证 bin。新增 .github/workflows/scripts/verify-pack-contents.mjs（必需文件/六个 govio 技能目录/禁止 assets·node_modules·src·server·tests·scripts·.env 等/文件数与体积上限）与 docs/release-process.md。本地实证：正路径 57 文件 2422 KB 通过；反路径（临时移走 .agents）按预期报 7 处不合规。**workflow_dispatch 无法在非默认分支 dispatch（gh 返回 404 workflow not found on default branch）**，故 dry-run 实跑与真实发布待 PR 合并后在 main 上执行。action 全 pin SHA（upload-artifact v4.6.2 SHA 已对 GitHub API 核对）。PR #54（CI 绿，待用户合并）。"
         }
       ]
     }
@@ -328,9 +359,13 @@
       "#31 feat/lineage-semantic-handles",
       "#32 x14-ci-gate",
       "#33 x13-table-relations-ui",
-      "#34 x15-relation-columns-only"
+      "#34 x15-relation-columns-only",
+      "#52 x30-minimap-navigation",
+      "#53 x27-bundle-integrity",
+      "#54 x31-npm-publish",
+      "#55 x29-release-0.7.3"
     ],
-    "note": "#12-#17 全部合并入 main（14e39cf/3759971/1848b08/18ba6ab/fb237a2/3428f69）。相关功能分支（security/hardening、feature/phase1-trusted-analysis、feature/phase2-semantic-layer、fix/df-columns-fallback、chore/move-sql-discipline）已清理；docs/tech-roadmap 为已合并零提交分支，遗留未清理；docs/sync-readme-claudemd、feature/llm-config 为 2026-08 陈旧分支（含未合并提交），待用户裁决去留。 补充（2026-11-11）：X11 属 bugfix 直接 commit main（2fb6ea6 立项 / 8aca718 主修复 / 60b11d4 高度回归 / ebdd9cb 验收），未走 PR；X12 经 PR #28（merge 849ecf6）、X10 经 PR #29（merge a300128）合入，两者由 Orca worker 在独立 worktree 执行（X12=codex，X10=codex 首次未开工后按用户指令改 pi 重派）；#30（merge b2aa851）为用户侧 chat 折叠 UI 改动，非本计划任务。合并态 main 曾出现 lineageEdge 导入丢失（PR #29 与 hotfix 5af8555 的行级冲突解决错误，build+verify 阻断），已由 d2c3790 修复，详见 docs/tasks/BUGFIX-lineage-edge-import.md。#22-#27 未在本 map 记账。 补充（2026-11-12）：#31（merge ac8bab1，分支 feat/lineage-semantic-handles：血缘边形状/样式随 lineage.ts APPEARANCE 区分 + 语义血缘专用 Handle 统一下出上入、画布全局排版方案B（数据血缘 LR 分层 + 语义血缘同列纵向堆叠）、工具栏「整理画布」按钮）为用户侧改动，非本计划任务，未建 X 条目与三件套。主会话已在合并态 main 独立复跑门槛全绿（build/lint/verify 均 exit 0，verify 全跑后 git status --porcelain 干净），断言基线随之刷新：脚本 612 项 0 失败（semantic-lineage 45→48）、vitest integration 14 文件/155 例（新增 tests/integration/layout.test.ts、tests/ui/sql-query-node.test.tsx、tests/ui/canvas-toolbar.test.tsx）、UI 子集 4 文件/21 例；耗时实测 build 62s + lint 34s + verify 94s ≈ 190s。陈旧本地分支 chenxinma/chat-processed-fold（已合并）、docs/sync-readme-claudemd（2 未合并提交）、feature/llm-config（1 未合并提交）已按用户指令 2026-11-12 删除，远端无对应分支。 补充（2026-11-12 夜）：X14 经 PR #32（分支 chenxinma/x14-ci-gate，commit c68aefd + 主会话补录 23cfad6）、X13 经 PR #33（分支 chenxinma/x13-table-relations-ui，commit 8e762fa）交付，两者由 codex worker 在独立 Orca worktree 并行执行（首次派发因 codex 缺 OPENAI_API_KEY 卡在 turn_start_unobserved，用户补 key 后按 recovery-and-cleanup 重派：worker-release → task-update ready → worker-start --task 复用既有 worktree）。PR #32 首次真实 CI run 43242165890 success（pull_request 触发，job「build + lint + verify」1m1s），补录 commit 再触发 run 43242897266 success（synchronize，49s）→ 两种触发均已实证。PR #33 因 base(main) 尚无 workflow 文件（pull_request 取 base+head 合并态）暂无 CI check，需 #32 先合入。**合并顺序：先 #32 再 #33**；两 PR 均由用户合并，主会话不自行 merge。 补充（2026-11-13）：用户已合并 #33（X13，2026-11-13T05:42:25Z，merge 9783b92）与 #32（X14，2026-11-13T05:43:18Z，merge ab42d46）——实际合并顺序与建议相反（先 #33 后 #32），两 PR 文件集不相交（X14 只加 .github/+三件套，X13 只改 src/scripts/tests/docs），无冲突，合并态双向复跑均绿。#32 合入触发 main 的 push 门禁：run 43373860168 success（1m17s，ubuntu），脚本断言 616（=623-verify:cwd SKIP 7）、vitest 15 文件/193 例、UI 4 文件/31 例、registry 仅 registry.npmjs.org → X14 的三种触发（pull_request/synchronize/push main）全部实证。#33 因 base 无 workflow 未获 CI check（已在 PR 正文预告）。分支与 worktree 已清理：远端 chenxinma/x13-table-relations-ui、chenxinma/x14-ci-gate 删除，Orca worktree 以 rm --delete-branch 移除，本地仅剩 main。**新基线（合并态 main ab42d46）：脚本 623 项 0 失败（Windows）/ 616（ubuntu CI）、vitest 15 文件 193 例、UI 4 文件 31 例。** 分支保护尚未开启（gh api branches/main/protection → 404 Branch not protected），required check 名应为 build + lint + verify。 补充（2026-11-13 分支保护核查）：仓库已存在 ruleset「main」（id=27209918，target=branch，条件 refs/heads/main），规则含 deletion / non_fast_forward / required_status_checks（context = 「build + lint + verify」，integration_id=15368 即 GitHub Actions，strict=false），**但 enforcement = disabled（未生效）**，`gh api repos/.../branches/main/protection` 仍返回 404 Branch not protected、`rules/branches/main` 返回空。需用户在 Settings → Rules → Rulesets → main 把 Enforcement status 改为 **Active**（或授权主会话用 API 置 active）。 补充（2026-11-13 X15）：PR #34（分支 chenxinma/x15-relation-columns-only，commit 94ea04d）由**主会话亲自实现**（改动面小且已定位到行，未派 worker；单写者纪律：实施期间未派发其它 worker 改同批文件）。这是 X14 门禁上线后第一个功能 PR，CI 自动跑通：run 43456216218 success（pull_request 触发，job「build + lint + verify」54s），ubuntu 断言 617（=624-verify:cwd SKIP 7）、vitest 193 例 + UI 31 例全绿 → 门禁对功能 PR 已实际生效（但 ruleset enforcement 仍为 disabled，尚未真正阻断合并）。 补充（2026-11-13 X15.1）：PR #34 追加第二个 commit d652a4f（用户裁决「hover 显示 description 先保留」→ 画布关系行只留「目标表 + 字段关联」，图谱 description 改为整行 hover 的 title 按需查看；导出 HTML 有意保留「说明」列，静态交付物无 hover）。CI 经 synchronize 重跑：run 43460257999 success（1m7s），ubuntu 脚本断言 617（=624-verify:cwd SKIP 7）、vitest 194 例 + UI 31 例全绿。PR #34 仍 OPEN，待用户合并。 补充（2026-11-14 分支保护）：用户已把 ruleset「main」(id=27209918) 的 enforcement 置为 **active**（required check「build + lint + verify」+ deletion + non_fast_forward），并当场拦下主会话的文档记账直推（`remote rejected ... repository rule violations`）→ 该记账改走 PR #35（CI run 43460801904 success 1m12s）。随后按用户指令「文档修改 ruleset 加 bypass actor」，主会话经 `gh api -X PUT /repos/chenxinma/govio-map/rulesets/27209918` 加 `bypass_actors: [{actor_id: 5, actor_type: RepositoryRole, bypass_mode: always}]`（仓库 admin 角色）；**bypass 仅限纯文档记账**，代码改动（含 bugfix）仍必须走 PR，纪律已同步写进 AGENTS.md「合入 main 纪律（PR 门禁 + 分支保护）」与本文件 conventions.commitProtocol。PR #35 在 bypass 生效后已无必要 → 关闭并删分支，其记账 commit 78a800d 改由直推 main 落地。 补充（2026-11-14 X15 收尾）：用户已合并 #34（X15+X15.1，merge a54360e，16:20:06Z）与 #35（文档记账，merge a88a22a，16:20:38Z）；分支 chenxinma/x15-relation-columns-only、chore/plan-x151-bookkeeping 已删（远端 + 本地），本地仅剩 main。分支保护 active 后的首个文档直推（commit 586792f，AGENTS.md + task-plan 纪律修订）经 admin bypass 成功落地，且 main 的 push 触发 CI run 43462139558 success → bypass 与门禁并存验证通过。观察：#34 合并触发的 run 43461685410 被 concurrency 取消（同一 main ref 上紧随的 #35 推送 cancel-in-progress），最终态由后续 run 43461778446（success 1m9s，含 #34 全部改动）覆盖验证——属 workflow concurrency 配置的预期行为，已记入 X14 history。 补充（2026-11-16 X25）：PR #45（分支 chenxinma/x25-share-link-origin，commit 2fa1e57，含回合 main 的 92d6dcf）由主会话亲自实现，用户 2026-11-15T11:01:01Z 合并（merge ed2d9d0），CI「build + lint + verify」pass 1m17s（run 43706672396）。主会话 2026-11-16 在合并态 main 独立复跑门槛全绿后置 X25 = accepted（脚本 671 / vitest 21·289 / UI 4·37，与 verificationBaseline 吻合，verify 后工作区干净）。记账缺口说明：X25 条目与 T3.5/T3.6/T3.7 立项（14e11dc）分别写在两条并行分支上，故 main 曾出现「T3.5.dependsOn 引用 X25 但 crossCutting 无 X25」的悬空依赖表象——#45 合并后两者同在 main，依赖已闭合，无需补建条目。",
+    "note": "#12-#17 全部合并入 main（14e39cf/3759971/1848b08/18ba6ab/fb237a2/3428f69）。相关功能分支（security/hardening、feature/phase1-trusted-analysis、feature/phase2-semantic-layer、fix/df-columns-fallback、chore/move-sql-discipline）已清理；docs/tech-roadmap 为已合并零提交分支，遗留未清理；docs/sync-readme-claudemd、feature/llm-config 为 2026-08 陈旧分支（含未合并提交），待用户裁决去留。 补充（2026-11-11）：X11 属 bugfix 直接 commit main（2fb6ea6 立项 / 8aca718 主修复 / 60b11d4 高度回归 / ebdd9cb 验收），未走 PR；X12 经 PR #28（merge 849ecf6）、X10 经 PR #29（merge a300128）合入，两者由 Orca worker 在独立 worktree 执行（X12=codex，X10=codex 首次未开工后按用户指令改 pi 重派）；#30（merge b2aa851）为用户侧 chat 折叠 UI 改动，非本计划任务。合并态 main 曾出现 lineageEdge 导入丢失（PR #29 与 hotfix 5af8555 的行级冲突解决错误，build+verify 阻断），已由 d2c3790 修复，详见 docs/tasks/BUGFIX-lineage-edge-import.md。#22-#27 未在本 map 记账。 补充（2026-11-12）：#31（merge ac8bab1，分支 feat/lineage-semantic-handles：血缘边形状/样式随 lineage.ts APPEARANCE 区分 + 语义血缘专用 Handle 统一下出上入、画布全局排版方案B（数据血缘 LR 分层 + 语义血缘同列纵向堆叠）、工具栏「整理画布」按钮）为用户侧改动，非本计划任务，未建 X 条目与三件套。主会话已在合并态 main 独立复跑门槛全绿（build/lint/verify 均 exit 0，verify 全跑后 git status --porcelain 干净），断言基线随之刷新：脚本 612 项 0 失败（semantic-lineage 45→48）、vitest integration 14 文件/155 例（新增 tests/integration/layout.test.ts、tests/ui/sql-query-node.test.tsx、tests/ui/canvas-toolbar.test.tsx）、UI 子集 4 文件/21 例；耗时实测 build 62s + lint 34s + verify 94s ≈ 190s。陈旧本地分支 chenxinma/chat-processed-fold（已合并）、docs/sync-readme-claudemd（2 未合并提交）、feature/llm-config（1 未合并提交）已按用户指令 2026-11-12 删除，远端无对应分支。 补充（2026-11-12 夜）：X14 经 PR #32（分支 chenxinma/x14-ci-gate，commit c68aefd + 主会话补录 23cfad6）、X13 经 PR #33（分支 chenxinma/x13-table-relations-ui，commit 8e762fa）交付，两者由 codex worker 在独立 Orca worktree 并行执行（首次派发因 codex 缺 OPENAI_API_KEY 卡在 turn_start_unobserved，用户补 key 后按 recovery-and-cleanup 重派：worker-release → task-update ready → worker-start --task 复用既有 worktree）。PR #32 首次真实 CI run 43242165890 success（pull_request 触发，job「build + lint + verify」1m1s），补录 commit 再触发 run 43242897266 success（synchronize，49s）→ 两种触发均已实证。PR #33 因 base(main) 尚无 workflow 文件（pull_request 取 base+head 合并态）暂无 CI check，需 #32 先合入。**合并顺序：先 #32 再 #33**；两 PR 均由用户合并，主会话不自行 merge。 补充（2026-11-13）：用户已合并 #33（X13，2026-11-13T05:42:25Z，merge 9783b92）与 #32（X14，2026-11-13T05:43:18Z，merge ab42d46）——实际合并顺序与建议相反（先 #33 后 #32），两 PR 文件集不相交（X14 只加 .github/+三件套，X13 只改 src/scripts/tests/docs），无冲突，合并态双向复跑均绿。#32 合入触发 main 的 push 门禁：run 43373860168 success（1m17s，ubuntu），脚本断言 616（=623-verify:cwd SKIP 7）、vitest 15 文件/193 例、UI 4 文件/31 例、registry 仅 registry.npmjs.org → X14 的三种触发（pull_request/synchronize/push main）全部实证。#33 因 base 无 workflow 未获 CI check（已在 PR 正文预告）。分支与 worktree 已清理：远端 chenxinma/x13-table-relations-ui、chenxinma/x14-ci-gate 删除，Orca worktree 以 rm --delete-branch 移除，本地仅剩 main。**新基线（合并态 main ab42d46）：脚本 623 项 0 失败（Windows）/ 616（ubuntu CI）、vitest 15 文件 193 例、UI 4 文件 31 例。** 分支保护尚未开启（gh api branches/main/protection → 404 Branch not protected），required check 名应为 build + lint + verify。 补充（2026-11-13 分支保护核查）：仓库已存在 ruleset「main」（id=27209918，target=branch，条件 refs/heads/main），规则含 deletion / non_fast_forward / required_status_checks（context = 「build + lint + verify」，integration_id=15368 即 GitHub Actions，strict=false），**但 enforcement = disabled（未生效）**，`gh api repos/.../branches/main/protection` 仍返回 404 Branch not protected、`rules/branches/main` 返回空。需用户在 Settings → Rules → Rulesets → main 把 Enforcement status 改为 **Active**（或授权主会话用 API 置 active）。 补充（2026-11-13 X15）：PR #34（分支 chenxinma/x15-relation-columns-only，commit 94ea04d）由**主会话亲自实现**（改动面小且已定位到行，未派 worker；单写者纪律：实施期间未派发其它 worker 改同批文件）。这是 X14 门禁上线后第一个功能 PR，CI 自动跑通：run 43456216218 success（pull_request 触发，job「build + lint + verify」54s），ubuntu 断言 617（=624-verify:cwd SKIP 7）、vitest 193 例 + UI 31 例全绿 → 门禁对功能 PR 已实际生效（但 ruleset enforcement 仍为 disabled，尚未真正阻断合并）。 补充（2026-11-13 X15.1）：PR #34 追加第二个 commit d652a4f（用户裁决「hover 显示 description 先保留」→ 画布关系行只留「目标表 + 字段关联」，图谱 description 改为整行 hover 的 title 按需查看；导出 HTML 有意保留「说明」列，静态交付物无 hover）。CI 经 synchronize 重跑：run 43460257999 success（1m7s），ubuntu 脚本断言 617（=624-verify:cwd SKIP 7）、vitest 194 例 + UI 31 例全绿。PR #34 仍 OPEN，待用户合并。 补充（2026-11-14 分支保护）：用户已把 ruleset「main」(id=27209918) 的 enforcement 置为 **active**（required check「build + lint + verify」+ deletion + non_fast_forward），并当场拦下主会话的文档记账直推（`remote rejected ... repository rule violations`）→ 该记账改走 PR #35（CI run 43460801904 success 1m12s）。随后按用户指令「文档修改 ruleset 加 bypass actor」，主会话经 `gh api -X PUT /repos/chenxinma/govio-map/rulesets/27209918` 加 `bypass_actors: [{actor_id: 5, actor_type: RepositoryRole, bypass_mode: always}]`（仓库 admin 角色）；**bypass 仅限纯文档记账**，代码改动（含 bugfix）仍必须走 PR，纪律已同步写进 AGENTS.md「合入 main 纪律（PR 门禁 + 分支保护）」与本文件 conventions.commitProtocol。PR #35 在 bypass 生效后已无必要 → 关闭并删分支，其记账 commit 78a800d 改由直推 main 落地。 补充（2026-11-14 X15 收尾）：用户已合并 #34（X15+X15.1，merge a54360e，16:20:06Z）与 #35（文档记账，merge a88a22a，16:20:38Z）；分支 chenxinma/x15-relation-columns-only、chore/plan-x151-bookkeeping 已删（远端 + 本地），本地仅剩 main。分支保护 active 后的首个文档直推（commit 586792f，AGENTS.md + task-plan 纪律修订）经 admin bypass 成功落地，且 main 的 push 触发 CI run 43462139558 success → bypass 与门禁并存验证通过。观察：#34 合并触发的 run 43461685410 被 concurrency 取消（同一 main ref 上紧随的 #35 推送 cancel-in-progress），最终态由后续 run 43461778446（success 1m9s，含 #34 全部改动）覆盖验证——属 workflow concurrency 配置的预期行为，已记入 X14 history。 补充（2026-11-16 X25）：PR #45（分支 chenxinma/x25-share-link-origin，commit 2fa1e57，含回合 main 的 92d6dcf）由主会话亲自实现，用户 2026-11-15T11:01:01Z 合并（merge ed2d9d0），CI「build + lint + verify」pass 1m17s（run 43706672396）。主会话 2026-11-16 在合并态 main 独立复跑门槛全绿后置 X25 = accepted（脚本 671 / vitest 21·289 / UI 4·37，与 verificationBaseline 吻合，verify 后工作区干净）。记账缺口说明：X25 条目与 T3.5/T3.6/T3.7 立项（14e11dc）分别写在两条并行分支上，故 main 曾出现「T3.5.dependsOn 引用 X25 但 crossCutting 无 X25」的悬空依赖表象——#45 合并后两者同在 main，依赖已闭合，无需补建条目。 补充（2026-11-25，主会话亲自实现 X27/X29/X30/X31，四分支并行、文件集互不相交）：#52 X30 小地图点击跳转、#53 X27 整包校验和、#54 X31 手动发布 workflow、#55 X29 升版 0.7.3 + release notes，四者 CI 均绿（#55 待跑完）。**合并顺序：#52 → #53 → #54 → #55**（#55 的 release notes 已把前三项写成本版包含；顺序反了会造成 notes 与实际包不符）。合并后主会话需：独立复跑门槛 → 同步 verificationBaseline（X30 与 X27 合计把 vitest 从 33·476/10·87 抬到 33·487/10·90，脚本断言仍 671）→ 置 accepted；随后才允许在 main 上 workflow_dispatch 发布 0.7.3。",
     "security": "https://github.com/chenxinma/govio-map/pull/12",
     "phase1": "https://github.com/chenxinma/govio-map/pull/13",
     "phase2": "https://github.com/chenxinma/govio-map/pull/14",
@@ -361,7 +396,11 @@
     "t37-import-session-bundle": "https://github.com/chenxinma/govio-map/pull/48",
     "bugfix-share-preflight": "https://github.com/chenxinma/govio-map/pull/49",
     "bugfix-model-thinking-sync": "https://github.com/chenxinma/govio-map/pull/50",
-    "x29-npm-metadata-release": "https://github.com/chenxinma/govio-map/pull/51"
+    "x29-npm-metadata-release": "https://github.com/chenxinma/govio-map/pull/51",
+    "x30-minimap-navigation": "https://github.com/chenxinma/govio-map/pull/52",
+    "x27-bundle-integrity": "https://github.com/chenxinma/govio-map/pull/53",
+    "x31-npm-publish": "https://github.com/chenxinma/govio-map/pull/54",
+    "x29-release-0.7.3": "https://github.com/chenxinma/govio-map/pull/55"
   },
   "verificationBaseline": {
     "updatedAt": "2026-11-15T09:35:53+08:00",
