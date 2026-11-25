@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-25T23:05:00+08:00",
+  "updatedAt": "2026-11-25T23:15:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -279,6 +279,12 @@
           "at": "2026-11-25T23:05:00+08:00",
           "by": "main-session",
           "note": "补充（0.0.0-stage 处置，用户 2026-11-25 裁决「npm deprecate」）：主会话尝试执行失败——本地 ~/.npmrc 的 registry.npmjs.org token 已失效（`npm whoami` 401；`npm deprecate govio-map@0.0.0-stage` 返回 E404「Not found」，npm 对无权限写操作统一回 404），且 Trusted Publishing（OIDC）目前只覆盖 `npm publish` 与可选 `npm dist-tag`，**不覆盖 deprecate**；npm 文档明确「修改包设置需要 2FA」。需用户侧认证之一：① npmjs 网页 Package → Versions → 0.0.0-stage → Deprecate（推荐，浏览器过 2FA）；② 本地 `npm login --registry=https://registry.npmjs.org` 后由主会话执行 `npm deprecate \"govio-map@0.0.0-stage\" \"占位版本，请使用最新正式版（placeholder — use the latest govio-map release）\" --otp=<6位码>`；③ 提供该包写权限的 granular token（2FA-bypass token 正被 npm 收紧，不推荐）。该项属 scope 内的用户裁决项、非验收门槛，故本条 accepted 不受影响；完成后可用 `npm view govio-map@0.0.0-stage deprecated` 复核。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-25T23:15:00+08:00",
+          "by": "main-session",
+          "note": "用户 2026-11-25 裁决「算了，先放着吧」→ **0.0.0-stage 保持现状**：不做 deprecate、不做 unpublish（unpublish 会让该号永久作废），也不为此配置 token/登录。该占位版本不在 latest，不影响 `npm i govio-map` 与 0.7.3 的安装路径，只是版本列表里多一条。后续若要处置，三条路径见上一条 history（npmjs 网页 Deprecate 推荐 / 本地 login 后主会话代跑 / granular token）。本条接受状态不变，不再有未闭环动作。"
         }
       ]
     },
