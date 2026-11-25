@@ -110,6 +110,7 @@ CI fresh checkout 里没有它；workflow 从 `https://github.com/chenxinma/govi
 |---|---|
 | 版本已在 registry | workflow 在 publish 前就失败（不改 registry）。**不要** `npm unpublish`，改用新版本号 |
 | 元信息/自检失败 | 包已发布但元信息不达标：修 `package.json` → 升新版本重发（已发布版本不可改） |
+| publish 报 `E403 ... OIDC permission denied for this action` | npmjs 侧没有为本包配置 Trusted Publishing binding（或 binding 的 repo/workflow 文件名与实际不符）。注意此时 provenance 已签名成功，只是授权被拒、registry 未产生任何版本。按 §1 方式 A 补 binding 后重跑即可 |
 | provenance 缺失 | 检查是否走了 token 方式（token 也可带 provenance，但需 `--provenance` 与 public repo）；OIDC 方式需 binding 正确 |
 | 想撤回 | `npm deprecate govio-map@<version> "原因"`（推荐，保留可安装性）；`unpublish` 仅在极端场景且接受版本号永久作废 |
 | skills 预置失败 | 说明 `chenxinma/govio` 的 release 没有 `govio-skills.zip` 或 tag 写错；用 `skills_version` 显式指定可用 tag |

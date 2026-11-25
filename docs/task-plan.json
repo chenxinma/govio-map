@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-25T21:55:00+08:00",
+  "updatedAt": "2026-11-25T22:15:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -261,6 +261,12 @@
           "at": "2026-11-25T21:35:00+08:00",
           "by": "main-session",
           "note": "完成可做的部分：① package.json/package-lock.json version 0.7.2→0.7.3（lockfile 仅顶层两处，依赖树零变动）；② 新增 docs/release-v0.7.3.md（覆盖 v0.7.2 之后合并的 T3.5/T3.6/T3.7、X25、X26、#50、#51，以及本版新增 X30/X27/X31，含验证基线 671 / 33·487 / 10·90、已知取舍与包内容口径）；③ 三件套落盘。**合并顺序硬约束**：本分支须在 #52/#53/#54 之后合并，否则 release notes 会声称包含实际未进包的改动。**发布动作未执行**：npm publish 依赖 npmjs 侧认证（Trusted Publishing binding 或 NPM_TOKEN），且用户曾裁决发布时机由用户触发；步骤见 docs/release-process.md 与 docs/tasks/X29-npm-metadata-release/design.md。GitHub Release v0.7.3 亦待发布后人工创建；占位版本 0.0.0-stage 清理待用户裁决。验证：build/lint/verify 全绿（纯版本号+文档，671/33·476/10·87 零回归）。PR #55（待 #52-#54 先合并）。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-25T22:15:00+08:00",
+          "by": "main-session",
+          "note": "合并后进展：PR #55 已合并（merge 21a6138），main 上 package.json / lockfile = 0.7.3，release notes 与文档在位；合并态 main 独立复跑 build/lint/verify 全绿（671 / 34·495 / 11·98，工作区干净）。发布：已用 X31 的 publish workflow 演练成功（run 45629552187：pack 断言 38 文件 2385 KB ✓），真实发布 run 45630110495 因 **npmjs 未配置 Trusted Publishing binding** 被拒（E403 OIDC permission denied），registry 上仍只有 0.0.0-stage 与 0.7.2。下一步（阻塞在用户侧）：在 npmjs 为 govio-map 添加 trusted publisher（chenxinma/govio-map + publish.yml）或配置 NPM_TOKEN secret → 重跑 `gh workflow run publish.yml -f version=0.7.3 -f dry_run=false` → 自检通过后人工建 GitHub Release v0.7.3。"
         }
       ]
     },
@@ -354,6 +360,12 @@
           "at": "2026-11-25T21:35:00+08:00",
           "by": "main-session",
           "note": "新增 .github/workflows/publish.yml（**仅 workflow_dispatch**，用户 2026-11-23 明确要求不自动运行）：输入 version/dry_run(默认 true)/skills_version；闸门=版本一致→版本未占用→从 govio release 的 govio-skills.zip 预置 .agents/skills（并删 govio/assets）→build→npm pack --dry-run + 产物断言；认证优先 Trusted Publishing（OIDC + --provenance），NPM_TOKEN 兜底；发布后自检 7 个元信息字段 + 临时 prefix 安装验证 bin。新增 .github/workflows/scripts/verify-pack-contents.mjs（必需文件/六个 govio 技能目录/禁止 assets·node_modules·src·server·tests·scripts·.env 等/文件数与体积上限）与 docs/release-process.md。本地实证：正路径 57 文件 2422 KB 通过；反路径（临时移走 .agents）按预期报 7 处不合规。**workflow_dispatch 无法在非默认分支 dispatch（gh 返回 404 workflow not found on default branch）**，故 dry-run 实跑与真实发布待 PR 合并后在 main 上执行。action 全 pin SHA（upload-artifact v4.6.2 SHA 已对 GitHub API 核对）。PR #54（CI 绿，待用户合并）。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-25T22:15:00+08:00",
+          "by": "main-session",
+          "note": "合并后实跑取证（PR #54 已合并 71926c2，workflow 已在默认分支注册）：① **dry-run 成功** run 45629552187（workflow_dispatch, main）：版本一致性通过（0.7.3）、registry 无该版本、skills 取 chenxinma/govio 最新 release **v0.7.2** 并预置 6 个 govio 技能、build 通过、pack 断言 ✓「govio-map-0.7.3.tgz，38 个文件，2385 KB」、auth 判定为 OIDC（仓库无 NPM_TOKEN secret）、publish 两个分支与自检按 dry_run 正确 skipped、tgz artifact 上传成功；② 闸门实测：版本不一致 guard → run 45630428955 在 step 6 失败；skills 预置 guard → run 45630483382（skills_version=v0.0.0）在 step 8 失败；**「版本已存在」guard 暂无法实跑**（需当前 package.json 版本已在 registry，等 0.7.3 发布后可用同版本重跑验证）；③ 真实发布尝试 run 45630110495 在 step 14 失败：`E403 OIDC permission denied for this action`——**npmjs 侧尚未为该包配置 Trusted Publishing binding**（provenance 已签名成功，仅授权环节被拒），registry 未产生 0.7.3（`npm view govio-map@0.7.3` 仍 404）。待用户在 npmjs 添加 binding（repo chenxinma/govio-map + workflow 文件名 publish.yml）或配置 NPM_TOKEN secret 后重跑 dry_run=false。本条 status 保持 done：workflow 与断言已交付并在 CI 实证，只差一次成功 publish 才能置 accepted。"
         }
       ]
     }
