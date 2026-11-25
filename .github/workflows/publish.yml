@@ -1,0 +1,236 @@
+name: Publish to npm (manual)
+
+# X31：手动发布 npmjs.com。
+#
+# 触发纪律（用户 2026-11-23 明确要求）：**只有 workflow_dispatch**。
+# 不挂 push: tags / release: published / schedule —— 发版是人的裁决动作，
+# 自动跑会在用户没准备好时把一个不可变版本号烧掉（npm 的 version 发布后不可改，
+# unpublish 会让该版本号永久作废）。
+#
+# 认证（design 见 docs/tasks/X31-npm-publish-workflow/design.md）：
+#   首选 npm Trusted Publishing（OIDC）：npmjs 侧绑定 repo + workflow 文件名 publish.yml，
+#   本文件声明 `id-token: write`，无需任何长期 token，且自动附 provenance。
+#   兜底：仓库 secret NPM_TOKEN（Automation/Granular token，仅该包），存在时优先用它。
+#
+# 与 ci.yml 的关系：完全独立，**不改变** job 名 `build + lint + verify`（ruleset 27209918 的
+# required check），也不与 ci 抢 concurrency group。
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '要发布的版本号，必须与 package.json 的 version 完全一致（如 0.7.3）'
+        required: true
+        type: string
+      dry_run:
+        description: '演练（安装 + 构建 + 预置 skills + 打包断言，不执行 npm publish）'
+        required: true
+        type: boolean
+        default: true
+      skills_version:
+        description: '嵌入包内的 govio skills 版本 tag（如 v0.7.2）；留空 = 取 chenxinma/govio 最新 release'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  id-token: write # Trusted Publishing（OIDC）+ npm provenance
+
+concurrency:
+  group: publish-npm-${{ github.ref }}
+  # 发布不做「后到取消先到」：宁可排队，也不要半途取消一次真实 publish。
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: pack + publish (manual)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      # actions 一律 pin commit SHA（X16 §2 体例）。
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      # lockfile 里 1160+ 条 tarball 指向 registry.npmmirror.com（本机镜像）。
+      # 与 ci.yml 同款处理：不重写 lockfile，让 npm 把 tarball host 换回公共 registry。
+      - name: Use public npm registry for lockfile tarballs
+        run: |
+          npm config set registry https://registry.npmjs.org
+          npm config set replace-registry-host always
+          npm --version
+          node --version
+
+      - name: Install (npm ci)
+        run: npm ci --no-audit --no-fund
+
+      # ── 发布前闸门 1：输入版本 == package.json 版本 ────────────────────────
+      - name: Verify version input matches package.json
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          pkg_version="$(node -p "require('./package.json').version")"
+          want="${INPUT_VERSION#v}"
+          if [ "$pkg_version" != "$want" ]; then
+            echo "::error title=版本不一致::输入 ${INPUT_VERSION} 与 package.json version ${pkg_version} 不一致。先在 PR 里升版，再来发布。"
+            exit 1
+          fi
+          echo "版本一致：$pkg_version"
+
+      # ── 发布前闸门 2：该版本尚未发布（npm 版本不可变） ────────────────────
+      - name: Verify version is not published yet
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          want="${INPUT_VERSION#v}"
+          published="$(npm view "govio-map@${want}" version 2>/dev/null || true)"
+          if [ -n "$published" ]; then
+            echo "::error title=版本已存在::registry 上已有 govio-map@${want}。npm 版本不可变，unpublish 会让该版本号永久作废——请改版本号后重跑。"
+            exit 1
+          fi
+          echo "registry 上尚无 govio-map@${want}，可以发布"
+
+      # ── 预置 .agents/skills：CI 的 fresh checkout 里没有它 ─────────────────
+      # .gitignore:27 的裸 `skills` 模式把 .agents/skills/** 全部忽略（git ls-files .agents = 0），
+      # 所以直接打包会缺 govio 技能。这里复用 server/govio-installer.ts 的同一来源：
+      # https://github.com/chenxinma/govio/releases/download/v<ver>/govio-skills.zip
+      - name: Install govio skills into .agents/skills
+        id: skills
+        env:
+          INPUT_SKILLS_VERSION: ${{ inputs.skills_version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="$(printf '%s' "${INPUT_SKILLS_VERSION}" | tr -d '[:space:]')"
+          if [ -z "$tag" ]; then
+            tag="$(gh api repos/chenxinma/govio/releases/latest --jq .tag_name)"
+          fi
+          case "$tag" in
+            v*) ;;
+            *) tag="v${tag}" ;;
+          esac
+          echo "skills tag = $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          url="https://github.com/chenxinma/govio/releases/download/${tag}/govio-skills.zip"
+          curl -sSL --fail --retry 3 -o "$RUNNER_TEMP/govio-skills.zip" "$url"
+          mkdir -p "$RUNNER_TEMP/skills-unzip"
+          unzip -q -o "$RUNNER_TEMP/govio-skills.zip" -d "$RUNNER_TEMP/skills-unzip"
+          # zip 内前缀是 skills/xxx，落到包内路径 .agents/skills/xxx
+          rm -rf .agents/skills
+          mkdir -p .agents/skills
+          cp -R "$RUNNER_TEMP/skills-unzip/skills/." .agents/skills/
+          # 图谱快照目录是按环境生成的，绝不随包分发（package.json 也有 !.agents/skills/govio/assets 兜底）
+          rm -rf .agents/skills/govio/assets
+          test -f .agents/skills/govio/SKILL.md
+          echo "已预置技能目录：$(ls .agents/skills | tr '\n' ' ')"
+
+      # ── 构建 ──────────────────────────────────────────────────────────────
+      # package.json 有 `prepublishOnly: npm run build`；真实 publish 时用 --ignore-scripts
+      # 避免二次构建（这里已经构建过），见 design.md「双跑取舍」。
+      - name: Build (tsc -b + vite + esbuild)
+        run: npm run build
+
+      # ── 发布前闸门 3：tarball 内容断言 ────────────────────────────────────
+      - name: Pack (dry-run) and assert tarball contents
+        run: |
+          set -o pipefail
+          npm pack --dry-run --json | tee "$RUNNER_TEMP/pack.json" > /dev/null
+          node .github/workflows/scripts/verify-pack-contents.mjs < "$RUNNER_TEMP/pack.json"
+
+      - name: Pack artifact for GitHub Release
+        run: |
+          set -euo pipefail
+          tgz="$(npm pack --json --ignore-scripts | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s)[0].filename))")"
+          echo "tgz=$tgz" >> "$GITHUB_ENV"
+          ls -l "$tgz"
+          sha256sum "$tgz" | tee "$tgz.sha256"
+
+      # ── 发布 ──────────────────────────────────────────────────────────────
+      - name: Detect npm auth mode
+        id: auth
+        env:
+          NPM_TOKEN_SECRET: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "${NPM_TOKEN_SECRET}" ]; then
+            echo "mode=token" >> "$GITHUB_OUTPUT"
+            echo "认证方式：NPM_TOKEN secret（兜底路径）"
+          else
+            echo "mode=oidc" >> "$GITHUB_OUTPUT"
+            echo "认证方式：Trusted Publishing（OIDC），无需长期 token"
+          fi
+
+      - name: Publish (token mode)
+        if: ${{ steps.auth.outputs.mode == 'token' && inputs.dry_run == false }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          npm publish --ignore-scripts --provenance --access public --registry=https://registry.npmjs.org
+
+      - name: Publish (OIDC trusted publishing)
+        if: ${{ steps.auth.outputs.mode == 'oidc' && inputs.dry_run == false }}
+        run: |
+          set -euo pipefail
+          npm publish --ignore-scripts --provenance --access public --registry=https://registry.npmjs.org
+
+      - name: Dry run (no publish)
+        if: ${{ inputs.dry_run == true }}
+        run: |
+          set -euo pipefail
+          echo "dry_run=true：跳过 npm publish，仅验证构建与打包口径"
+          npm publish --dry-run --ignore-scripts --access public --registry=https://registry.npmjs.org
+
+      # ── 发布后自检：自检失败不得宣告发布成功 ──────────────────────────────
+      - name: Post-publish self check
+        if: ${{ inputs.dry_run == false }}
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          want="${INPUT_VERSION#v}"
+          for field in license description author repository homepage keywords dist.integrity; do
+            value="$(npm view "govio-map@${want}" "$field" --json 2>/dev/null || echo '')"
+            if [ -z "$value" ] || [ "$value" = "null" ] || [ "$value" = '""' ]; then
+              echo "::error title=元信息缺失::registry 上 govio-map@${want} 的 ${field} 为空"
+              exit 1
+            fi
+            echo "  $field = $value"
+          done
+          # 安装到临时 prefix 并确认 bin 可执行（不打全局到 runner 环境）
+          tmp_prefix="$(mktemp -d)"
+          npm i -g --prefix "$tmp_prefix" "govio-map@${want}" --registry=https://registry.npmjs.org
+          "$tmp_prefix/bin/govio-map" --version || node "$tmp_prefix/lib/node_modules/govio-map/dist-server/cli.mjs" --version
+          echo "自检通过：govio-map@${want} 可安装且 bin 可执行"
+
+      # ── 产物：tgz + 校验和，供人工挂到 GitHub Release（不自动建 Release） ──
+      - name: Upload tgz artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: npm-tgz-${{ inputs.version }}
+          path: |
+            *.tgz
+            *.tgz.sha256
+          if-no-files-found: error
+
+      - name: Summary
+        if: ${{ always() }}
+        run: |
+          {
+            echo "### npm publish（手动触发）"
+            echo ""
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| 输入版本 | \`${{ inputs.version }}\` |"
+            echo "| dry_run | \`${{ inputs.dry_run }}\` |"
+            echo "| 认证方式 | \`${{ steps.auth.outputs.mode || '未判定' }}\` |"
+            echo "| skills tag | \`${{ steps.skills.outputs.tag || '未取到' }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
