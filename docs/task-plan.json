@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-25T23:15:00+08:00",
+  "updatedAt": "2026-11-26T20:14:02+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -429,6 +429,74 @@
           "at": "2026-11-25T23:05:00+08:00",
           "by": "main-session",
           "note": "验收通过。① PR #56 已由用户合并（merge c20dc9f，verify-release.yml 已在默认分支注册）；② **CI 实跑绿**：run 45636529058（workflow_dispatch，version=0.7.3）全部步骤 success——等 registry 生效（已 live，秒级）→ 元信息 7 字段 → 已上线 tarball 内容口径 → provenance（slsa v1 + npm publish attestation）→ 安装临时 prefix + 启动冒烟（ready 横幅）→ summary；③ 抽查实现：publish.yml 已无 Post-publish self check、artifact 上传为 always()、两条 workflow `on` 均仅 workflow_dispatch（YAML 解析核对）、ci.yml 未动、口径由 pack-rules.mjs 单一提供；④ 合并态 main 本地复跑 build/lint/verify 全绿（671 / 34·495 / 11·98）。"
+        }
+      ]
+    },
+    {
+      "id": "X33",
+      "title": "govio-cli onboard 非交互图后端配置（GUI 驱动 onboard 的前置硬缺口）",
+      "status": "pending",
+      "kr": null,
+      "dependsOn": [],
+      "note": "GUI 化 onboard 的前置硬缺口，跨 govio 仓库（chenxinma/govio）。实证（2026-11-26）：已安装 govio-cli 0.7.2 的 `onboard --help` 只暴露数据源的非交互旗标（--add-datasource/--remove-datasource/--url/--password/--connect-args/--overwrite），**图后端配置仍是 questionary 交互式**（onboard.py 的 prompt_graph_config 无 --backend 旗标）。用户 2026-11-26 裁决：**非交互配置可以增加**、默认图库选 **ladybug**。GUI（X34）要「背后调用 govio-cli onboard」完成「指定图数据库」这一步，必须先补非交互图后端入口，否则只能让 Node 直写 ~/.govio/config.yaml（违反「一切经 govio-cli」纪律，且会绕过 ConfigManager 的备份逻辑）。数据源侧已具备非交互能力（密码经 encrypt_value 加密落盘、URL 脱敏），本任务不重复造。",
+      "scope": [
+        "onboard 增加 --backend {ladybug|falkordb|networkx} 旗标 + 各后端参数：ladybug 加 --db-path（默认 ~/.govio/ontology.lbdb）；falkordb 加 --host/--port/--graph；networkx 加 --gml-path。给出 --backend 时走非交互路径：直接生成 graph 段并写配置，保留已有 datasources，不弹 questionary",
+        "幂等：重复执行 --backend 不丢失已有 datasources；graph 段 upsert（已有 graph 时默认覆盖 graph 段、保留 datasources，与现有「仅补充图后端」分支语义一致）",
+        "与 --add-datasource 可组合：`onboard --backend ladybug --add-datasource mydb --url ... --password ...` 一次完成图+数据源（对应 GUI Step2/Step3 合并场景）",
+        "不带 --backend 时行为与现有交互向导完全一致（向后兼容，零回归）；--help 文案同步",
+        "密码仍走 --password / URL 自动加密（encrypt_value），graph 段无秘密",
+        "pytest 覆盖非交互路径 / 幂等 / 与 datasource 组合；ruff + pytest 门禁绿；升版发布新 govio 版本号（govio-map 侧 MIN_GOVIO_CLI_VERSION 提升放 X34 一并处理）"
+      ],
+      "acceptance": [
+        "`govio-cli onboard --backend ladybug` 非交互生成 ~/.govio/config.yaml（graph.backend=ladybug、db_path 取默认），不弹 questionary",
+        "`--backend ladybug --db-path <p>` 自定义路径生效；重复执行幂等且已有 datasources 不丢",
+        "`--backend ladybug --add-datasource mydb --url ... --password ...` 一次完成图+数据源",
+        "不带 --backend 时仍走交互向导（零回归）；--help 列出新旗标",
+        "govio 仓库 ruff + pytest 门禁绿；发布新 govio 版本号（供 X34 提升 MIN_GOVIO_CLI_VERSION）"
+      ],
+      "outputDir": "docs/tasks/X33-onboard-noninteractive/",
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-11-26T20:14:02+08:00",
+          "by": "main-session",
+          "note": "立项。用户 2026-11-26 指示「govio-cli 需要的外onboard非交互配置可以增加」并裁决默认图库=ladybug。实证：0.7.2 的 onboard --help 仅数据源非交互、图后端仍交互式（prompt_graph_config）。本任务为 X34（govio-map onboarding GUI）的前置。"
+        }
+      ]
+    },
+    {
+      "id": "X34",
+      "title": "首次运行向导 + 数据源管理器 + 秘密结构性路由（降低初始配置门槛）",
+      "status": "pending",
+      "kr": null,
+      "dependsOn": [
+        "X33"
+      ],
+      "note": "目标（用户 2026-11-26 立项）：降低 npx govio-map 全新环境的初始配置门槛，把「配置 LLM + 初始化图库 + 添加数据源/导入元数据」从 CLI/对话搬进 GUI，并根治「对话里让 agent 加数据源 → 含密码连接串泄露给大模型」的问题。当前实现盘点：① LLM 首启 ConfigModal 硬编码 DeepSeek（models-config.ts createDefaultConfig 写死 api.deepseek.com）；② 图库初始化（govio-cli onboard）无 GUI、前端也拿不到「是否已 onboard/后端类型」状态；③ 数据源只有只读 DataSourcesModal，增删无表单，且「导入元数据」按钮往聊天框预填 /导入元数据 把数据源名回灌 LLM。北极星：全新环境从 npx 到「首次数据问题被回答」≤5 分钟（本地示例）/≤10 分钟（真实库），全程 0 次在聊天框粘贴凭据；默认图库 = ladybug（用户已裁决）。完整 UX 分析（顶尖专家思路：TTFV 漏斗、gap 清单 G1-G10、设计方法与证据体系、修订需求 R0-R5）落 design.md。范围纪律（「更深而非更大」）：只做「首启向导 + 数据源管理器 + 秘密结构性路由 + 验证」，不做多租户/云同步/SSO/RBAC/管理员控制台/配置迁移。",
+      "scope": [
+        "后端 onboard 状态与驱动：检测是否已 onboard（govio-cli backend）；WS/HTTP 通道以子进程驱动 `govio-cli onboard --backend ladybug [--add-datasource ...]`，凭据经后端子进程写盘、绝不进 LLM 上下文/日志/进程参数",
+        "秘密结构性路由（核心）：后端拦截 agent prompt 中出现 scheme://user:pass@host 连接串或明文密码 → 不执行、redirect 到 GUI 表单；系统提示补「凭据只走表单」规则；前端信任信号「凭据仅加密存本机、不发往大模型」+ 掩码显隐 + 落盘位置可见",
+        "「测试连接」：复用 govio-cli 轻量探测，失败给可读原因（host/port/auth/timeout 分类）；「测试模型」：ModelRuntime 探测",
+        "前端单一首启向导 stepper：Step0 环境自检（uv/govio-cli/skills，带进度自动修复，复用 ensureGovioCli + downloadGovioSkills）→ Step1 LLM（预置 OpenAI/Anthropic/DeepSeek/Gemini/自定义 baseUrl+api + 测试模型，去掉 DeepSeek 硬编码）→ Step2 图谱（默认 ladybug 一键，高级 falkordb/networkx 只收参）→ Step3 数据源（表单 + 测试连接，可跳过/延后）→ 完成态空状态清单（next-best-action）",
+        "改造现有组件：SettingsModal 去硬编码（保留脱敏回显与草稿机制）、DataSourcesModal → 数据源管理器（增删改 + 测试 + 一键导元数据）、ConfigModal → 向导入口；删除「预填 /导入元数据」回灌 LLM 路径",
+        "幂等/可续做：重复进入向导反映当前真实状态，不覆盖不破坏；每步即时验证",
+        "验证：新增 verify:secrets-isolation（凭据零进入 prompt/日志/进程参数/环境导出的 CI 断言）+ verify:onboarding（向导幂等/可恢复断言），进 npm run verify 链并同步 verificationBaseline；MIN_GOVIO_CLI_VERSION 提升到 X33 发布的新 govio 版本",
+        "可用性证据：5 人冷启动 think-aloud（TTFV baseline 前后对比 + SUS），报告落 outputDir"
+      ],
+      "acceptance": [
+        "全新环境 npx → 首次问数全程 GUI 完成，0 次聊天框粘贴密码；TTFV ≤5（本地）/≤10（真实库）分钟（附可用性测试证据）",
+        "向导幂等可续做；测试模型 / 测试连接即时反馈；数据源增删改 + 测试 + 一键导元数据",
+        "注入含凭据连接串 → agent 拦截并 redirect，prompt/日志零明文（verify:secrets-isolation 绿）",
+        "无硬编码供应商（去 DeepSeek 默认）；默认图库 ladybug 一键初始化",
+        "build/lint/verify 全绿 + 新增两项 verify 脚本 + verificationBaseline 同步；走 GitHub PR（用户合并）"
+      ],
+      "outputDir": "docs/tasks/X34-onboarding-gui/",
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-11-26T20:14:02+08:00",
+          "by": "main-session",
+          "note": "立项。用户 2026-11-26 要求把「配置 LLM + 初始化图库 + 添加数据源/导入元数据」GUI 化并根治对话泄密，先经顶尖 UX 专家思路重构为 TTFV 漏斗 + 秘密结构性路由（设计方法/证据体系见 design.md）。依赖 X33（govio-cli 非交互图后端）。"
         }
       ]
     }
