@@ -461,6 +461,12 @@
           "at": "2026-11-26T20:14:02+08:00",
           "by": "main-session",
           "note": "立项。用户 2026-11-26 指示「govio-cli 需要的外onboard非交互配置可以增加」并裁决默认图库=ladybug。实证：0.7.2 的 onboard --help 仅数据源非交互、图后端仍交互式（prompt_graph_config）。本任务为 X34（govio-map onboarding GUI）的前置。"
+        },
+        {
+          "status": "pending",
+          "at": "2026-11-26T21:23:00+08:00",
+          "by": "main-session",
+          "note": "任务已落 govio 侧计划：FRD 归档至 govio 仓库 docs/tasks/X33-onboard-noninteractive/FRD.md，并立项 govio docs/task-plan.json round7（任务 X33，status=pending，deliverables/acceptance 对齐 FRD §3-§8，ownFiles 覆盖 cli/main.py、cli/onboard.py、tests/、docs/specs/cli.md、升版文件）。随即开始实现（govio 分支 feat/onboard-noninteractive-graph），完成后回写本条并升版 govio 发布号供 X34 提升 MIN_GOVIO_CLI_VERSION。"
         }
       ]
     },
