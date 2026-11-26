@@ -435,7 +435,7 @@
     {
       "id": "X33",
       "title": "govio-cli onboard 非交互图后端配置（GUI 驱动 onboard 的前置硬缺口）",
-      "status": "pending",
+      "status": "accepted",
       "kr": null,
       "dependsOn": [],
       "note": "GUI 化 onboard 的前置硬缺口，跨 govio 仓库（chenxinma/govio）。实证（2026-11-26）：已安装 govio-cli 0.7.2 的 `onboard --help` 只暴露数据源的非交互旗标（--add-datasource/--remove-datasource/--url/--password/--connect-args/--overwrite），**图后端配置仍是 questionary 交互式**（onboard.py 的 prompt_graph_config 无 --backend 旗标）。用户 2026-11-26 裁决：**非交互配置可以增加**、默认图库选 **ladybug**。GUI（X34）要「背后调用 govio-cli onboard」完成「指定图数据库」这一步，必须先补非交互图后端入口，否则只能让 Node 直写 ~/.govio/config.yaml（违反「一切经 govio-cli」纪律，且会绕过 ConfigManager 的备份逻辑）。数据源侧已具备非交互能力（密码经 encrypt_value 加密落盘、URL 脱敏），本任务不重复造。",
@@ -473,6 +473,12 @@
           "at": "2026-11-26T22:20:00+08:00",
           "by": "main-session",
           "note": "govio 侧实现交付：PR chenxinma/govio#25（分支 feat/onboard-noninteractive-graph）。onboard 新增 --backend {ladybug|falkordb|networkx} + --db-path/--host/--port/--graph/--gml-path；onboard_graph_cli graph 段 upsert、datasources 保留、与 --add/--remove-datasource 组合单次 save、全程无 questionary；错误统一 错误: stderr + exit 1（FRD §5 表 + 旗标后端不匹配）；不带 --backend 逐字零回归。FRD §5 遗留裁决：--backend + --remove-datasource 允许（先配图后端再删数据源）。tests/test_onboard_noninteractive.py 26 例覆盖 FRD §7 全 7 类；govio 门禁全绿（ruff check/format 110 文件、pytest 552 passed/18 skipped、CI 同款 uv sync --locked）。升版 0.8.0（uv.lock 仅版本 1 行、registry 保持 PyPI 基准）。待用户合并 PR 后按 docs/release.md 发版（PyPI owner 手工），届时回写 accepted 并供 X34 提升 MIN_GOVIO_CLI_VERSION。"
+        },
+        {
+          "status": "accepted",
+          "at": "2026-11-26T22:50:00+08:00",
+          "by": "main-session",
+          "note": "验收通过，X33 完成。① 用户已合并 govio PR #25（merge 238720e）；② 已发版：tag v0.8.0 @ 238720e + GitHub Release v0.8.0（Latest，四资产齐：whl 145,546 B / tar.gz 4,349,442 B / govio-skills.zip 61,621 B·22 条目含 schema 零 govio/assets / chocolate.zip 5,802,728 B）；③ 发布后验证全过：下载回验（经代理，直连被重置）两个 zip 哈希与本地构建一致、unzip -t 无错、start.sh 重跑三资产哈希逐一相同（可复现）、govio-cli -V → govio 0.8.0、--help 列出全部新旗标；④ govio 合并态门禁全绿（552 passed/18 skipped、ruff check/format、CI run 45834853181 success）；⑤ govio 计划 round7 已回写 done（d6e7d29），release.md 补 v0.8.0 实测记录。遗留：PyPI 0.8.0 由 owner 手工 uv publish（K7 分工，发前 install.md 的 uv tool install govio 仍装旧版，Release 说明已注明改用 wheel）；X34 可将 MIN_GOVIO_CLI_VERSION 提升到 0.8.0 开工。"
         }
       ]
     },
