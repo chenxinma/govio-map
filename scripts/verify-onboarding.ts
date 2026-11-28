@@ -24,6 +24,7 @@ import {
   getOnboardingStatus,
   importMetadata,
   initGraph,
+  normalizeDatasourceUrl,
   removeDatasource,
   resolveGovioPython,
   testDatasource,
@@ -154,21 +155,58 @@ for (const overwrite of [true, false] as const) {
 }
 {
   const { exec, calls } = fakeExec();
-  await addDatasource({ name: "sales", url: "duckdb:///D:/data/sales.duckdb" }, exec);
+  await addDatasource({ name: "sales", url: "duckdb://D:/data/sales.duckdb" }, exec);
   const input = JSON.parse(calls.find((c) => c.args.includes("-c"))?.opts?.input ?? "{}") as Record<string, unknown>;
   check("overwrite 缺省 false（重复添加不静默覆盖）", input.overwrite === false);
 }
 
 {
   const { exec } = fakeExec(() => wrapperReply(false, { excClass: "ValueError", message: "数据源 'sales' 已存在" }));
-  const res = await addDatasource({ name: "sales", url: "duckdb:///x.duckdb" }, exec);
+  const res = await addDatasource({ name: "sales", url: "duckdb://x.duckdb" }, exec);
   check("同名冲突 → 可读修复指引（提示勾选「覆盖」）",
     !res.ok && (res.hint ?? "").includes("覆盖"), res.ok ? "unexpected ok" : res.hint);
 }
 {
   const { exec } = fakeExec(() => wrapperReply(false, { excClass: "ValueError", message: "URL 不含用户信息（user@host），无法单独传密码" }));
-  const res = await addDatasource({ name: "x", url: "duckdb:///x.duckdb", password: "pw" }, exec);
+  const res = await addDatasource({ name: "x", url: "duckdb://x.duckdb", password: "pw" }, exec);
   check("URL 缺用户信息 → 指引账号写进 URL", !res.ok && (res.hint ?? "").includes("user@host"));
+}
+
+// ── B2. normalizeDatasourceUrl：Windows 盘符 URL 形态纠正 ───────────────────
+
+console.log("\n[B2] normalizeDatasourceUrl（盘符多斜杠→双斜杠；POSIX/UNC/其它 scheme 原样）");
+
+check("盘符多斜杠 → 双斜杠（三斜杠/四斜杠/反斜杠路径，盘符后原样保留）",
+  normalizeDatasourceUrl("duckdb:///D:/data/sales.duckdb") === "duckdb://D:/data/sales.duckdb"
+    && normalizeDatasourceUrl("duckdb:////D:/x.db") === "duckdb://D:/x.db"
+    && normalizeDatasourceUrl("duckdb:///D:\\x.db") === "duckdb://D:\\x.db");
+check("POSIX 绝对路径三斜杠不动（duckdb:///home/x.db）",
+  normalizeDatasourceUrl("duckdb:///home/x.db") === "duckdb:///home/x.db");
+check("UNC 不动（duckdb://server/share/x.db）",
+  normalizeDatasourceUrl("duckdb://server/share/x.db") === "duckdb://server/share/x.db");
+check("其它 scheme 不动（mysql+pymysql://user@host:3306/db）",
+  normalizeDatasourceUrl("mysql+pymysql://user@host:3306/db") === "mysql+pymysql://user@host:3306/db");
+check("双斜杠盘符原样（duckdb://D:/x.db）",
+  normalizeDatasourceUrl("duckdb://D:/x.db") === "duckdb://D:/x.db");
+{
+  const { exec, calls } = fakeExec();
+  await addDatasource({ name: "sales", url: "duckdb:///D:/data/sales.duckdb" }, exec);
+  const input = JSON.parse(calls.find((c) => c.args.includes("-c"))?.opts?.input ?? "{}") as Record<string, unknown>;
+  check("addDatasource 存盘 URL 入口已纠正（wrapper 载荷 = 双斜杠形态）",
+    input.url === "duckdb://D:/data/sales.duckdb");
+}
+{
+  const { exec, calls } = fakeExec();
+  await testDatasource({ url: "duckdb:///D:/data/sales.duckdb" }, exec);
+  const input = JSON.parse(calls.find((c) => c.args.includes("-c"))?.opts?.input ?? "{}") as Record<string, unknown>;
+  check("testDatasource 探测 URL 入口已纠正（wrapper 载荷 = 双斜杠形态）",
+    input.url === "duckdb://D:/data/sales.duckdb");
+}
+{
+  const { exec, calls } = fakeExec();
+  await importMetadata({ datasource: "duckdb:///D:/x.db", schemas: "main" }, undefined, exec);
+  check("importMetadata 入口已纠正（argv --datasource = 双斜杠形态）",
+    calls[0].args.includes("duckdb://D:/x.db"));
 }
 
 // ── C. 可恢复（结构化失败 + 重试路径） ──────────────────────────────────────
@@ -188,7 +226,7 @@ console.log("\n[C] 可恢复：结构化失败 {ok:false, error, errorKind, hint
 
 {
   const { exec } = fakeExec(() => ({ exitCode: 0, stdout: "警告: 奇怪的非 JSON 输出", stderr: "" }));
-  const res = await testDatasource({ url: "duckdb:///x.duckdb" }, exec);
+  const res = await testDatasource({ url: "duckdb://x.duckdb" }, exec);
   check("wrapper 无结构化回执 → 可读兜底（不是异常堆栈）",
     !res.ok && res.error === "wrapper 无结构化回执" && res.errorKind === "other" && (res.hint ?? "").length > 0);
 }

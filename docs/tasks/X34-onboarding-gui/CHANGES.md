@@ -172,3 +172,12 @@
   失败/超时/解析不了仍为 null，调用面不变），`runGovioCliVersion` 依赖移除。
   `server/secret-guard.ts` 无需改动（149 断言全绿未暴露缺口）。
 - `docs/tasks/X34-onboarding-gui/design.md`：遗留 8/9/10 状态标注复核（P2 已收口/裁决/记录，P3 补验证戳）。
+
+## 验收后 bugfix（2026-11-28）
+
+- Windows duckdb URL 形态修正（详见 `docs/tasks/BUGFIX-duckdb-url-windows.md`）：
+  `server/onboarding.ts` 新增纯函数 `normalizeDatasourceUrl`（盘符多斜杠→双斜杠，POSIX/UNC/
+  其它 scheme 不动）并在 addDatasource/testDatasource/importMetadata 入口套用；
+  `src/components/DatasourceForm.tsx` placeholder/帮助文案与 `datasourceHint` 的三斜杠错误实例
+  改双斜杠；verify-onboarding/ws-protocol/verify-secrets-isolation 测试样本形态统一；
+  verify-onboarding 补 [B2] 8 条断言（55 → 63）。
