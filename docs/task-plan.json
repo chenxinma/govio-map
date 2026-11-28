@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-28T10:05:00+08:00",
+  "updatedAt": "2026-11-28T12:30:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -527,6 +527,12 @@
           "at": "2026-11-28T10:05:00+08:00",
           "by": "main-session",
           "note": "PR #57 合并（d39d71e），实现经 P1a-P3 四阶段子代理交付：秘密结构性路由（三通道硬拦截+零明文留痕）、onboarding 后端通道（凭据 stdin wrapper 零 argv/env/日志）、前端 4 步向导+数据源管理器（去 DeepSeek 硬编码、删回灌路径）、verify:secrets-isolation(149)/verify:onboarding(55) 入链。主会话 main 独立复跑 build/lint/verify 14 项全绿，断言 671→875 核对无误，工作树干净。置 done 不置 accepted：acceptance 第 1 条的 TTFV/5 人冷启动可用性证据（design 遗留 6）未闭合，accepted 待用户裁决（豁免或安排可用性测试）。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-28T12:30:00+08:00",
+          "by": "main-session",
+          "note": "v0.8.0 发版完成：PR #58 合并（169d8f9，含 duckdb URL 修复/README npx/版本号 0.7.3→0.8.0）→ publish.yml dry-run 与真实发布均绿（OIDC trusted publishing）→ verify-release.yml 5 项全过（registry 可见/元信息/tarball/provenance/安装冒烟）→ GitHub Release v0.8.0（tgz+sha256 附件）。测试者用 npx govio-map 冷启动实测，TTFV/SUS 可用性证据回填后置 accepted。"
         }
       ]
     }
