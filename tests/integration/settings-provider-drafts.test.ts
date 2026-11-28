@@ -10,7 +10,7 @@
  *
  * 覆盖：
  *  - uid 与名称解耦：同名两条草稿 uid 不同；改名不改 uid、不改顺序
- *  - toDrafts：顺序保留、深拷贝（改草稿不污染入参）、空配置回落默认 deepseek
+ *  - toDrafts：顺序保留、深拷贝（改草稿不污染入参）、空配置回落空草稿（X34：无默认供应商锁定）
  *  - toConfig：trim 名称、丢空名、过滤空模型 id、全空回填占位、保留模型显示名（与修复前语义一致）
  *  - 往返：toConfig(toDrafts(cfg)) 幂等
  *  - validateDrafts / canSaveDrafts：空名、重名（修复前重名会静默覆盖丢 provider）、缺 baseUrl/api/模型
@@ -21,8 +21,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { ModelsConfig, ProviderConfig } from "../../src/types/models-config.js";
 import {
-  DEFAULT_BASE_URL,
-  DEFAULT_PROVIDER_NAME,
   canSaveDrafts,
   emptyProviderDraft,
   suggestProviderName,
@@ -86,13 +84,9 @@ describe("provider-drafts：toDrafts", () => {
     expect(src.providers.deepseek.baseUrl).toBe("https://api.deepseek.com");
   });
 
-  it("无配置 / 空 providers 回落默认 deepseek 草稿", () => {
+  it("无配置 / 空 providers 回落空草稿（X34：无默认供应商锁定，需主动选择预置）", () => {
     for (const input of [null, undefined, { providers: {} } as ModelsConfig]) {
-      const drafts = toDrafts(input);
-      expect(drafts).toHaveLength(1);
-      expect(drafts[0].name).toBe(DEFAULT_PROVIDER_NAME);
-      expect(drafts[0].cfg.baseUrl).toBe(DEFAULT_BASE_URL);
-      expect(drafts[0].cfg.models).toEqual([{ id: "" }]);
+      expect(toDrafts(input)).toEqual([]);
     }
   });
 

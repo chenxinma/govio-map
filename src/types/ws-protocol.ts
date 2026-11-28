@@ -247,6 +247,15 @@ export const WSOnboardingActionPayloadSchema = Type.Union([
 ]);
 export type WSOnboardingActionPayload = Static<typeof WSOnboardingActionPayloadSchema>;
 
+/** `status` 动作的 data 载荷形状（前端消费侧；与 server/onboarding.ts OnboardingStatus 对齐） */
+export interface WSOnboardingStatus {
+  cli: { installed: boolean; version: string | null };
+  graph: { initialized: boolean; backend: string | null; error?: string };
+  datasources: string[];
+  skillsReady: boolean;
+  modelsConfigured: boolean;
+}
+
 // ── 客户端 → 服务端 ─────────────────────────────────────────────────────────
 
 /** 构造带版本元数据的消息 schema（`$id: govio-ws/v1/<type>` + `version` 字段）。

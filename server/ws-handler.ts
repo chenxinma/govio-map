@@ -22,7 +22,7 @@ import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferenced
 import { setSessionSemanticRefs, setSessionCaliberMetrics, clearSessionSemanticRefs, toSemanticRefs } from "./semantic-context.js";
 import { permissionManager } from "./permission-manager.js";
 import { isAgentConfigNeeded, completeAgentSetup } from "./backend.js";
-import { readModelsConfig, writeModelsConfig, createDefaultModelsConfig, maskModelsConfig, listAvailableModels } from "./models-config.js";
+import { readModelsConfig, createDefaultModelsConfig, maskModelsConfig, listAvailableModels } from "./models-config.js";
 import { isAllowedUpgrade } from "./security.js";
 import { parseWSClientMessage, type WSClientMessage, type WSClientMessageOf, type WSServerMessage } from "../src/types/ws-protocol.js";
 
@@ -155,13 +155,14 @@ export function setupWebSocket(server: import("http").Server) {
 
   async function handleSaveModelsConfig(ws: WebSocket, msg: WSClientMessageOf<"save_models_config">): Promise<void> {
     try {
-      if (msg.apiKey) {
-        // First-time setup path: frontend only supplies an API key.
-        await createDefaultModelsConfig(msg.apiKey);
-      } else if (msg.config) {
-        await writeModelsConfig(msg.config);
+      if (msg.config) {
+        // X34：向导/前端提交完整 provider 配置落盘（无默认供应商）；
+        // 掩码占位由 models-config unmaskFromDisk 还原，不覆盖真实 key。
+        await createDefaultModelsConfig(msg.config);
       } else {
-        sendMsg(ws, { type: "error", message: "save_models_config requires apiKey or config" });
+        // 旧 apiKey-only 通道已废弃（X34 删除 ConfigModal/DeepSeek 默认供应商后，
+        // 仅凭 apiKey 无法推导 provider 配置）
+        sendMsg(ws, { type: "error", message: "save_models_config requires config" });
         return;
       }
 

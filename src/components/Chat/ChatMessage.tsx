@@ -1,8 +1,8 @@
 import { useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ChevronDown, ChevronRight, Wrench, Check, X, Loader2, Database, Code, Table2, FileText, BarChart3, CornerDownLeft } from "lucide-react";
-import type { ChatMessage as ChatMessageType, ToolCall } from "../../hooks/useChat";
+import { ChevronDown, ChevronRight, Wrench, Check, X, Loader2, Database, Code, Table2, FileText, BarChart3, CornerDownLeft, ShieldAlert } from "lucide-react";
+import type { ChatMessage as ChatMessageType, ToolCall, SecretRedirectInfo } from "../../hooks/useChat";
 import type { ReferencedNode, NodeType } from "../../types";
 import { MarkdownTable, MarkdownCode } from "./WideContent";
 
@@ -159,9 +159,46 @@ export function ProcessedGroup({ messages }: { messages: ChatMessageType[] }) {
   );
 }
 
+/**
+ * X34 秘密结构性路由：被拦截的凭据消息回执卡片（可读说明 + 脱敏摘要 +
+ * 「打开数据源表单」引导）。被拦原文不进聊天态，这里只展示 [REDACTED] 片段。
+ */
+export function SecretRedirectCard({ info }: { info: SecretRedirectInfo }) {
+  return (
+    <div className="border border-warning/40 bg-warning/10 rounded-md px-3 py-2 space-y-2 max-w-[90%]">
+      <div className="flex items-center gap-1.5 text-xs text-warning font-medium">
+        <ShieldAlert size={12} />
+        <span>凭据拦截（未发送给大模型）</span>
+      </div>
+      <p className="text-xs text-text-secondary whitespace-pre-wrap">{info.message}</p>
+      {info.redactedSnippets.length > 0 && (
+        <div className="text-[10px] text-text-dim font-mono space-y-0.5">
+          {info.redactedSnippets.map((s, i) => (
+            <div key={i}>{s}</div>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => window.dispatchEvent(new CustomEvent("govio:open-datasources"))}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs bg-brand/15 border border-brand/40 text-brand hover:bg-brand/25 transition-colors"
+      >
+        <Database size={12} /> 打开数据源表单
+      </button>
+    </div>
+  );
+}
+
 export default function ChatMessage({ message }: { message: ChatMessageType }) {
   // 已折入「已处理」组的过程消息不再单独渲染（由 ProcessedGroup 统一展示）
   if (message.folded) return null;
+  if (message.secretRedirect) {
+    return (
+      <div className="flex justify-start mt-3 mb-3">
+        <SecretRedirectCard info={message.secretRedirect} />
+      </div>
+    );
+  }
   const isUser = message.role === "user";
 
   return (

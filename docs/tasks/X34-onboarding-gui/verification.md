@@ -107,3 +107,41 @@ PASS removeDatasource + 状态收口 datasources=["sales"]（删除不存在 →
 
 - test_model 只能测已保存的模型配置；向导 Step1 草稿态即时测试归 P2（遗留 9，保持开放）。
 - 连接错误分类为关键词启发式，阈值待 `verify:secrets-isolation`/可用性测试实测后调（遗留 2 尾注延续）。
+
+## P2 前端首启向导 + 组件改造
+
+### 验证门槛（commit 前全绿，2026-11-28 本地跑）
+
+| 命令 | 结果 | 关键输出 |
+|---|---|---|
+| `npm run build` | ✅ | `tsc -b` 零错误；vite build ✓；`dist-server/cli.mjs` 260.5kb |
+| `npm run lint` | ✅ | eslint 零告警 |
+| `npm run verify` | ✅ | 12 项全绿，exit 0；`verify:integration` 35 文件 / 500 测试全过；`verify:ui` 12 文件 / 103 测试全过 |
+
+断言数变化：`verify:ui` **+1 文件 / +5 用例**（`tests/ui/onboarding-wizard.test.tsx`：向导 Step0 环境状态、
+Step1 无默认供应商（R7）、DatasourceForm 掩码显隐/提交禁用、SecretRedirectCard 渲染与事件派发）；
+全量 `vitest run` 同步 +5（495→500）；`tests/integration/settings-provider-drafts.test.ts` 仅 1 条用例
+断言更新（空配置回落空草稿，X34「无默认锁定」有源行为变更），其余不变，既有断言零回归。
+
+### secret_redirect 收尾取证（遗留 8 裁决）
+
+- 被拦原文不进聊天态：`useChat` 收到 `secret_redirect` 将最近发送气泡（`lastSentUserMsgIdRef` 关联）
+  内容替换为脱敏摘要（后端 `redactedSnippets`，仅含 `[REDACTED]`），并清 steer/followUp 待投递标记
+  （被拦消息不会再有 queued 回执）；聊天态无 localStorage 持久化（仅 `govio.selectedModel` 入
+  localStorage），无残留面。
+- 回执卡片 `SecretRedirectCard`：可读说明 + 脱敏摘要 + 「打开数据源表单」按钮（`govio:open-datasources`
+  → Header → 数据源管理器）；UI 测试覆盖渲染与事件派发。
+- secret_redirect 不带 clientMsgId，气泡关联用「最近发送」启发式（prompt/steer/followUp 均经 `send()`）；
+  同时连发多条含凭据消息时逐条被拦、逐条脱敏，已记录于 design.md 遗留 8 尾注。
+
+### test_model 草稿即时测试取证（遗留 9 裁决）
+
+「保存并测试」流程：`save_models_config`（合并保存既有 provider，掩码由 unmaskFromDisk 还原）→
+`config_saved` + 会话重启 `session_ready` 双信号 → `test_model`；UI 明示「先保存配置再测试」。
+不做临时 provider 注册探测（草稿凭据不进 ModelRuntime 内存）。
+
+### 遗留（详见 design.md §10）
+
+- ~~test_model 只能测已保存配置~~ **已结案（P2）**：保存并测试流程（遗留 9）。
+- 连接错误分类阈值待 `verify:secrets-isolation`/可用性测试实测后调（延续遗留 2 尾注）。
+- `save_models_config` apiKey-only 通道已废弃（回可读错误，schema 不变），见 design.md 遗留 10。

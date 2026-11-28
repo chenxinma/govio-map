@@ -29,11 +29,6 @@ export interface DraftIssue {
   message: string;
 }
 
-/** 无既有配置时的默认 provider（保持修复前 SettingsModal 的默认值不变） */
-export const DEFAULT_PROVIDER_NAME = 'deepseek';
-export const DEFAULT_BASE_URL = 'https://api.deepseek.com';
-const DEFAULT_API = 'openai-completions';
-
 let uidSeq = 0;
 
 /** 生成进程内单调递增的草稿 uid（与用户输入无关，故可安全用作 React key） */
@@ -46,7 +41,7 @@ function cloneConfig(cfg: Partial<ProviderConfig> | undefined): ProviderConfig {
   const models = Array.isArray(cfg?.models) ? cfg!.models : [];
   return {
     baseUrl: cfg?.baseUrl ?? '',
-    api: cfg?.api ?? DEFAULT_API,
+    api: cfg?.api ?? 'openai-completions',
     apiKey: cfg?.apiKey ?? '',
     // 深拷贝：修复前多个新增 provider 共享 EMPTY_PROVIDER.models 同一数组引用
     models: models.length > 0 ? models.map((m) => ({ ...m })) : [{ id: '' }],
@@ -60,12 +55,13 @@ export function emptyProviderDraft(name = ''): ProviderDraft {
 
 /**
  * 落盘配置 → 编辑态数组：保留原有键顺序，深拷贝避免污染入参。
- * 配置缺失或无任何 provider 时返回默认 deepseek 草稿（与修复前的初始态一致）。
+ * X34：无配置/空 providers 回落**空草稿**（无默认供应商锁定，R7）——修复前会
+ * 预填 deepseek 草稿，与「去 DeepSeek 硬编码」冲突，由预置快速添加（provider-presets）取代。
  */
 export function toDrafts(config: ModelsConfig | null | undefined): ProviderDraft[] {
   const providers = config?.providers;
   if (!providers || Object.keys(providers).length === 0) {
-    return [{ uid: nextProviderUid(), name: DEFAULT_PROVIDER_NAME, cfg: cloneConfig({ baseUrl: DEFAULT_BASE_URL }) }];
+    return [];
   }
   return Object.entries(providers).map(([name, cfg]) => ({
     uid: nextProviderUid(),

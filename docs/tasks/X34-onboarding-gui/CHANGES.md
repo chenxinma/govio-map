@@ -84,3 +84,50 @@
 - `docs/tasks/X34-onboarding-gui/design.md`：遗留 1（测试连接探测手段 → stdin wrapper 探测）、
   4（`--backend`+`--remove-datasource` 组合实测结论）、5（MIN_GOVIO_CLI_VERSION 提升）结案；
   新增遗留 9（test_model 只能测已保存配置，草稿即时测试归 P2 裁决）。
+
+## P2 前端首启向导 + 组件改造（GUI 落地）
+
+- `src/components/OnboardingWizard.tsx`（新建）：单一首启向导 stepper（Step0 环境自检 →
+  Step1 LLM → Step2 图谱 → Step3 数据源 → 完成态空状态清单）。R4 幂等可续做：进入先查
+  `onboarding_action.status`，每步显示真实状态（已配置/已初始化如实展示、不覆盖不破坏），
+  步骤可跳转/可跳过；Step0 自动跑 env_check（onboarding_progress 进度条 + 缺失项自动修复 +
+  govio-cli 版本达标状态）；Step1 预置 OpenAI/Anthropic/DeepSeek/Gemini/自定义、**无默认供应商**
+  （R7，必须主动选）、「保存并测试」= save_models_config 写盘 → test_model（遗留 9 裁决），
+  apiKey 掩码显隐；Step2 默认 ladybug 一键（高级 falkordb/networkx 只收参）；Step3 数据源表单 +
+  测试连接 + 可跳过/延后；完成态 next-best-action（导入元数据 → 问第一个数据问题）；
+  全程信任徽标「凭据仅加密存本机、不发往大模型」。
+- `src/components/DatasourceForm.tsx`（新建）：数据源凭据表单（名称/URL/密码分离字段/connect-args），
+  向导 Step3 与数据源管理器共用；密码掩码显隐 + 落盘位置可见（~/.govio/config.yaml，密码加密）
+  + 测试连接入口；`src/utils/connect-args.ts`（新建）：connect-args 文本解析（纯函数，独立于组件文件）。
+- `src/utils/provider-presets.ts`（新建）：供应商预置模板（向导 Step1 与 SettingsModal 共用，
+  无默认锁定，R7）。
+- `src/hooks/useChat.ts`：新增 `onboardingAction`（requestId 关联 onboarding_result/progress 回执）、
+  `fetchModelsConfig`（Promise 化 get_models_config，向导合并保存前取既有 provider）；
+  `saveModelsConfig` 改 Promise（config_saved + 会话重启 session_ready 双信号闸门，防 test_model
+  抢在新 ModelRuntime 就绪前撞 config_required 旧 handler 的 null runtime 竞态）；删除 `saveApiKey`
+  （apiKey-only 首启路径随 ConfigModal 退役）；**secret_redirect 收尾（遗留 8 裁决）**：最近发送的
+  用户气泡（`lastSentUserMsgIdRef` 关联）原文替换为脱敏摘要（redactedSnippets，仅含 [REDACTED]）、
+  清 steer/followUp 待投递标记，追加 `secretRedirect` 回执卡片消息（被拦文本不留聊天态）。
+- `src/components/Chat/ChatMessage.tsx`：新增 `SecretRedirectCard`（可读说明 + 脱敏摘要 +
+  「打开数据源表单」按钮 → `govio:open-datasources` 事件）；被拦消息渲染为卡片。
+- `src/components/Chat/ChatInput.tsx`：删除 `govio:prefill-input` 监听（回灌路径接收端；
+  影响面核查：全仓仅 DataSourcesModal 派发该事件，两端一并删除）。
+- `src/components/DataSourcesModal.tsx`：只读列表 → **数据源管理器**：新增/编辑（同名覆盖更新）/
+  删除（add_datasource/remove_datasource）+ 测试连接（表单内，探测不落盘）+ 一键导元数据
+  （`onboarding_action.import_metadata`，schemas 输入 + 进度条；非 DuckDB 显示后端可读引导文案）
+  + 落盘位置展示；**删除** `govio:prefill-input` 回灌路径。
+- `src/components/Layout/AppLayout.tsx` / `Header.tsx`：首启检测（config_required/needsConfig）
+  改开 OnboardingWizard（`src/components/ConfigModal.tsx` 退役删除，DeepSeek 文案随组件消失）；
+  顶栏新增「初始向导」入口（R4 重复进入）；Header 监听 `govio:open-datasources`（卡片按钮）。
+- `src/components/SettingsModal.tsx` + `src/utils/provider-drafts.ts`：供应商预置与向导一致
+  （「从预置快速添加」chips 共用 provider-presets）；去默认供应商锁定（toDrafts 空配置回落空草稿，
+  原 deepseek 预填与 DEFAULT_PROVIDER_NAME/DEFAULT_BASE_URL 删除）；保留脱敏回显与草稿机制。
+- `server/models-config.ts`：`createDefaultConfig` 去 DeepSeek 硬编码——`createDefaultModelsConfig`
+  改收**向导提交的完整 provider 配置**落盘（maskApiKey/unmaskFromDisk 语义保留，经 writeModelsConfig）；
+  `server/ws-handler.ts`：`save_models_config` 改走完整 config 通道，旧 apiKey-only 请求回可读错误
+  （无默认供应商可推导）。
+- `src/types/ws-protocol.ts`：新增消费侧 `WSOnboardingStatus`（status 动作 data 形状）。
+- 测试：`tests/ui/onboarding-wizard.test.tsx`（新建，5 用例：向导 Step0 状态/Step1 无默认供应商、
+  DatasourceForm 掩码显隐/提交禁用、SecretRedirectCard 渲染与事件派发）；
+  `tests/integration/settings-provider-drafts.test.ts`：「空配置回落默认 deepseek 草稿」改
+  「回落空草稿（无默认锁定）」（X34 有源行为变更，断言随行为更新，其余不变）。
