@@ -186,8 +186,8 @@ export function buildSecretRedirect(
 /** 拦截留痕记录结构版本；字段增删时递增 */
 export const SECRET_GUARD_AUDIT_VERSION = 1;
 
-/** 被拦截的入口（均是进入 LLM 上下文的用户消息通道） */
-export type SecretGuardEntryKind = "prompt" | "steer";
+/** 被拦截的入口（均是进入 LLM 上下文的用户消息通道：prompt/steer/followUp） */
+export type SecretGuardEntryKind = "prompt" | "steer" | "followUp";
 
 /**
  * 拦截审计条目：只记类别与内容哈希，**绝不含秘密明文**（内容本身也不落盘，

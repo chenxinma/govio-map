@@ -291,6 +291,20 @@ export function setupWebSocket(server: import("http").Server) {
         break;
       case "followUp":
         if (msg.content) {
+          // X34 秘密结构性路由：followUp 同样进 LLM 上下文，拦截语义与 prompt/steer 一致
+          //（最早处、先于一切日志；命中即不入队，redirect 到数据源表单）。
+          const leaks = detectSecretLeaks(msg.content);
+          if (leaks.length > 0) {
+            recordSecretGuardAudit({
+              sessionId: session.sessionId,
+              sessionFile: session.sessionManager.getSessionFile() ?? null,
+              kind: "followUp",
+              content: msg.content,
+              matches: leaks,
+            });
+            sendMsg(ws, buildSecretRedirect(leaks));
+            break;
+          }
           // followUp 同样不注入，但属本轮补充 → 不清口径引用（统一由 agent_end 处理）
           const clientMsgId = msg.clientMsgId;
           session

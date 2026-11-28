@@ -11,10 +11,10 @@
   `buildSecretRedirect`（secret_redirect microcopy 组装，纯函数）、拦截留痕
   `buildSecretGuardAuditEntry`/`recordSecretGuardAudit`/`readSecretGuardAudit`/
   `deleteSecretGuardAudit`（`<session>.secret-guard.jsonl` sidecar，permission-audit
-  同款 append-only；只记 sessionId/时间/类别/内容 SHA-256，零明文）。
-- `server/ws-handler.ts`：prompt/steer 分支**最早处**（buildInjectionContext 之前、
-  任何 console.* 之前）跑 `detectSecretLeaks`；命中即不调用 session.prompt/steer，
-  落审计后回 `secret_redirect`（拒绝执行 + 可读引导）。日志防泄露：makePrompt 的
+  同款 append-only；只记 sessionId/时间/类别/内容 SHA-256，零明文；kind=prompt/steer/followUp）。
+- `server/ws-handler.ts`：prompt/steer/followUp 三分支**最早处**（buildInjectionContext/入队之前、
+  任何 console.* 之前）跑 `detectSecretLeaks`（followUp 为 P1a 验收收口补漏）；命中即不调用
+  session.prompt/steer/followUp，落审计后回 `secret_redirect`（拒绝执行 + 可读引导）。日志防泄露：makePrompt 的
   `console.debug("[ws] prompt: ...")` 改 `redactSecrets(prompt)`；tool_execution_end
   的 result debug 改 `redactForLog(event.result)`。
 - `src/types/ws-protocol.ts`：WSServerMessageSchema 新增 `secret_redirect`

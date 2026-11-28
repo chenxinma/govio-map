@@ -126,5 +126,5 @@ npx 启动 → 依赖就绪 → LLM 可用 → 图谱就绪 → 数据源连上 
 4. **`--backend` + `--remove-datasource` 组合**：X33 FRD §5 标注「由实现方裁决」，需在 X33 完成时回填结论。
 5. **MIN_GOVIO_CLI_VERSION**：X33 发布新 govio 版本后，本任务同步提升该常量（`server/govio-installer.ts`）。
 6. **可用性测试的执行人/渠道**：5 人招募由谁发起、录屏工具与报告模板，需在验证阶段确定（主会话牵头）。
-7. **followUp 分支未纳入 P1a 守卫**：任务书只覆盖 prompt/steer，但 followUp 同样进 LLM 上下文，留有绕行口；补齐即同一守卫三行（secret_redirect 回执）——需裁决 P1b/P3 是否一并覆盖（verify:secrets-isolation 断言口径也取决于此）。
-8. **secret_redirect 的前端收尾（P2）**：被拦 steer 的气泡投递态（消息不带 clientMsgId）、被拦文本在前端聊天态/localStorage 的残留是否脱敏——由 P2 聊天 UI 一并裁决。
+7. **followUp 分支的守卫覆盖**：**已解决（P1a 收口，2026-11-28 验收指令）**——followUp 已加与 prompt/steer 完全一致的拦截（`detectSecretLeaks` 最早处 → 不入队 → `secret_redirect`，审计 kind=`followUp`）。已对照 WSClientMessage 全集（20 类）逐一核查 `handleNormalMessage`：把用户 content 送进 LLM 上下文的通道仅 prompt/steer/followUp 三处，均已守卫；**followUp 之外无其它入 LLM 通道**——其余分支均不进 LLM（`tool_permission_response.editedCommand` 走权限执行与 permission-audit 留痕而非 LLM；`save_models_config.apiKey` 走模型配置落盘；observe/session/canvas/set_model 等为结构化数据或字面量 CLI 参数）。
+8. **secret_redirect 的前端收尾（P2）**：被拦 steer/followUp 的气泡投递态（消息不带 clientMsgId）、被拦文本在前端聊天态/localStorage 的残留是否脱敏——由 P2 聊天 UI 一并裁决。

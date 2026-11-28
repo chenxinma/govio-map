@@ -30,6 +30,14 @@ PASS SELECT 1 / 统计订单金额趋势 / password=（空值）    -> 不命中
 redactSecrets: 全部命中片段 -> [REDACTED]；audit 条目零明文（仅 SHA-256）
 ```
 
+### 端到端取证（临时 vitest，复用 ws-handler mock harness，跑完即删不入库）
+
+`X34 秘密守卫端到端（prompt/steer/followUp 三通道）`：4/4 通过——
+① followUp 含凭据 → 不入队（session.followUp 零调用、无 followUp_queued）+ 回执
+`secret_redirect` 且回执/审计零明文；② 干净 followUp 照常入队（守卫不误伤）；
+③ prompt 含连接串 → session.prompt 零调用 + redirect（含 connection_string 类别）；
+④ steer 含 `password=` → session.steer 零调用 + redirect。
+
 ### console.* 全量防泄露清点（`rg -n "console\." server/`）
 
 | 站点 | 处置 |
@@ -45,5 +53,6 @@ redactSecrets: 全部命中片段 -> [REDACTED]；audit 条目零明文（仅 SH
 
 ### 遗留（详见 design.md §10）
 
-- followUp 分支未纳入守卫（任务书范围 prompt/steer），留有绕行口——待裁决（遗留 7）。
+- ~~followUp 绕行口~~ **已收口（P1a）**：followUp 已加与 prompt/steer 同款拦截（审计 kind=`followUp`）；已对照 WSClientMessage 全集核查 handleNormalMessage，followUp 之外无其它入 LLM 通道（design.md 遗留 7 已标记解决）。
 - 误伤/漏拦阈值（`密码为…` 等形态）待 `verify:secrets-isolation` 实测后调（遗留 2 裁决尾注）。
+- secret_redirect 前端收尾归 P2（遗留 8，保持开放）。
