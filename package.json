@@ -1,6 +1,6 @@
 {
   "name": "govio-map",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "无限画布数据治理工具：自然语言驱动 AI Agent 做数据查询、探索与分析，结果以卡片节点编排并自动建立数据血缘",
   "keywords": [
     "data-governance",
