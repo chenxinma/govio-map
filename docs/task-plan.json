@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-28T08:11:29+08:00",
+  "updatedAt": "2026-11-28T10:05:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -485,7 +485,7 @@
     {
       "id": "X34",
       "title": "首次运行向导 + 数据源管理器 + 秘密结构性路由（降低初始配置门槛）",
-      "status": "in_progress",
+      "status": "done",
       "kr": null,
       "dependsOn": [
         "X33"
@@ -521,6 +521,12 @@
           "at": "2026-11-28T08:11:29+08:00",
           "by": "main-session",
           "note": "按 subagent 模式推进（用户指令：不走 Orca 派发，由 pi 子代理实现、主会话编排验收）。实施切分为串行子任务 P1a 秘密结构性路由 → P1b onboarding 后端通道 → P2 前端向导与组件改造 → P3 验证脚本与文档。实现期裁决：govio-cli 无 stdin/env 凭据入口，凭据子进程通道改走 stdin 管道静态 wrapper（调 govio ConfigManager 系函数），杜绝密码进进程参数；回填 design.md 遗留问题。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-28T10:05:00+08:00",
+          "by": "main-session",
+          "note": "PR #57 合并（d39d71e），实现经 P1a-P3 四阶段子代理交付：秘密结构性路由（三通道硬拦截+零明文留痕）、onboarding 后端通道（凭据 stdin wrapper 零 argv/env/日志）、前端 4 步向导+数据源管理器（去 DeepSeek 硬编码、删回灌路径）、verify:secrets-isolation(149)/verify:onboarding(55) 入链。主会话 main 独立复跑 build/lint/verify 14 项全绿，断言 671→875 核对无误，工作树干净。置 done 不置 accepted：acceptance 第 1 条的 TTFV/5 人冷启动可用性证据（design 遗留 6）未闭合，accepted 待用户裁决（豁免或安排可用性测试）。"
         }
       ]
     }
