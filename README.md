@@ -12,9 +12,34 @@ SourceTable ──▶ SQL ──▶ DataFrame ──▶ Report / Chart
 
 ### 前置依赖
 
-- **Node.js**
-- **`govio-cli`**：外部 CLI，需安装并置于 PATH。后端启动时会执行 `govio-cli -V` 校验，缺失则启动失败。运行时数据写入 `.govio/`（已 gitignore）
-- 至少一个 AI 提供商的 API Key
+- **Node.js**（LTS）
+- **[uv](https://docs.astral.sh/uv/)**：`govio-cli` 的安装工具。首启向导会经 uv 自动安装/升级 `govio-cli` 并下载 skills，无需手装
+- 任一 AI 提供商的 API Key（在向导中录入，无需手写配置文件）
+
+### 一键运行
+
+```bash
+npx govio-map
+```
+
+浏览器打开 `http://localhost:5173/`（终端会打印 `Govio Map ready at http://localhost:5173`）。前端 5173 / 后端 5174（HTTP + WebSocket）双端口一并启动；运行时数据写入 `~/.govio/`。
+
+### 首次运行向导
+
+全新环境首次打开自动弹出**首启向导**；之后可随时重进——向导幂等可续做，如实反映当前状态、已完成步骤不覆盖：
+
+1. **环境自检**：自动修复 `govio-cli` / skills 缺口，带进度显示
+2. **配置 LLM**：OpenAI / Anthropic / DeepSeek / Gemini / 自定义（baseUrl + API 协议）任选，录入 API Key 并可即时「测试模型」；无默认供应商锁定
+3. **初始化图谱**：默认 ladybug 一键（本地嵌入式 `~/.govio/ontology.lbdb`，零外部依赖）；高级可选 falkordb / networkx
+4. **添加数据源**：表单录入 URL / 密码 + 「测试连接」，可跳过延后；Windows 盘符路径用**双斜杠** `duckdb://D:/...`（三斜杠会被当成 POSIX 路径导致访问失败）
+5. **完成态**：空状态给出下一步引导（导入元数据 → 问第一个数据问题）
+
+### 凭据安全
+
+- 凭据仅经 GUI 表单录入，加密存本机（`~/.govio/config.yaml`、`~/.pi/agent/models.json`），**不发往大模型**
+- 对话中粘贴连接串或明文密码会被后端拦截并引导到数据源表单（「凭据只走表单」是产品硬约束，详见 `docs/tasks/X34-onboarding-gui/design.md`）
+
+## 从源码开发
 
 ### 1. 安装依赖
 
@@ -22,9 +47,9 @@ SourceTable ──▶ SQL ──▶ DataFrame ──▶ Report / Chart
 npm install
 ```
 
-### 2. 配置环境变量
+### 2. 配置环境变量（可选）
 
-在项目根目录创建 `.env`，设置至少一个 API Key。pi-coding-agent 经 `ModelRuntime` 读取凭据，优先级：运行时覆盖 > `~/.pi/agent/auth.json` > 环境变量：
+开发模式可在项目根目录创建 `.env` 设置 API Key（正常使用经首启向导配置即可）。pi-coding-agent 经 `ModelRuntime` 读取凭据，优先级：运行时覆盖 > `~/.pi/agent/auth.json` > 环境变量：
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-xxxxx
@@ -47,7 +72,7 @@ npm run dev
 
 Chat 面板自动连接 `/ws`。**当前不再有 Mock AI 降级**——后端未连接时输入框禁用并提示“未连接到服务器”。
 
-其他脚本：`npm run build`（类型检查 + 构建）、`npm run preview`、`npm run ask -- -m "消息"`（单次 CLI 对话，`-n` 新开会话，见 `server/cli.ts`）。
+其他脚本：`npm run build`（类型检查 + 构建）、`npm run preview`、`npm run serve`（打包产物本地起服务，与 `npx govio-map` 同款入口）、`npm run ask -- -m "消息"`（单次 CLI 对话，`-n` 新开会话，见 `server/cli.ts`）。
 
 ## 工作原理
 

@@ -12,9 +12,34 @@ SourceTable ──▶ SQL ──▶ DataFrame ──▶ Report / Chart
 
 ### Prerequisites
 
-- **Node.js**
-- **`govio-cli`**: external CLI, must be installed and on PATH. The backend runs `govio-cli -V` at startup and fails to boot if it is missing. Runtime data is written to `.govio/` (gitignored)
-- An API key for at least one AI provider
+- **Node.js** (LTS)
+- **[uv](https://docs.astral.sh/uv/)**: the installer for `govio-cli`. The first-run wizard installs/upgrades `govio-cli` and downloads skills through uv automatically — no manual install needed
+- An API key for at least one AI provider (entered in the wizard; no hand-edited config files needed)
+
+### Run with one command
+
+```bash
+npx govio-map
+```
+
+Open `http://localhost:5173/` in your browser (the terminal prints `Govio Map ready at http://localhost:5173`). Frontend (5173) and backend (5174, HTTP + WebSocket) start together; runtime data is written to `~/.govio/`.
+
+### First-run wizard
+
+On a fresh environment the **first-run wizard** pops up automatically; it can be reopened any time — it is idempotent and resumable, always reflecting real state and never overwriting completed steps:
+
+1. **Environment check**: auto-repairs `govio-cli` / skills gaps with progress reporting
+2. **Configure LLM**: pick OpenAI / Anthropic / DeepSeek / Gemini / custom (baseUrl + API protocol), enter the API key and "Test model" instantly; no default vendor lock-in
+3. **Initialize the graph**: ladybug one-click by default (local embedded `~/.govio/ontology.lbdb`, zero external dependencies); falkordb / networkx available as advanced options
+4. **Add a data source**: URL / password form + "Test connection", skippable/deferrable; on Windows use **two-slash** drive paths `duckdb://D:/...` (a third slash is parsed as a POSIX path and fails)
+5. **Done**: the empty state shows next-best-actions (import metadata → ask your first data question)
+
+### Credential safety
+
+- Credentials are entered only through GUI forms, stored encrypted on this machine (`~/.govio/config.yaml`, `~/.pi/agent/models.json`) and **never sent to the LLM**
+- Pasting a connection string or plaintext password into chat is intercepted by the backend and redirected to the data-source form ("credentials go through forms only" is a hard product constraint, see `docs/tasks/X34-onboarding-gui/design.md`)
+
+## Developing from source
 
 ### 1. Install dependencies
 
@@ -22,9 +47,9 @@ SourceTable ──▶ SQL ──▶ DataFrame ──▶ Report / Chart
 npm install
 ```
 
-### 2. Configure environment variables
+### 2. Configure environment variables (optional)
 
-Create a `.env` in the project root with at least one API key. pi-coding-agent reads credentials via `ModelRuntime`, in priority order: runtime override > `~/.pi/agent/auth.json` > environment variables:
+For development you may create a `.env` in the project root with API keys (normal use goes through the first-run wizard). pi-coding-agent reads credentials via `ModelRuntime`, in priority order: runtime override > `~/.pi/agent/auth.json` > environment variables:
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-xxxxx
@@ -47,7 +72,7 @@ npm run dev
 
 The Chat panel connects to `/ws` automatically. **There is no Mock AI fallback anymore** — when the backend is disconnected, the input is disabled with a "Not connected to server" notice.
 
-Other scripts: `npm run build` (type-check + build), `npm run preview`, `npm run ask -- -m "message"` (one-shot CLI chat, `-n` starts a new session, see `server/cli.ts`).
+Other scripts: `npm run build` (type-check + build), `npm run preview`, `npm run serve` (serve the packaged build — same entry as `npx govio-map`), `npm run ask -- -m "message"` (one-shot CLI chat, `-n` starts a new session, see `server/cli.ts`).
 
 ## How It Works
 
