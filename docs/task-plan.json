@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roadmap": "docs/ROADMAP.md",
-  "updatedAt": "2026-11-28T12:30:00+08:00",
+  "updatedAt": "2026-11-28T16:10:00+08:00",
   "statusFlow": [
     "pending",
     "in_progress",
@@ -533,6 +533,12 @@
           "at": "2026-11-28T12:30:00+08:00",
           "by": "main-session",
           "note": "v0.8.0 发版完成：PR #58 合并（169d8f9，含 duckdb URL 修复/README npx/版本号 0.7.3→0.8.0）→ publish.yml dry-run 与真实发布均绿（OIDC trusted publishing）→ verify-release.yml 5 项全过（registry 可见/元信息/tarball/provenance/安装冒烟）→ GitHub Release v0.8.0（tgz+sha256 附件）。测试者用 npx govio-map 冷启动实测，TTFV/SUS 可用性证据回填后置 accepted。"
+        },
+        {
+          "status": "done",
+          "at": "2026-11-28T16:10:00+08:00",
+          "by": "main-session",
+          "note": "Round1 两缺陷修复 + 双仓 v0.8.1 发版完成：govio PR #26（meta rel 边 CSV 表头规范化 + meta graph --mode update 旧库兼容，559+18 pytest）→ govio v0.8.1 Release 四资产回验 + PyPI 0.8.1（owner uv publish）→ govio-map PR #59（MIN_GOVIO_CLI_VERSION 0.8.1）→ npm 0.8.1 发布链全绿 + verify-release 5 项 + Release v0.8.1。待 Round2 复测表关系/指标定义导入链路 + SUS 回收后置 accepted。"
         }
       ]
     }
