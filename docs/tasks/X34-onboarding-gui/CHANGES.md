@@ -131,3 +131,44 @@
   DatasourceForm 掩码显隐/提交禁用、SecretRedirectCard 渲染与事件派发）；
   `tests/integration/settings-provider-drafts.test.ts`：「空配置回落默认 deepseek 草稿」改
   「回落空草稿（无默认锁定）」（X34 有源行为变更，断言随行为更新，其余不变）。
+
+## P3 验证脚本 + verificationBaseline + 三件套收尾
+
+- `scripts/verify-secrets-isolation.ts`（新建，**149 断言**）：「凭据零泄露」机器可断言化。
+  [A] detectSecretLeaks 正样本 18 形态（mysql+pymysql/postgresql/duckdb/mongodb/redis/
+  sqlserver/oracle 连接串、URL-encoded 密码、`password=`/`--password`/`--passwd`/`password:`/
+  JSON `"password"`/中文「密码是/密码：」/`passwd`/`pwd`/全角冒号）+ 多形态归并；
+  [B] 负样本 7 例不误伤（无密码 duckdb 路径、无密码 user@host URL、普通中文提问、无凭据 SQL 等）；
+  [C] redactSecrets span 与 detect 逐字一致 + 输出零明文 + redactForLog（字符串/对象/不可序列化）；
+  [D] 拦截行为：`registerHooks` 注入 agent/graph-query 桩驱动**真实 `setupWebSocket` 全链路**，
+  prompt/steer/followUp 三通道命中 → stub session 零调用 + `secret_redirect` 回执（文案/类别/
+  脱敏摘要），干净 steer/prompt 正对照（探针存活）；拦截留痕 3 条、contentSha256 与被拦内容一致、
+  sidecar 全文零明文；
+  [E] 凭据通道不变量：假 exec 捕获 addDatasource/testDatasource，file/args 永不含密码/URL 明文、
+  秘密只在 stdin `opts.input`（op/name/url/connect_args/overwrite 透传）；错误回执过
+  redactSecrets 二次脱敏；
+  [F] 零日志泄露：server/ 源码静态扫描（console.* 同行不得直写 `msg.content`/`.password`/
+  `opts.input`）+ 针对性正则断言 makePrompt / tool result / onboarding 错误与进度日志行已脱敏；
+  [G] 拦截留痕 sidecar（临时目录实测 recordSecretGuardAudit：条目结构/哈希/零明文/读回/坏行跳过/
+  sessionFile=null 跳过/删除）+ buildSecretRedirect 纯函数。
+- `scripts/verify-onboarding.ts`（新建，**55 断言**）：「向导幂等可续做」机器可断言化（全部假 exec，
+  不需要真 govio-cli/uv）。[A] initGraph 幂等（ladybug 默认两次调用 argv 逐字一致、不带 `--db-path`
+  覆盖 govio-cli 默认 `~/.govio/ontology.lbdb`；dbPath/falkordb/networkx 参数映射；networkx 缺
+  GML → invalid_args）；[B] addDatasource overwrite 语义（true/false/缺省 → stdin JSON 透传）；
+  [C] 可恢复（timedOut/exitCode≠0/无结构化回执 → 结构化 `{ok:false, error, errorKind, hint}` +
+  重试路径可用）；[D] status 解析各形态（CLI 未装/未初始化/已初始化/单/多数据源/非 JSON/非数组/
+  版本抽取/graph.error 脱敏）；[E] classifyDatasourceError 纯函数样本（dns/host/port/auth/timeout/
+  other 各 ≥1 正样本）+ 分类→修复指引映射；[F] importMetadata 非 DuckDB 可读引导（errorKind=
+  unsupported，非异常堆栈）+ argv 映射 + 进度回调脱敏；[G] removeDatasource 无秘密 argv；
+  [H] resolveGovioPython 解析与 uv run fallback。
+- `package.json`：verify 链挂 `verify:secrets-isolation` + `verify:onboarding`（`verify:prompt-injection`
+  之后、`verify:integration` 之前）。
+- `docs/task-plan.json` → `verificationBaseline`：scripts 段入账 149/55 两项新脚本，
+  `scriptTotalWindows` 671 → **875**；vitest 计数随 P2 上调 35·500 / 12·103；`updatedAt` 刷新。
+  `.github/workflows/scripts/assertion-dashboard.mjs` 对本地 verify 全量日志复跑：15 行全 ✅ 零漂移。
+- `server/onboarding.ts` 小修（断言暴露的真实缺口，行为兼容）：`detectCliVersion` 原直接调
+  `runGovioCliVersion()`（真实 execFile，假 exec 覆盖不到），导致 `getOnboardingStatus` 的
+  status 各形态在 CI 无 govio 环境不可测——改经 `ExecFn` 注入（`exec("govio-cli", ["-V"])`，
+  失败/超时/解析不了仍为 null，调用面不变），`runGovioCliVersion` 依赖移除。
+  `server/secret-guard.ts` 无需改动（149 断言全绿未暴露缺口）。
+- `docs/tasks/X34-onboarding-gui/design.md`：遗留 8/9/10 状态标注复核（P2 已收口/裁决/记录，P3 补验证戳）。

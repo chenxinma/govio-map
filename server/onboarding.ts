@@ -19,7 +19,6 @@ import {
   ensureGovioCli,
   downloadGovioSkills,
   govioSkillsReady,
-  runGovioCliVersion,
 } from "./govio-installer.js";
 import { modelsConfigExists } from "./models-config.js";
 import { redactSecrets } from "./secret-guard.js";
@@ -124,11 +123,16 @@ export interface OnboardingStatus {
   modelsConfigured: boolean;
 }
 
-/** govio-cli 版本号（x.y.z）；未安装/不可解析为 null */
-async function detectCliVersion(): Promise<string | null> {
+/**
+ * govio-cli 版本号（x.y.z）；未安装/不可解析为 null。
+ * 经 ExecFn 注入（P3 缺口小修）：getOnboardingStatus 的假 exec 测试可覆盖版本探测，
+ * 不需要真 govio-cli；调用面不变（仍探测 `govio-cli -V`，失败/超时/解析不了为 null）。
+ */
+async function detectCliVersion(exec: ExecFn = defaultExec): Promise<string | null> {
   try {
-    const output = await runGovioCliVersion();
-    return output.match(/(\d+\.\d+\.\d+)/)?.[1] ?? (output.trim() || null);
+    const res = await exec("govio-cli", ["-V"], { timeoutMs: 15_000 });
+    if (res.exitCode !== 0) return null;
+    return res.stdout.match(/(\d+\.\d+\.\d+)/)?.[1] ?? (res.stdout.trim() || null);
   } catch {
     return null;
   }
@@ -136,7 +140,7 @@ async function detectCliVersion(): Promise<string | null> {
 
 /** onboard 状态检测：govio-cli 版本 / 图后端 / 数据源清单 / skills / models.json */
 export async function getOnboardingStatus(exec: ExecFn = defaultExec): Promise<OnboardingStatus> {
-  const cliVersion = await detectCliVersion();
+  const cliVersion = await detectCliVersion(exec);
 
   let graph: OnboardingGraphStatus = { initialized: false, backend: null };
   if (cliVersion) {

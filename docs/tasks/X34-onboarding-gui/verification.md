@@ -145,3 +145,62 @@ Step1 无默认供应商（R7）、DatasourceForm 掩码显隐/提交禁用、Se
 - ~~test_model 只能测已保存配置~~ **已结案（P2）**：保存并测试流程（遗留 9）。
 - 连接错误分类阈值待 `verify:secrets-isolation`/可用性测试实测后调（延续遗留 2 尾注）。
 - `save_models_config` apiKey-only 通道已废弃（回可读错误，schema 不变），见 design.md 遗留 10。
+
+## P3 验证脚本 + verificationBaseline + 三件套收尾
+
+### 验证门槛（commit 前全绿，2026-11-28 本地跑）
+
+| 命令 | 结果 | 关键输出 |
+|---|---|---|
+| `npm run build` | ✅ | `tsc -b` 零错误（含 scripts/ 新增两文件）；vite build ✓；`dist-server/cli.mjs` 260.5kb |
+| `npm run lint` | ✅ | eslint 零告警 |
+| `npm run verify` | ✅ | **14 项全绿，exit 0**（新增 verify:secrets-isolation / verify:onboarding）；脚本断言 671 → **875**（+149/+55）；`verify:integration` 35 文件 / 500 测试、`verify:ui` 12 文件 / 103 测试全过，既有断言零回归 |
+
+### 两项新脚本取证摘要
+
+- `verify:secrets-isolation`（149/149）：detectSecretLeaks 正样本 18 形态全命中（含 URL-encoded/
+  全角冒号/`--passwd`）+ 负样本 7 例零误伤；redactSecrets span 逐字一致、输出零明文；
+  **三通道拦截**：`registerHooks` 桩驱动真实 `setupWebSocket`（agent 会话桩 + graph-query 桩，
+  ws-handler/secret-guard/审计全为生产代码），prompt/steer/followUp 含凭据 → stub session
+  prompt/steer/followUp **零调用** + `secret_redirect` 回执，干净消息正对照探针存活；
+  凭据通道不变量（密码只在 stdin `opts.input`、argv 零明文、错误回执二次脱敏）；
+  console.* 静态扫描 + makePrompt/tool result/onboarding 日志行脱敏断言；
+  拦截留痕 sidecar 零明文（临时目录实测）。
+- `verify:onboarding`（55/55）：initGraph 默认参数两次调用 argv 逐字一致（幂等；ladybug 默认落盘
+  `~/.govio/ontology.lbdb` 不被 `--db-path` 覆盖）；addDatasource overwrite true/false/缺省语义；
+  timedOut/exitCode≠0/无结构化回执 → 结构化失败 + 重试路径可用；status 解析 6 形态；
+  classifyDatasourceError dns/host/port/auth/timeout/other 各正样本；importMetadata 非 DuckDB
+  可读引导（无异常堆栈）+ 进度脱敏；removeDatasource 无秘密 argv；resolveGovioPython fallback。
+  （全部假 exec 注入，CI 无 govio 环境可跑；server/onboarding.ts 配套小修：detectCliVersion 改经
+  ExecFn 注入，见 CHANGES.md P3。）
+
+### 断言总表（P3 收官基线，Windows 全量 npm run verify）
+
+| verify 脚本 | 断言数 |
+|---|---|
+| verify:manifest | 92 |
+| verify:rerun | 71 |
+| verify:audit | 119 |
+| verify:export | 148 |
+| verify:source-table | 39 |
+| verify:semantic-lineage | 54 |
+| verify:caliber-conflict | 77 |
+| verify:cwd | 13（linux SKIP 7 项由 platformSkip 建模） |
+| verify:prompt-injection | 58 |
+| **verify:secrets-isolation（新）** | **149** |
+| **verify:onboarding（新）** | **55** |
+| **脚本合计** | **875**（671 + 204） |
+| verify:integration（vitest） | 35 文件 / 500 测试 |
+| verify:ui（vitest） | 12 文件 / 103 测试 |
+
+### verificationBaseline 同步
+
+`docs/task-plan.json → verificationBaseline` 已入账（scripts +2 项、scriptTotalWindows 875、
+vitest 35·500 / 12·103、updatedAt 2026-11-28）；`.github/workflows/scripts/assertion-dashboard.mjs`
+对本地 verify 全量日志复跑：15 行全 ✅ 零漂移（含 `script total 875` 与两项 vitest 行）。
+
+### 遗留（详见 design.md §10）
+
+- 可用性证据（5 人冷启动 think-aloud + TTFV/SUS）待主会话牵头执行（遗留 6，保持开放）。
+- 遥测埋点待用户裁决（遗留 3，保持开放）。
+- 连接错误分类为关键词启发式：verify:onboarding 已固化当前阈值样本（改动会红），实测调参走遗留 2 尾注。
