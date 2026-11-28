@@ -27,7 +27,8 @@
     （旧客户端行为、是否需握手协商）；任务书里「不要静默 bump」的纪律指的就是这一类变更必须显式论证。
   - **实例**：PR #50（模型/思考档链路）新增 `get_available_models`/`available_models`/
     `set_thinking_level`/`thinking_level_set` 四类消息与 `session_ready` 的两个可选字段
-    （`currentModel?`/`thinkingLevel?`）属**加法** ⇒ 保持 v1；T3.5（只读分享活视图）零 WS 变更 ⇒ 保持 v1。
+    （`currentModel?`/`thinkingLevel?`）属**加法** ⇒ 保持 v1；T3.5（只读分享活视图）零 WS 变更 ⇒ 保持 v1；
+    X34（秘密结构性路由）新增服务端消息 `secret_redirect`（prompt/steer 命中凭据守卫的拦截回执）属**加法** ⇒ 保持 v1。
 - **T3.5（只读分享活视图）确认 `PROTOCOL_VERSION` 仍为 1，本任务零契约变更**：只读页的实时同步全部走
   HTTP 轮询（`GET /api/shares/<token>` + `If-None-Match` → 304，3s 间隔，失败退避 3→6→12→30s），
   **未新增也未修改任何 WS 消息类型**；`/share/*` 页面根本不建 `/ws` 连接（只读纪律的连接层）。
@@ -40,12 +41,12 @@
   `observe_info`、`clear`、`tool_permission_response`、`permission_accept_all`、
   `get_models_config`、`save_models_config`、`set_model`、`get_available_models`、`set_thinking_level`、`session_list`、`session_open`、
   `session_messages`、`session_delete`、`canvas_save`、`canvas_fork_apply`
-- 服务端 → 客户端（28 类）：`session_ready`、`canvas_restore`、`session_messages_result`、
+- 服务端 → 客户端（29 类）：`session_ready`、`canvas_restore`、`session_messages_result`、
   `session_list_result`、`session_deleted`、`agent_start`、`agent_end`、`message_start`、
   `message_end`、`text_delta`、`thinking_delta`、`tool_start`、`tool_end`、`queue_update`、
   `steer_queued`、`followUp_queued`、`queue_cleared`、`tool_permission_request`、
   `observe_list_result`、`observe_info_result`、`models_config`、`available_models`、`config_saved`、
-  `config_required`、`model_set`、`thinking_level_set`、`fork_applied`、`error`
+  `config_required`、`model_set`、`thinking_level_set`、`fork_applied`、`secret_redirect`、`error`
 
 开放载荷（`args` / `nodes` / `edges` / `dataframes` / `info`）在契约中松绑为 unknown/宽松
 对象，形状由消费端自校验。

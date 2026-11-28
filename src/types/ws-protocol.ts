@@ -245,7 +245,7 @@ export type WSClientMessageOf<T extends WSClientMessage["type"]> = Extract<WSCli
 // ── 服务端 → 客户端 ─────────────────────────────────────────────────────────
 
 /**
- * 服务端出站消息（28 种）。仅作编译期契约与测试基准；服务端不对自身消息做运行时
+ * 服务端出站消息（29 种）。仅作编译期契约与测试基准；服务端不对自身消息做运行时
  * 校验。开放载荷（args / nodes / edges / dataframes / info）刻意松绑，形状由消费端
  * 自校验（与改造前 useChat 的松散处理等价）。
  */
@@ -353,6 +353,11 @@ export const WSServerMessageSchema = Type.Union([
     /** 派生血缘（server/share.ts CanvasForkFrom 的线上形态；开放载荷容忍字段演进） */
     forkFrom: Type.Unknown(),
   }), "T3.2 fork 应用成功回执（canvas_restore 随后到达；只读分享视图不建立本连接）"),
+  messageSchema("secret_redirect", Type.Object({
+    message: Type.String(),
+    categories: Type.Array(Type.String()),
+    redactedSnippets: Type.Array(Type.String()),
+  }), "X34 秘密结构性路由：prompt/steer 命中凭据守卫被拦截（未发给大模型）；message 为可读引导（改走数据源管理表单），categories 为命中类别，redactedSnippets 仅含脱敏片段（[REDACTED]）"),
   messageSchema("error", Type.Object({
     message: Type.String(),
   }), "错误（协议拒绝/业务失败统一出口）"),

@@ -5,6 +5,7 @@ import { listSessions, deleteSession, saveCanvas, loadCanvas, buildTranscript, a
 import { refreshCanvasFromRemote } from "./storage/canvas-storage.js";
 import { consumeStagedFork, readStagedFork } from "./share.js";
 import { buildInjectionContext, composePrompt, buildTraceEntry, recordInjectionTrace } from "./prompt-injection.js";
+import { detectSecretLeaks, redactSecrets, redactForLog, recordSecretGuardAudit, buildSecretRedirect } from "./secret-guard.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
 import { setSessionSemanticRefs, setSessionCaliberMetrics, clearSessionSemanticRefs, toSemanticRefs } from "./semantic-context.js";
 import { permissionManager } from "./permission-manager.js";
@@ -66,7 +67,8 @@ export function setupWebSocket(server: import("http").Server) {
             break;
           case "tool_execution_end":
             console.log(`[ws] Tool execution end: ${event.toolName} success=${!event.isError}`);
-            console.debug(`[ws] Tool execution result (${event.toolName}):`, event.result);
+            // 日志脱敏（X34）：工具结果可能回显用户内容/凭据（如 config.yaml），落日志前过 redactSecrets。
+            console.debug(`[ws] Tool execution result (${event.toolName}):`, redactForLog(event.result));
             sendMsg(ws, { type: "tool_end", toolName: event.toolName, toolCallId: event.toolCallId, success: !event.isError });
             emitFlushed(flushGovioNodes());
             break;
@@ -207,6 +209,20 @@ export function setupWebSocket(server: import("http").Server) {
     switch (msg.type) {
       case "prompt":
         if (msg.content) {
+          // X34 秘密结构性路由：凭据硬拦截必须先于注入组装与一切日志（含密内容绝不落日志）。
+          // 命中即拒绝执行，redirect 到 GUI 数据源表单（凭据加密存本机、不发往大模型）。
+          const leaks = detectSecretLeaks(msg.content);
+          if (leaks.length > 0) {
+            recordSecretGuardAudit({
+              sessionId: session.sessionId,
+              sessionFile: session.sessionManager.getSessionFile() ?? null,
+              kind: "prompt",
+              content: msg.content,
+              matches: leaks,
+            });
+            sendMsg(ws, buildSecretRedirect(leaks));
+            break;
+          }
           setCurrentReferencedNodes(msg.referencedNodes);
           // 注入（表限定名 + 图谱实体）需异步查图谱；makePrompt 内部永不 throw，
           // 图谱失败降级为现状行为（不阻断会话）。流式判定推迟到派发时刻。
@@ -233,6 +249,19 @@ export function setupWebSocket(server: import("http").Server) {
         break;
       case "steer":
         if (msg.content) {
+          // X34 秘密结构性路由：steer 同样进 LLM 上下文，拦截语义与 prompt 一致（最早处、先于一切日志）。
+          const leaks = detectSecretLeaks(msg.content);
+          if (leaks.length > 0) {
+            recordSecretGuardAudit({
+              sessionId: session.sessionId,
+              sessionFile: session.sessionManager.getSessionFile() ?? null,
+              kind: "steer",
+              content: msg.content,
+              matches: leaks,
+            });
+            sendMsg(ws, buildSecretRedirect(leaks));
+            break;
+          }
           // steer 属于本轮运行的补充指令（同一次注入上下文）→ **不清**口径引用，
           // 否则本轮后续产出的 SQL 会丢 semanticRefs（实测：steer 后 5s 生成的 SQL 无口径）。
           // 清理统一由 agent_end 负责。
@@ -647,7 +676,8 @@ async function makePrompt(msg: WSClientMessageOf<"prompt">, session: SessionInst
       buildTraceEntry(ctx, { sessionId: session.sessionId, sessionFile, content: msg.content ?? "" }),
     );
   }
-  console.debug("[ws] prompt: " + prompt);
+  // 日志脱敏（X34）：prompt 含用户内容，含密内容绝不能落日志（守卫已在上游拦截，此处双保险）。
+  console.debug("[ws] prompt: " + redactSecrets(prompt));
   return prompt;
 }
 

@@ -115,13 +115,16 @@ npx 启动 → 依赖就绪 → LLM 可用 → 图谱就绪 → 数据源连上 
 | 图谱默认 | ladybug 本地嵌入式 | 零外部服务，最低门槛（用户裁决） |
 | 数据源凭据 | 只走表单 → 后端子进程 → govio-cli | 结构性防泄密；不直写 config.yaml |
 | 秘密守卫 | 后端拦截 + redirect（非仅靠系统提示自觉） | 提示是软约束，拦截是硬约束 |
+| 拦截审计留痕落点（P1a 裁决） | 新建 `<session>.secret-guard.jsonl` 轻量 sidecar（permission-audit 同款 append-only，随 deleteSession 清理；暂不入 session-bundle 导出） | 不扩展 `.injection.jsonl`：注入留痕语义是「prompt 里进了什么」，拦截事件是「拒绝了什么」，混写会逼 trace 换版本且语义混淆；独立 sidecar 只记 sessionId/时间/类别/内容 SHA-256（零明文），可被 verify:secrets-isolation 单独断言 |
 | 验证 | 新增两项 verify 脚本进 CI | 把「不泄露」「可续做」变成可断言，而非人工目测 |
 
 ## 10. 遗留问题
 
 1. **测试连接的后端探测手段**：govio-cli 是否有轻量「连通性探测」子命令，还是需复用 `observe info`（较重）或新增 `observe` 侧探测——需在实现时确认；若无，评估在 govio 侧补一个轻量探测（归口 X33 或新增小任务）。
-2. **秘密守卫的覆盖边界**：仅拦截 `scheme://user:pass@host` 与明文密码，还是连「用户口头说『密码是 xxx』」也拦——拦截规则与误伤率需实测定阈值。
+2. **秘密守卫的覆盖边界**：仅拦截 `scheme://user:pass@host` 与明文密码，还是连「用户口头说『密码是 xxx』」也拦——拦截规则与误伤率需实测定阈值。→ **P1a 裁决（任务书）**：宁可误拦不可漏拦；拦截语义=「拒绝执行 + 可读引导」（`secret_redirect`）而非静默丢弃。覆盖形态收敛为「连接串 `scheme://user:pass@host`（密码段含 URL-encoded，中文「密码是/密码：/密码=」与 `password/passwd/pwd` 的 =/：/--password 赋值形态）；误伤/漏拦阈值待 `verify:secrets-isolation` 实测后调。
 3. **遥测埋点**：是否本轮就做匿名漏斗埋点（可关闭），还是先做可用性测试、埋点延后——待用户裁决。
 4. **`--backend` + `--remove-datasource` 组合**：X33 FRD §5 标注「由实现方裁决」，需在 X33 完成时回填结论。
 5. **MIN_GOVIO_CLI_VERSION**：X33 发布新 govio 版本后，本任务同步提升该常量（`server/govio-installer.ts`）。
 6. **可用性测试的执行人/渠道**：5 人招募由谁发起、录屏工具与报告模板，需在验证阶段确定（主会话牵头）。
+7. **followUp 分支未纳入 P1a 守卫**：任务书只覆盖 prompt/steer，但 followUp 同样进 LLM 上下文，留有绕行口；补齐即同一守卫三行（secret_redirect 回执）——需裁决 P1b/P3 是否一并覆盖（verify:secrets-isolation 断言口径也取决于此）。
+8. **secret_redirect 的前端收尾（P2）**：被拦 steer 的气泡投递态（消息不带 clientMsgId）、被拦文本在前端聊天态/localStorage 的残留是否脱敏——由 P2 聊天 UI 一并裁决。
