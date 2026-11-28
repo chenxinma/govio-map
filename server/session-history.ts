@@ -3,6 +3,7 @@ import { existsSync, unlinkSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve as resolvePath, sep } from "node:path";
 import { deletePermissionAudit } from "./permission-audit.js";
 import { deleteInjectionTrace } from "./prompt-injection.js";
+import { deleteSecretGuardAudit } from "./secret-guard.js";
 import { canvasPathFor, importMetaPathFor, shareStatePathFor, storageBindingPathFor } from "./storage/paths.js";
 import { queueRemoteDelete, queueRemoteSync } from "./storage/canvas-storage.js";
 
@@ -69,9 +70,10 @@ export function deleteSession(path: string): void {
   if (existsSync(resolved)) unlinkSync(resolved);
   const canvas = canvasPathFor(resolved);
   if (existsSync(canvas)) unlinkSync(canvas);
-  // 权限审计 / 注入留痕 sidecar 与会话同生命周期：会话删了，记录一并删。
+  // 权限审计 / 注入留痕 / 秘密拦截留痕 sidecar 与会话同生命周期：会话删了，记录一并删。
   deletePermissionAudit(resolved);
   deleteInjectionTrace(resolved);
+  deleteSecretGuardAudit(resolved);
   // T3.1 存储绑定 sidecar 同生命周期：先 fire-and-forget 删远端工件，再删本地绑定。
   queueRemoteDelete(resolved);
   if (existsSync(storageBindingPathFor(resolved))) unlinkSync(storageBindingPathFor(resolved));

@@ -14,6 +14,7 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import { permissionManager } from "../permission-manager.js";
+import { redactSecrets } from "../secret-guard.js";
 import { DATASOURCE_TYPES, type DatasourceType } from "../../src/types/index.js";
 import { extractSelectColumns } from "../../src/utils/sql-columns.js";
 import {
@@ -533,7 +534,8 @@ async function handleLoadResult(
   // shared ObserveLoadOutput contract — fall back to the ObserveStore below.
   const load = parseObserveLoadOutput(stdout);
   if (!load) {
-    console.warn(`[govio-canvas] handleLoadResult output rejected for '${args.name}': invalid JSON or schema drift (stdout length: ${stdout.length}, first 120 chars: ${JSON.stringify(stdout.slice(0, 120))})`);
+    // 日志脱敏（X34）：先脱敏再截断，避免连接串密码被拦腰截断后绕过形态匹配。
+    console.warn(`[govio-canvas] handleLoadResult output rejected for '${args.name}': invalid JSON or schema drift (stdout length: ${stdout.length}, first 120 chars: ${JSON.stringify(redactSecrets(stdout).slice(0, 120))})`);
   }
   if (isLoadFailure(load)) return;
   // stdout 可能被摘要管道（jq/head）改写成合法但不可信的 JSON（失败加载投影成
@@ -883,7 +885,8 @@ export default function govioCanvasExtension(
       permissionManager.acceptRead(readDf);
     }
     const subcommand = parseObserveSubcommand(cmd);
-    console.log("[govio-canvas] tool_result subcommand:", subcommand, "cmd:", cmd.slice(0, 120));
+    // 日志脱敏（X34）：命令可能内嵌 SQL/连接串，先脱敏再截断。
+    console.log("[govio-canvas] tool_result subcommand:", subcommand, "cmd:", redactSecrets(cmd).slice(0, 120));
 
     switch (subcommand) {
       case "load":

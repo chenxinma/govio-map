@@ -11,6 +11,7 @@ import {
   validateDrafts,
   type ProviderDraft,
 } from "../utils/provider-drafts";
+import { PROVIDER_PRESETS, presetProviderDraft } from "../utils/provider-presets";
 
 interface SettingsModalProps {
   initialConfig: ModelsConfig | null;
@@ -142,6 +143,21 @@ export default function SettingsModal({ initialConfig, onSave, onClose }: Settin
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {/* X34：供应商预置与首启向导一致（无默认锁定，需主动点选） */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-text-muted">从预置快速添加：</span>
+            {PROVIDER_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setDrafts((prev) => [...prev, presetProviderDraft(p, prev)])}
+                className="px-2 py-1 rounded text-xs bg-bg-surface border border-border-default text-text-secondary hover:text-text-primary hover:border-brand/40 transition-colors"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
           {drafts.map((draft) => {
             const issue = issueByUid.get(draft.uid);
             return (

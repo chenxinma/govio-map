@@ -153,6 +153,109 @@ export const WSModelsConfigSchema = Type.Object(
 );
 export type WSModelsConfig = Static<typeof WSModelsConfigSchema>;
 
+// ── X34 onboarding（P1b）载荷构件 ────────────────────────────────────────────
+
+/** 图后端配置（init_graph 载荷；falkordb/networkx 只收参不建运维能力，见 X34 design.md §8） */
+export const WSOnboardingGraphConfigSchema = Type.Object(
+  {
+    backend: Type.Union([
+      Type.Literal("ladybug"),
+      Type.Literal("falkordb"),
+      Type.Literal("networkx"),
+    ]),
+    dbPath: Type.Optional(Type.String()),
+    host: Type.Optional(Type.String()),
+    port: Type.Optional(Type.String()),
+    graphName: Type.Optional(Type.String()),
+    gmlPath: Type.Optional(Type.String()),
+  },
+  { version: PROTOCOL_VERSION },
+);
+export type WSOnboardingGraphConfig = Static<typeof WSOnboardingGraphConfigSchema>;
+
+/**
+ * add_datasource 数据源载荷。password 只在「前端表单 ↔ 后端子进程 stdin」通道流转：
+ * 不进 LLM 上下文、日志、进程参数、环境变量（X34 秘密结构性路由）。
+ */
+export const WSOnboardingAddDatasourceSchema = Type.Object(
+  {
+    name: Type.String(),
+    url: Type.String(),
+    password: Type.Optional(Type.String()),
+    connectArgs: Type.Optional(Type.Record(Type.String(), Type.String())),
+    overwrite: Type.Optional(Type.Boolean()),
+  },
+  { version: PROTOCOL_VERSION },
+);
+export type WSOnboardingAddDatasource = Static<typeof WSOnboardingAddDatasourceSchema>;
+
+/** test_datasource 载荷（探测不落盘；凭据只在内存 + stdin 管道） */
+export const WSOnboardingTestDatasourceSchema = Type.Object(
+  {
+    url: Type.String(),
+    password: Type.Optional(Type.String()),
+    connectArgs: Type.Optional(Type.Record(Type.String(), Type.String())),
+    timeoutMs: Type.Optional(Type.Number()),
+  },
+  { version: PROTOCOL_VERSION },
+);
+export type WSOnboardingTestDatasource = Static<typeof WSOnboardingTestDatasourceSchema>;
+
+/** onboarding_action 判别联合载荷（8 种动作，`action` 为判别字段；必填字段由 schema 拒绝） */
+export const WSOnboardingActionPayloadSchema = Type.Union([
+  Type.Object({ action: Type.Literal("status") }, { version: PROTOCOL_VERSION }),
+  Type.Object(
+    { action: Type.Literal("init_graph"), config: WSOnboardingGraphConfigSchema },
+    { version: PROTOCOL_VERSION },
+  ),
+  Type.Object(
+    { action: Type.Literal("add_datasource"), datasource: WSOnboardingAddDatasourceSchema },
+    { version: PROTOCOL_VERSION },
+  ),
+  Type.Object(
+    { action: Type.Literal("remove_datasource"), name: Type.String() },
+    { version: PROTOCOL_VERSION },
+  ),
+  Type.Object(
+    { action: Type.Literal("test_datasource"), datasource: WSOnboardingTestDatasourceSchema },
+    { version: PROTOCOL_VERSION },
+  ),
+  Type.Object(
+    {
+      action: Type.Literal("test_model"),
+      provider: Type.String(),
+      modelId: Type.String(),
+    },
+    { version: PROTOCOL_VERSION },
+  ),
+  Type.Object(
+    {
+      action: Type.Literal("import_metadata"),
+      datasource: Type.String(),
+      schemas: Type.String(),
+      mode: Type.Optional(
+        Type.Union([
+          Type.Literal("update"),
+          Type.Literal("rebuild"),
+          Type.Literal("clear"),
+        ]),
+      ),
+    },
+    { version: PROTOCOL_VERSION },
+  ),
+  Type.Object({ action: Type.Literal("env_check") }, { version: PROTOCOL_VERSION }),
+]);
+export type WSOnboardingActionPayload = Static<typeof WSOnboardingActionPayloadSchema>;
+
+/** `status` 动作的 data 载荷形状（前端消费侧；与 server/onboarding.ts OnboardingStatus 对齐） */
+export interface WSOnboardingStatus {
+  cli: { installed: boolean; version: string | null };
+  graph: { initialized: boolean; backend: string | null; error?: string };
+  datasources: string[];
+  skillsReady: boolean;
+  modelsConfigured: boolean;
+}
+
 // ── 客户端 → 服务端 ─────────────────────────────────────────────────────────
 
 /** 构造带版本元数据的消息 schema（`$id: govio-ws/v1/<type>` + `version` 字段）。
@@ -175,7 +278,7 @@ function messageSchema<T extends string, P extends Record<string, TSchema>>(
 }
 
 /**
- * 客户端入站消息（20 种）。字段必需性与改造前 `WSMessage` 内联 interface 一致
+ * 客户端入站消息（21 种）。字段必需性与改造前 `WSMessage` 内联 interface 一致
  * （全部 Optional），schema 拒绝的是形状漂移（类型/字面量不符），不是缺字段——
  * 业务级必填（如 session_open.path）仍由 handler guard 保留原文案拦截。
  */
@@ -235,6 +338,10 @@ export const WSClientMessageSchema = Type.Union([
   messageSchema("canvas_fork_apply", Type.Object({
     forkId: Type.Optional(Type.String()),
   }), "T3.2 fork 续写：把分享 fork 暂存副本应用到当前会话（业务必填 forkId 由 handler guard 拦截）"),
+  messageSchema("onboarding_action", Type.Object({
+    requestId: Type.Optional(Type.String()),
+    payload: WSOnboardingActionPayloadSchema,
+  }), "X34 onboarding（P1b）：payload 判别联合驱动 status/init_graph/add_datasource/remove_datasource/test_datasource/test_model/import_metadata/env_check；凭据只在表单↔子进程 stdin 通道流转，不进 LLM/日志/argv/env"),
 ]);
 
 export type WSClientMessage = Static<typeof WSClientMessageSchema>;
@@ -245,7 +352,7 @@ export type WSClientMessageOf<T extends WSClientMessage["type"]> = Extract<WSCli
 // ── 服务端 → 客户端 ─────────────────────────────────────────────────────────
 
 /**
- * 服务端出站消息（28 种）。仅作编译期契约与测试基准；服务端不对自身消息做运行时
+ * 服务端出站消息（31 种）。仅作编译期契约与测试基准；服务端不对自身消息做运行时
  * 校验。开放载荷（args / nodes / edges / dataframes / info）刻意松绑，形状由消费端
  * 自校验（与改造前 useChat 的松散处理等价）。
  */
@@ -353,6 +460,25 @@ export const WSServerMessageSchema = Type.Union([
     /** 派生血缘（server/share.ts CanvasForkFrom 的线上形态；开放载荷容忍字段演进） */
     forkFrom: Type.Unknown(),
   }), "T3.2 fork 应用成功回执（canvas_restore 随后到达；只读分享视图不建立本连接）"),
+  messageSchema("secret_redirect", Type.Object({
+    message: Type.String(),
+    categories: Type.Array(Type.String()),
+    redactedSnippets: Type.Array(Type.String()),
+  }), "X34 秘密结构性路由：prompt/steer 命中凭据守卫被拦截（未发给大模型）；message 为可读引导（改走数据源管理表单），categories 为命中类别，redactedSnippets 仅含脱敏片段（[REDACTED]）"),
+  messageSchema("onboarding_progress", Type.Object({
+    requestId: Type.Optional(Type.String()),
+    action: Type.String(),
+    message: Type.String(),
+  }), "X34 onboarding（P1b）：长耗时动作（init_graph/import_metadata/env_check）进行中的进度消息（已脱敏）"),
+  messageSchema("onboarding_result", Type.Object({
+    requestId: Type.Optional(Type.String()),
+    action: Type.String(),
+    ok: Type.Boolean(),
+    data: Type.Optional(Type.Unknown()),
+    error: Type.Optional(Type.String()),
+    errorKind: Type.Optional(Type.String()),
+    hint: Type.Optional(Type.String()),
+  }), "X34 onboarding（P1b）：动作结果回执；ok=false 时 error 为可读原因（已脱敏）、errorKind 分类（dns/host/port/auth/timeout/other 等）、hint 为修复指引；data 为开放载荷（形状随 action 而异）"),
   messageSchema("error", Type.Object({
     message: Type.String(),
   }), "错误（协议拒绝/业务失败统一出口）"),

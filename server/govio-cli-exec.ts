@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { redactForLog, redactSecrets } from "./secret-guard.js";
 
 /**
  * 以**数组参数**方式调用 govio-cli（`execFile`，不经 shell）。
@@ -15,7 +16,8 @@ export function runGovioCliWithArgs(args: string[], timeoutMs = 30000): Promise<
   return new Promise((resolve, reject) => {
     execFile("govio-cli", args, { encoding: "utf-8", timeout: timeoutMs }, (error, stdout, stderr) => {
       if (error) {
-        console.error(`[govio-cli] args=${JSON.stringify(args)} failed:`, stderr || error.message);
+        // 日志脱敏（X34）：args 可内嵌 `--sql` 全文（含连接串/密码），错误信息也可能回显它。
+        console.error(`[govio-cli] args=${redactForLog(args)} failed:`, redactSecrets(stderr || error.message));
         reject(new Error(stderr?.trim() || error.message));
       } else {
         resolve(stdout);

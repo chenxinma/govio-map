@@ -5,11 +5,24 @@ import { listSessions, deleteSession, saveCanvas, loadCanvas, buildTranscript, a
 import { refreshCanvasFromRemote } from "./storage/canvas-storage.js";
 import { consumeStagedFork, readStagedFork } from "./share.js";
 import { buildInjectionContext, composePrompt, buildTraceEntry, recordInjectionTrace } from "./prompt-injection.js";
+import { detectSecretLeaks, redactSecrets, redactForLog, recordSecretGuardAudit, buildSecretRedirect } from "./secret-guard.js";
+import {
+  getOnboardingStatus,
+  initGraph,
+  addDatasource,
+  removeDatasource,
+  testDatasource,
+  testModel,
+  importMetadata,
+  runEnvCheck,
+  type OnboardingResult,
+  type TestModelRuntime,
+} from "./onboarding.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
 import { setSessionSemanticRefs, setSessionCaliberMetrics, clearSessionSemanticRefs, toSemanticRefs } from "./semantic-context.js";
 import { permissionManager } from "./permission-manager.js";
 import { isAgentConfigNeeded, completeAgentSetup } from "./backend.js";
-import { readModelsConfig, writeModelsConfig, createDefaultModelsConfig, maskModelsConfig, listAvailableModels } from "./models-config.js";
+import { readModelsConfig, createDefaultModelsConfig, maskModelsConfig, listAvailableModels } from "./models-config.js";
 import { isAllowedUpgrade } from "./security.js";
 import { parseWSClientMessage, type WSClientMessage, type WSClientMessageOf, type WSServerMessage } from "../src/types/ws-protocol.js";
 
@@ -66,7 +79,8 @@ export function setupWebSocket(server: import("http").Server) {
             break;
           case "tool_execution_end":
             console.log(`[ws] Tool execution end: ${event.toolName} success=${!event.isError}`);
-            console.debug(`[ws] Tool execution result (${event.toolName}):`, event.result);
+            // 日志脱敏（X34）：工具结果可能回显用户内容/凭据（如 config.yaml），落日志前过 redactSecrets。
+            console.debug(`[ws] Tool execution result (${event.toolName}):`, redactForLog(event.result));
             sendMsg(ws, { type: "tool_end", toolName: event.toolName, toolCallId: event.toolCallId, success: !event.isError });
             emitFlushed(flushGovioNodes());
             break;
@@ -141,13 +155,14 @@ export function setupWebSocket(server: import("http").Server) {
 
   async function handleSaveModelsConfig(ws: WebSocket, msg: WSClientMessageOf<"save_models_config">): Promise<void> {
     try {
-      if (msg.apiKey) {
-        // First-time setup path: frontend only supplies an API key.
-        await createDefaultModelsConfig(msg.apiKey);
-      } else if (msg.config) {
-        await writeModelsConfig(msg.config);
+      if (msg.config) {
+        // X34：向导/前端提交完整 provider 配置落盘（无默认供应商）；
+        // 掩码占位由 models-config unmaskFromDisk 还原，不覆盖真实 key。
+        await createDefaultModelsConfig(msg.config);
       } else {
-        sendMsg(ws, { type: "error", message: "save_models_config requires apiKey or config" });
+        // 旧 apiKey-only 通道已废弃（X34 删除 ConfigModal/DeepSeek 默认供应商后，
+        // 仅凭 apiKey 无法推导 provider 配置）
+        sendMsg(ws, { type: "error", message: "save_models_config requires config" });
         return;
       }
 
@@ -207,6 +222,20 @@ export function setupWebSocket(server: import("http").Server) {
     switch (msg.type) {
       case "prompt":
         if (msg.content) {
+          // X34 秘密结构性路由：凭据硬拦截必须先于注入组装与一切日志（含密内容绝不落日志）。
+          // 命中即拒绝执行，redirect 到 GUI 数据源表单（凭据加密存本机、不发往大模型）。
+          const leaks = detectSecretLeaks(msg.content);
+          if (leaks.length > 0) {
+            recordSecretGuardAudit({
+              sessionId: session.sessionId,
+              sessionFile: session.sessionManager.getSessionFile() ?? null,
+              kind: "prompt",
+              content: msg.content,
+              matches: leaks,
+            });
+            sendMsg(ws, buildSecretRedirect(leaks));
+            break;
+          }
           setCurrentReferencedNodes(msg.referencedNodes);
           // 注入（表限定名 + 图谱实体）需异步查图谱；makePrompt 内部永不 throw，
           // 图谱失败降级为现状行为（不阻断会话）。流式判定推迟到派发时刻。
@@ -233,6 +262,19 @@ export function setupWebSocket(server: import("http").Server) {
         break;
       case "steer":
         if (msg.content) {
+          // X34 秘密结构性路由：steer 同样进 LLM 上下文，拦截语义与 prompt 一致（最早处、先于一切日志）。
+          const leaks = detectSecretLeaks(msg.content);
+          if (leaks.length > 0) {
+            recordSecretGuardAudit({
+              sessionId: session.sessionId,
+              sessionFile: session.sessionManager.getSessionFile() ?? null,
+              kind: "steer",
+              content: msg.content,
+              matches: leaks,
+            });
+            sendMsg(ws, buildSecretRedirect(leaks));
+            break;
+          }
           // steer 属于本轮运行的补充指令（同一次注入上下文）→ **不清**口径引用，
           // 否则本轮后续产出的 SQL 会丢 semanticRefs（实测：steer 后 5s 生成的 SQL 无口径）。
           // 清理统一由 agent_end 负责。
@@ -262,6 +304,20 @@ export function setupWebSocket(server: import("http").Server) {
         break;
       case "followUp":
         if (msg.content) {
+          // X34 秘密结构性路由：followUp 同样进 LLM 上下文，拦截语义与 prompt/steer 一致
+          //（最早处、先于一切日志；命中即不入队，redirect 到数据源表单）。
+          const leaks = detectSecretLeaks(msg.content);
+          if (leaks.length > 0) {
+            recordSecretGuardAudit({
+              sessionId: session.sessionId,
+              sessionFile: session.sessionManager.getSessionFile() ?? null,
+              kind: "followUp",
+              content: msg.content,
+              matches: leaks,
+            });
+            sendMsg(ws, buildSecretRedirect(leaks));
+            break;
+          }
           // followUp 同样不注入，但属本轮补充 → 不清口径引用（统一由 agent_end 处理）
           const clientMsgId = msg.clientMsgId;
           session
@@ -524,6 +580,12 @@ export function setupWebSocket(server: import("http").Server) {
         });
         break;
       }
+      case "onboarding_action": {
+        // X34 onboarding（P1b）：凭据类 payload（add_datasource/test_datasource）绝不入日志，
+        // 只在 handleOnboardingAction → onboarding.ts → 子进程 stdin 管道内流转。
+        void handleOnboardingAction(msg, ws, ctx.session.modelRuntime);
+        break;
+      }
       default:
         assertNever(msg);
     }
@@ -545,6 +607,11 @@ export function setupWebSocket(server: import("http").Server) {
             switch (msg.type) {
               case "get_models_config":
                 await sendModelsConfig(ws);
+                break;
+              case "onboarding_action":
+                // 向导 Step0/2/3 在无 models.json 时也要可用（全新环境首启）；
+                // test_model 无会话时由 handleOnboardingAction 返回可读引导。
+                await handleOnboardingAction(msg, ws, null);
                 break;
               case "save_models_config": {
                 await handleSaveModelsConfig(ws, msg);
@@ -623,6 +690,88 @@ function assertNever(x: never): never {
   throw new Error(`unexpected client message: ${JSON.stringify(x)}`);
 }
 
+/**
+ * X34 onboarding（P1b）动作分发。纪律：凭据类载荷（password）绝不进任何日志/错误回显
+ * （onboarding.ts 内 wrapper 已脱敏，出口再过 redactSecrets 双保险）；长耗时动作
+ * （init_graph/import_metadata/env_check）边跑边发 onboarding_progress。
+ */
+async function handleOnboardingAction(
+  msg: WSClientMessageOf<"onboarding_action">,
+  ws: WebSocket,
+  modelRuntime: TestModelRuntime | null,
+): Promise<void> {
+  const { payload, requestId } = msg;
+  const sendResult = (result: OnboardingResult<unknown>) => {
+    sendMsg(ws, {
+      type: "onboarding_result",
+      requestId,
+      action: payload.action,
+      ok: result.ok,
+      data: result.ok ? result.data : undefined,
+      error: result.ok ? undefined : result.error,
+      errorKind: result.ok ? undefined : result.errorKind,
+      hint: result.ok ? undefined : result.hint,
+    });
+  };
+  const progress = (message: string) => {
+    sendMsg(ws, {
+      type: "onboarding_progress",
+      requestId,
+      action: payload.action,
+      message: redactSecrets(message),
+    });
+  };
+  try {
+    switch (payload.action) {
+      case "status":
+        sendResult({ ok: true, data: await getOnboardingStatus() });
+        break;
+      case "init_graph":
+        progress("正在初始化图库…");
+        sendResult(await initGraph(payload.config));
+        break;
+      case "add_datasource":
+        sendResult(await addDatasource(payload.datasource));
+        break;
+      case "remove_datasource":
+        sendResult(await removeDatasource(payload.name));
+        break;
+      case "test_datasource":
+        sendResult(await testDatasource(payload.datasource));
+        break;
+      case "test_model":
+        if (!modelRuntime) {
+          sendResult({
+            ok: false,
+            error: "请先完成模型配置后再测试模型",
+            hint: "先在向导 Step1 保存模型配置，再回到此处测试",
+          });
+          break;
+        }
+        sendResult(await testModel(modelRuntime, payload.provider, payload.modelId));
+        break;
+      case "import_metadata":
+        progress("开始导入元数据…");
+        sendResult(
+          await importMetadata(
+            { datasource: payload.datasource, schemas: payload.schemas, mode: payload.mode },
+            progress,
+          ),
+        );
+        break;
+      case "env_check":
+        sendResult(await runEnvCheck(progress));
+        break;
+    }
+  } catch (err) {
+    console.error(`[onboarding] ${payload.action} failed:`, redactForLog(err));
+    sendResult({
+      ok: false,
+      error: redactSecrets(err instanceof Error ? err.message : String(err)),
+    });
+  }
+}
+
 async function makePrompt(msg: WSClientMessageOf<"prompt">, session: SessionInstance): Promise<string> {
   const sessionFile = session.sessionManager.getSessionFile() ?? null;
   // ① 表事实：消息内 ref.data + canvas sidecar 节点数据（含 T2.0 标注字段）合并
@@ -647,7 +796,8 @@ async function makePrompt(msg: WSClientMessageOf<"prompt">, session: SessionInst
       buildTraceEntry(ctx, { sessionId: session.sessionId, sessionFile, content: msg.content ?? "" }),
     );
   }
-  console.debug("[ws] prompt: " + prompt);
+  // 日志脱敏（X34）：prompt 含用户内容，含密内容绝不能落日志（守卫已在上游拦截，此处双保险）。
+  console.debug("[ws] prompt: " + redactSecrets(prompt));
   return prompt;
 }
 

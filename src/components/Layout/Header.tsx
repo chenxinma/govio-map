@@ -1,13 +1,25 @@
-import { useState } from "react";
-import { Hexagon, Settings, Database } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Hexagon, Settings, Database, Compass } from "lucide-react";
 import SettingsModal from "../SettingsModal";
 import DataSourcesModal from "../DataSourcesModal";
 import { useChatContext } from "../../hooks/useChatContext";
 
-export default function Header() {
+interface HeaderProps {
+  /** 打开 X34 初始向导（首启检测与顶栏「初始向导」共用同一入口） */
+  onOpenWizard: () => void;
+}
+
+export default function Header({ onOpenWizard }: HeaderProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [showDataSources, setShowDataSources] = useState(false);
   const { getModelsConfig, saveModelsConfig, modelsConfig } = useChatContext();
+
+  // X34 secret_redirect 卡片「打开数据源表单」：聊天内按钮 → 数据源管理器
+  useEffect(() => {
+    const onOpen = () => setShowDataSources(true);
+    window.addEventListener("govio:open-datasources", onOpen);
+    return () => window.removeEventListener("govio:open-datasources", onOpen);
+  }, []);
 
   const openSettings = () => {
     getModelsConfig();
@@ -15,7 +27,7 @@ export default function Header() {
   };
 
   const handleSave = (config: Parameters<typeof saveModelsConfig>[0]) => {
-    saveModelsConfig(config);
+    void saveModelsConfig(config).catch((err) => console.error("[settings] save models config failed:", err));
     setShowSettings(false);
   };
 
@@ -31,6 +43,13 @@ export default function Header() {
         <span className="text-xs text-text-dim font-mono">v{__APP_VERSION__}</span>
       </div>
       <div className="flex items-center gap-3">
+        <button
+          onClick={onOpenWizard}
+          className="w-7 h-7 rounded-full bg-bg-surface border border-border-default flex items-center justify-center text-text-muted hover:text-text-primary hover:border-brand/40 transition-colors"
+          title="初始向导"
+        >
+          <Compass size={14} />
+        </button>
         <button
           onClick={() => setShowDataSources(true)}
           className="w-7 h-7 rounded-full bg-bg-surface border border-border-default flex items-center justify-center text-text-muted hover:text-text-primary hover:border-brand/40 transition-colors"

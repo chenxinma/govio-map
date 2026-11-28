@@ -584,9 +584,9 @@
     "x32-publish-verify-split": "https://github.com/chenxinma/govio-map/pull/56"
   },
   "verificationBaseline": {
-    "updatedAt": "2026-11-25T21:55:00+08:00",
+    "updatedAt": "2026-11-28T10:15:00+08:00",
     "source": "唯一事实源：CI 断言数看板（.github/workflows/scripts/assertion-dashboard.mjs）从这里读基线，脚本内不再硬编码数字（X23，解 X16 design.md 遗留 1）。",
-    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：X26 + PR #50（2026-11-17，合并态 main 62c46bc 独立复跑：脚本 671 逐项不变；vitest 30·452 → 33·476，其中 X26 贡献 +1 文件/+17 例（cors-preflight，30·452→31·469），PR #50「模型/思考档链路」贡献 +2 文件/+7 例（pending-ack 与 model-select）；UI 9·84 → 10·87，全部来自 PR #50 的 model-select.test.tsx。注意 verify:integration = 裸 vitest run，其文件/用例数**包含** tests/ui。PR #50 由用户的另一条交互会话直接实现并合并，task-plan 内暂无对应任务条目，仅有 docs/tasks/BUGFIX-model-thinking-sync.md。） 同步（2026-11-25，合并态 main 21a6138 独立复跑）：PR #52（X30 小地图点击跳转）贡献 +1 UI 文件/+8 例；PR #53（X27 整包校验和）贡献 +11 例（其中 3 例落在 tests/ui）⇒ integration 33·476 → **34·495**、UI 10·87 → **11·98**；脚本断言 671 逐项不变（92/71/119/148/39/54/77/13 + 58）。PR #54（X31 workflow）与 #55（X29 升版）不改断言。",
+    "note": "数字口径 = Windows 全量（npm run verify 全跑）。ubuntu 上 verify:cwd 的 caseDrift 闸门固定 SKIP 7 项，由 platformSkip 显式建模，不得把 SKIP 报成漂移。合并了改变断言数的 PR 后必须同步更新本对象（看板只 warn 不红，但漂移告警会污染 annotations）。 最近一次同步：X26 + PR #50（2026-11-17，合并态 main 62c46bc 独立复跑：脚本 671 逐项不变；vitest 30·452 → 33·476，其中 X26 贡献 +1 文件/+17 例（cors-preflight，30·452→31·469），PR #50「模型/思考档链路」贡献 +2 文件/+7 例（pending-ack 与 model-select）；UI 9·84 → 10·87，全部来自 PR #50 的 model-select.test.tsx。 同步（2026-11-28，X34 P3，feat/x34-onboarding-gui 全跑）：新增 verify:secrets-isolation（149）与 verify:onboarding（55）两项脚本断言，脚本合计 671 → **875**；vitest 计数随 X34 P2 上调：integration 34·495 → **35·500**、UI 11·98 → **12·103**（onboarding-wizard / settings 等向导用例）。注意 verify:integration = 裸 vitest run，其文件/用例数**包含** tests/ui。PR #50 由用户的另一条交互会话直接实现并合并，task-plan 内暂无对应任务条目，仅有 docs/tasks/BUGFIX-model-thinking-sync.md。） 同步（2026-11-25，合并态 main 21a6138 独立复跑）：PR #52（X30 小地图点击跳转）贡献 +1 UI 文件/+8 例；PR #53（X27 整包校验和）贡献 +11 例（其中 3 例落在 tests/ui）⇒ integration 33·476 → **34·495**、UI 10·87 → **11·98**；脚本断言 671 逐项不变（92/71/119/148/39/54/77/13 + 58）。PR #54（X31 workflow）与 #55（X29 升版）不改断言。",
     "scripts": {
       "verify:manifest": 92,
       "verify:rerun": 71,
@@ -596,9 +596,11 @@
       "verify:semantic-lineage": 54,
       "verify:caliber-conflict": 77,
       "verify:cwd": 13,
-      "verify:prompt-injection": 58
+      "verify:prompt-injection": 58,
+      "verify:secrets-isolation": 149,
+      "verify:onboarding": 55
     },
-    "scriptTotalWindows": 671,
+    "scriptTotalWindows": 875,
     "platformSkip": {
       "linux": {
         "verify:cwd": 7
@@ -606,12 +608,12 @@
     },
     "vitest": {
       "verify:integration": {
-        "files": 34,
-        "tests": 495
+        "files": 35,
+        "tests": 500
       },
       "verify:ui": {
-        "files": 11,
-        "tests": 98
+        "files": 12,
+        "tests": 103
       }
     }
   },

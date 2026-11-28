@@ -10,6 +10,7 @@ import type {
   WSObserveInfo,
   WSSessionListItem,
   WSPermissionDecision,
+  WSOnboardingActionPayload,
 } from "../types/ws-protocol";
 import { useCanvasStore } from "../store/canvas-store";
 import { foldTurnProcess, foldHistoryMessages } from "../utils/chat-fold";
@@ -67,11 +68,29 @@ export interface ChatMessage {
   isSteering?: boolean;
   /** Steering message still queued (not yet delivered to the model). */
   isQueued?: boolean;
+  /** X34 秘密拦截回执卡片（含脱敏摘要 + 「打开数据源表单」引导） */
+  secretRedirect?: SecretRedirectInfo;
 }
 
 export interface PendingPermission {
   requestId: string;
   command: string;
+}
+
+/** X34 secret_redirect 载荷（脱敏摘要 + 可读引导；被拦原文不进聊天态） */
+export interface SecretRedirectInfo {
+  message: string;
+  categories: string[];
+  redactedSnippets: string[];
+}
+
+/** X34 onboarding_action 回执（onboarding_result 的 {ok, data | error…} 载荷） */
+export interface OnboardingOutcome {
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+  errorKind?: string;
+  hint?: string;
 }
 
 let msgIdCounter = 0;
@@ -146,6 +165,17 @@ export function useChat() {
   // set_model / set_thinking_level 回执闸门（防选完立刻发送的竞态）。
   const acksRef = useRef(createPendingAck());
   const observeInfoResolveRef = useRef<{ resolve: (info: ObserveInfo) => void; reject: (err: Error) => void } | null>(null);
+  // X34：最近一次发出的用户气泡 id（secret_redirect 到达时把被拦原文替换为脱敏摘要）
+  const lastSentUserMsgIdRef = useRef<string | null>(null);
+  // X34：onboarding_action 请求-回执关联（requestId → resolver + 进度回调）
+  const pendingOnboardingRef = useRef(
+    new Map<string, { resolve: (o: OnboardingOutcome) => void; onProgress?: (m: string) => void }>()
+  );
+  const onboardSeqRef = useRef(0);
+  // X34：get_models_config 请求-回执关联（向导合并保存前取既有配置）
+  const modelsConfigFetchRef = useRef<{ resolve: (c: ModelsConfig) => void; reject: (err: Error) => void } | null>(null);
+  // X34：save_models_config 完成闸门（config_saved + 会话重启 session_ready 双信号）
+  const configSaveRef = useRef<{ resolve: () => void; reject: (err: Error) => void; gotSaved: boolean; gotReady: boolean } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttempts = useRef(0);
@@ -278,6 +308,17 @@ export function useChat() {
           case "session_ready": {
             setIsConnected(true);
             setNeedsConfig(false);
+            {
+              // X34：保存配置后的会话重启完成（新 ModelRuntime 就绪），放行 saveModelsConfig 等待方
+              const save = configSaveRef.current;
+              if (save) {
+                save.gotReady = true;
+                if (save.gotSaved) {
+                  configSaveRef.current = null;
+                  save.resolve();
+                }
+              }
+            }
             if (data.thinkingLevel) setThinkingLevel(data.thinkingLevel);
             // 服务端事实基准：会话当前模型（SDK 从会话记录恢复）。
             // 与之相同就不发多余的 set_model（避免覆盖会话历史选择 / 重置思考档）。
@@ -554,6 +595,11 @@ export function useChat() {
             if (data.config) {
               modelsConfigRef.current = data.config;
               setModelsConfig(data.config);
+              if (modelsConfigFetchRef.current) {
+                const { resolve } = modelsConfigFetchRef.current;
+                modelsConfigFetchRef.current = null;
+                resolve(data.config);
+              }
             }
             break;
 
@@ -585,12 +631,85 @@ export function useChat() {
             }
             break;
 
-          case "config_saved":
+          case "config_saved": {
             setNeedsConfig(false);
+            // X34：落盘成功；待会话重启（session_ready）后一并放行，避免向导
+            // 立刻发 test_model 时撞上旧 handler（无 ModelRuntime）的竞态
+            const save = configSaveRef.current;
+            if (save) {
+              save.gotSaved = true;
+              if (save.gotReady) {
+                configSaveRef.current = null;
+                save.resolve();
+              }
+            }
             break;
+          }
+
+          case "secret_redirect": {
+            // X34 秘密结构性路由收尾：被拦原文不得留在聊天态（只留脱敏摘要）。
+            // redactedSnippets 仅含 [REDACTED] 片段，可安全展示；顺带清掉 steer/followUp
+            // 气泡的待投递标记（被拦消息不会再有 steer_queued 回执）。
+            const info: SecretRedirectInfo = {
+              message: data.message,
+              categories: data.categories ?? [],
+              redactedSnippets: data.redactedSnippets ?? [],
+            };
+            setMessages((prev) => {
+              const next = [...prev];
+              const targetId = lastSentUserMsgIdRef.current;
+              const idx = targetId ? next.findIndex((m) => m.id === targetId) : -1;
+              if (idx >= 0) {
+                const snippetText = info.redactedSnippets.join("\n");
+                next[idx] = {
+                  ...next[idx],
+                  content: snippetText
+                    ? `（此消息包含凭据，已被拦截，未发送给大模型）\n${snippetText}`
+                    : "（此消息包含凭据，已被拦截，未发送给大模型）",
+                  isSteering: undefined,
+                  isQueued: undefined,
+                };
+              }
+              next.push({ id: nextMsgId(), role: "assistant", content: info.message, secretRedirect: info });
+              return next;
+            });
+            break;
+          }
+
+          case "onboarding_progress": {
+            const pending = data.requestId ? pendingOnboardingRef.current.get(data.requestId) : undefined;
+            pending?.onProgress?.(data.message);
+            break;
+          }
+
+          case "onboarding_result": {
+            const requestId = data.requestId;
+            const pending = requestId ? pendingOnboardingRef.current.get(requestId) : undefined;
+            if (requestId && pending) {
+              pendingOnboardingRef.current.delete(requestId);
+              pending.resolve({
+                ok: data.ok,
+                data: data.data,
+                error: data.error,
+                errorKind: data.errorKind,
+                hint: data.hint,
+              });
+            }
+            break;
+          }
 
           case "error":
             console.error("[chat] Server error:", data.message);
+            if (configSaveRef.current) {
+              const { reject } = configSaveRef.current;
+              configSaveRef.current = null;
+              reject(new Error(data.message || "save models config failed"));
+            }
+            if (modelsConfigFetchRef.current) {
+              const { reject } = modelsConfigFetchRef.current;
+              modelsConfigFetchRef.current = null;
+              reject(new Error(data.message || "get models config failed"));
+            }
             if (isObservingRef.current) {
               isObservingRef.current = false;
               setIsObserving(false);
@@ -627,6 +746,7 @@ export function useChat() {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
     const msgId = nextMsgId();
+    lastSentUserMsgIdRef.current = msgId;
     const isSteering = isStreamingRef.current;
     const userMsg: ChatMessage = {
       id: msgId,
@@ -807,17 +927,67 @@ export function useChat() {
     sendClientMessage(ws, { type: "get_models_config" });
   }, []);
 
-  const saveModelsConfig = useCallback((config: ModelsConfig) => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    sendClientMessage(ws, { type: "save_models_config", config });
+  /** X34：拉取模型配置（脱敏）并以 Promise 回传——向导合并保存前取既有 provider 用 */
+  const fetchModelsConfig = useCallback((): Promise<ModelsConfig> => {
+    return new Promise((resolve, reject) => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        reject(new Error("WebSocket not connected"));
+        return;
+      }
+      modelsConfigFetchRef.current = { resolve, reject };
+      sendClientMessage(ws, { type: "get_models_config" });
+      setTimeout(() => {
+        if (modelsConfigFetchRef.current) {
+          const { reject: timeoutReject } = modelsConfigFetchRef.current;
+          modelsConfigFetchRef.current = null;
+          timeoutReject(new Error("get_models_config timeout"));
+        }
+      }, 15000);
+    });
   }, []);
 
-  const saveApiKey = useCallback((apiKey: string) => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    sendClientMessage(ws, { type: "save_models_config", apiKey });
+  /**
+   * X34：保存模型配置并在「落盘 + 会话重启完成」后 resolve（向导保存并测试依赖此闸门，
+   * 防止 test_model 抢在新 ModelRuntime 就绪前到达旧 handler）。失败 reject；
+   * 60s 兜底放行（重启异常时不卡住向导 UI，后续 test_model 自有可读错误）。
+   */
+  const saveModelsConfig = useCallback((config: ModelsConfig): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        reject(new Error("WebSocket not connected"));
+        return;
+      }
+      configSaveRef.current = { resolve, reject, gotSaved: false, gotReady: false };
+      sendClientMessage(ws, { type: "save_models_config", config });
+      setTimeout(() => {
+        const pending = configSaveRef.current;
+        if (pending) {
+          configSaveRef.current = null;
+          pending.resolve();
+        }
+      }, 60000);
+    });
   }, []);
 
-  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission, needsConfig, modelsConfig, getModelsConfig, saveModelsConfig, saveApiKey, modelOptions, selectedModel, selectModel, thinkingLevel, selectThinkingLevel, observeInfo, hasMoreHistory, historyLoading, loadMoreHistory, sessions, fetchSessions, openSession, deleteSession };
+  /** X34 onboarding：发起 onboarding_action 并等待 onboarding_result（长耗时动作带进度回调） */
+  const onboardingAction = useCallback(
+    (payload: WSOnboardingActionPayload, onProgress?: (message: string) => void): Promise<OnboardingOutcome> => {
+      return new Promise((resolve) => {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          resolve({ ok: false, error: "WebSocket 未连接", errorKind: "disconnected", hint: "请检查后端是否已启动，然后重试" });
+          return;
+        }
+        onboardSeqRef.current += 1;
+        const requestId = `ob-${onboardSeqRef.current}`;
+        pendingOnboardingRef.current.set(requestId, { resolve, onProgress });
+        sendClientMessage(ws, { type: "onboarding_action", requestId, payload });
+      });
+    },
+    []
+  );
+
+  return { messages, isConnected, isStreaming, send, abort, observeList, isObserving, clearMessages, clearSession, pendingPermission, respondPermission, acceptAllPermission, needsConfig, modelsConfig, getModelsConfig, fetchModelsConfig, saveModelsConfig, onboardingAction, modelOptions, selectedModel, selectModel, thinkingLevel, selectThinkingLevel, observeInfo, hasMoreHistory, historyLoading, loadMoreHistory, sessions, fetchSessions, openSession, deleteSession };
 }

@@ -3,26 +3,10 @@ import { join } from "node:path";
 import { readFile, writeFile, mkdir, access, rename } from "node:fs/promises";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { ModelsConfig, ProviderConfig } from "../src/types/models-config.js";
+import type { ModelsConfig } from "../src/types/models-config.js";
 
 export const MODELS_CONFIG_DIR = join(homedir(), ".pi", "agent");
 export const MODELS_CONFIG_PATH = join(MODELS_CONFIG_DIR, "models.json");
-
-const DEFAULT_PROVIDER_NAME = "deepseek";
-
-function createDefaultConfig(apiKey: string): ModelsConfig {
-  const provider: ProviderConfig = {
-    baseUrl: "https://api.deepseek.com",
-    api: "openai-completions",
-    apiKey,
-    models: [{ id: "deepseek-v4-flash" }],
-  };
-  return {
-    providers: {
-      [DEFAULT_PROVIDER_NAME]: provider,
-    },
-  };
-}
 
 export async function modelsConfigExists(): Promise<boolean> {
   try {
@@ -37,8 +21,11 @@ export async function ensureModelsConfig(): Promise<boolean> {
   return modelsConfigExists();
 }
 
-export async function createDefaultModelsConfig(apiKey: string): Promise<void> {
-  const config = createDefaultConfig(apiKey);
+/**
+ * X34：首次配置落盘改为接收**向导提交的完整 provider 配置**（去 DeepSeek 硬编码，
+ * 无默认供应商）；掩码占位由 unmaskFromDisk 还原（与 writeModelsConfig 同语义）。
+ */
+export async function createDefaultModelsConfig(config: ModelsConfig): Promise<void> {
   await writeModelsConfig(config);
 }
 
@@ -130,5 +117,3 @@ export async function listAvailableModels(
     thinkingLevels: getSupportedThinkingLevels(m),
   }));
 }
-
-export { DEFAULT_PROVIDER_NAME };
