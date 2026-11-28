@@ -56,3 +56,54 @@ redactSecrets: 全部命中片段 -> [REDACTED]；audit 条目零明文（仅 SH
 - ~~followUp 绕行口~~ **已收口（P1a）**：followUp 已加与 prompt/steer 同款拦截（审计 kind=`followUp`）；已对照 WSClientMessage 全集核查 handleNormalMessage，followUp 之外无其它入 LLM 通道（design.md 遗留 7 已标记解决）。
 - 误伤/漏拦阈值（`密码为…` 等形态）待 `verify:secrets-isolation` 实测后调（遗留 2 裁决尾注）。
 - secret_redirect 前端收尾归 P2（遗留 8，保持开放）。
+
+## P1b onboarding 后端通道
+
+### 验证门槛（commit 前全绿，2026-11-28 本地跑）
+
+| 命令 | 结果 | 关键输出 |
+|---|---|---|
+| `npm run build` | ✅ | `tsc -b` 零错误；vite build ✓；`dist-server/cli.mjs` 261.0kb |
+| `npm run lint` | ✅ | eslint 零告警 |
+| `npm run verify` | ✅ | 全链 exit 0；`verify:caliber-conflict 77/77`、`verify-prompt-injection: 58/58`；`verify:integration` 34 文件 / 495 测试全过（含 ws-protocol 契约 21 客户端类 / 31 服务端类漂移防护）；`verify:ui` 11 文件 / 98 测试全过 |
+
+断言数变化：**测试用例数不变**（verify 脚本归 P3）；`tests/integration/ws-protocol.test.ts`
+计数断言 20→21 / 29→31 随契约变更同步，合法样本 +7 条（onboarding_action ×4、
+onboarding_progress/result ×3）。
+
+### onboarding.ts 冒烟（tsx 直连真实子进程，隔离 HOME，17 断言组全过）
+
+```
+PASS classifyDatasourceError 8 例（dns/port/auth/timeout/host/other 归类）
+PASS getOnboardingStatus 未初始化态: {"initialized":false,"error":"错误: 未找到配置文件，请先运行 govio-cli onboard"} cli=0.8.0 skills=true
+PASS initGraph 幂等 ×2 → ladybug（graph 段 upsert，重复执行不破破坏）
+PASS addDatasource（凭据零明文落盘：config.yaml 仅 encrypted_password + 脱敏 URL；
+     同名拒绝 hint 含「覆盖」；overwrite 更新通过）
+PASS testDatasource：duckdb 成功 / postgresql 坏主机 → dns 分类 + hint；
+     独立密码/URL 密码均不回显；探测不存在的 duckdb 文件不落盘
+PASS importMetadata 非 DuckDB → errorKind=unsupported + 聊天引导（无 Traceback）
+PASS testModel：not_found / ok（fake ModelRuntime）
+PASS removeDatasource + 状态收口 datasources=["sales"]（删除不存在 → hint 含「刷新」）
+```
+
+### 任务书实证事实复核（关键声明逐条验真）
+
+- wrapper 解释器：`C:/Users/Administrator/AppData/Roaming/uv/tools/govio/Scripts/python.exe`
+  `import govio.cli.onboard` ✓（add_datasource/remove_datasource/parse_cli_connect_args/
+  _attach_password 均在；签名对照安装包源码逐字确认，未凭记忆）。
+- 遗留 4 实测（隔离 HOME）：`govio-cli onboard --backend ladybug --remove-datasource NAME`
+  单次 save（「已配置图后端 + 已删除数据源」同输出）；数据源不存在 exit 1 且不写 config.yaml。
+- `govio-cli backend` 未初始化 → stderr「错误: 未找到配置文件，请先运行 govio-cli onboard」exit 1
+  （明确状态）；已初始化 → stdout 纯后端名（如 `ladybug`）。
+- sqlalchemy duckdb 方言会把 `duckdb://D:/...` 误解析（port 空串崩溃）→ wrapper 对 duckdb://
+  改走 `duckdb.connect(path, read_only=True)`。
+
+### 凭据通道（一句话）
+
+静态 python wrapper（无秘密）+ stdin JSON 管道 → govio `ConfigManager` 加密落盘，
+凭据零进入 LLM 上下文/日志/进程参数/环境变量，错误消息 wrapper 内 + Node 出口双重脱敏。
+
+### 遗留（详见 design.md §10）
+
+- test_model 只能测已保存的模型配置；向导 Step1 草稿态即时测试归 P2（遗留 9，保持开放）。
+- 连接错误分类为关键词启发式，阈值待 `verify:secrets-isolation`/可用性测试实测后调（遗留 2 尾注延续）。

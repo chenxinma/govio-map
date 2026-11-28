@@ -28,7 +28,9 @@
   - **实例**：PR #50（模型/思考档链路）新增 `get_available_models`/`available_models`/
     `set_thinking_level`/`thinking_level_set` 四类消息与 `session_ready` 的两个可选字段
     （`currentModel?`/`thinkingLevel?`）属**加法** ⇒ 保持 v1；T3.5（只读分享活视图）零 WS 变更 ⇒ 保持 v1；
-    X34（秘密结构性路由）新增服务端消息 `secret_redirect`（prompt/steer 命中凭据守卫的拦截回执）属**加法** ⇒ 保持 v1。
+    X34（秘密结构性路由）新增服务端消息 `secret_redirect`（prompt/steer 命中凭据守卫的拦截回执）属**加法** ⇒ 保持 v1；
+    X34 P1b（onboarding 后端通道）新增客户端 `onboarding_action` 与服务端 `onboarding_result`/
+    `onboarding_progress` 属**加法** ⇒ 保持 v1。
 - **T3.5（只读分享活视图）确认 `PROTOCOL_VERSION` 仍为 1，本任务零契约变更**：只读页的实时同步全部走
   HTTP 轮询（`GET /api/shares/<token>` + `If-None-Match` → 304，3s 间隔，失败退避 3→6→12→30s），
   **未新增也未修改任何 WS 消息类型**；`/share/*` 页面根本不建 `/ws` 连接（只读纪律的连接层）。
@@ -37,19 +39,20 @@
 
 ### 消息全集
 
-- 客户端 → 服务端（20 类）：`prompt`、`steer`、`followUp`、`abort`、`observe_list`、
+- 客户端 → 服务端（21 类）：`prompt`、`steer`、`followUp`、`abort`、`observe_list`、
   `observe_info`、`clear`、`tool_permission_response`、`permission_accept_all`、
   `get_models_config`、`save_models_config`、`set_model`、`get_available_models`、`set_thinking_level`、`session_list`、`session_open`、
-  `session_messages`、`session_delete`、`canvas_save`、`canvas_fork_apply`
-- 服务端 → 客户端（29 类）：`session_ready`、`canvas_restore`、`session_messages_result`、
+  `session_messages`、`session_delete`、`canvas_save`、`canvas_fork_apply`、`onboarding_action`
+- 服务端 → 客户端（31 类）：`session_ready`、`canvas_restore`、`session_messages_result`、
   `session_list_result`、`session_deleted`、`agent_start`、`agent_end`、`message_start`、
   `message_end`、`text_delta`、`thinking_delta`、`tool_start`、`tool_end`、`queue_update`、
   `steer_queued`、`followUp_queued`、`queue_cleared`、`tool_permission_request`、
   `observe_list_result`、`observe_info_result`、`models_config`、`available_models`、`config_saved`、
-  `config_required`、`model_set`、`thinking_level_set`、`fork_applied`、`secret_redirect`、`error`
+  `config_required`、`model_set`、`thinking_level_set`、`fork_applied`、`secret_redirect`、
+  `onboarding_result`、`onboarding_progress`、`error`
 
-开放载荷（`args` / `nodes` / `edges` / `dataframes` / `info`）在契约中松绑为 unknown/宽松
-对象，形状由消费端自校验。
+开放载荷（`args` / `nodes` / `edges` / `dataframes` / `info` / `onboarding_result.data`）在契约中松绑为
+unknown/宽松对象，形状由消费端自校验。
 
 ### 兼容策略（旧客户端 / 新消息的容忍规则）
 
@@ -296,3 +299,32 @@ REF:[{"billing": "{\"full_table_name\":\"billing\",...}"},{"df_query_1": "df_que
 | `thinking_level_set` | `{level}` | 思考深度设置成功回执（clamp 后生效值） |
 
 首次启动检测到无 models.json 时，服务端发送 `config_required`，前端显示配置弹窗。配置保存后服务端重启 Agent 会话并推送 `session_ready`。
+
+## Onboarding 协议（X34 P1b）
+
+首启向导/数据源管理器的后端通道。`onboarding_action` 的 `payload` 为判别联合
+（`action` 为判别字段）：`status`（onboard 状态）/ `init_graph`（图库初始化，默认 ladybug）/
+`add_datasource`（增改，`overwrite=true` 即更新）/ `remove_datasource` / `test_datasource`
+（探测**不落盘**）/ `test_model`（ModelRuntime 轻探测）/ `import_metadata`（一键导元数据，仅 DuckDB）/
+`env_check`（环境自检修复）。每条 action 回一条 `onboarding_result`（`requestId` 可选关联）；
+长耗时动作（`init_graph`/`import_metadata`/`env_check`）进行中穿插 `onboarding_progress`。
+
+**凭据纪律**：`add_datasource`/`test_datasource` 的 `password` 只在「前端表单 ↔ 后端子进程
+stdin 管道」内流转（静态 python wrapper 驱动 govio `ConfigManager` 加密落盘），绝不进入
+LLM 上下文、日志、进程参数、环境变量；错误/进度消息均已脱敏。
+
+### 客户端消息
+
+| 消息 | 参数 | 说明 |
+|---|---|---|
+| `onboarding_action` | `{requestId?, payload}` | payload 判别联合（8 种 action，见上） |
+
+### 服务端消息
+
+| 消息 | 载荷 | 说明 |
+|---|---|---|
+| `onboarding_result` | `{requestId?, action, ok, data?, error?, errorKind?, hint?}` | 动作结果；失败时 error=可读原因（已脱敏）、errorKind 分类（dns/host/port/auth/timeout/other 等）、hint=修复指引 |
+| `onboarding_progress` | `{requestId?, action, message}` | 长耗时动作进度（已脱敏） |
+
+无 models.json 的 `config_required` 状态下 `onboarding_action` 同样可用（向导 Step0/2/3 不依赖
+LLM 配置）；此时 `test_model` 返回可读引导（先保存模型配置）。

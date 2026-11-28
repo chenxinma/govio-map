@@ -83,6 +83,7 @@ vi.mock("../../server/models-config.js", () => ({
   readModelsConfig: vi.fn(async () => ({ providers: {} })),
   writeModelsConfig: vi.fn(async () => {}),
   createDefaultModelsConfig: vi.fn(async () => {}),
+  modelsConfigExists: vi.fn(async () => false),
   maskModelsConfig: (c: unknown) => c,
   listAvailableModels: vi.fn(async () => [{ provider: "mock", modelId: "mock-model", name: "Mock Model", thinkingLevels: ["off", "low", "medium", "high"] }]),
 }));

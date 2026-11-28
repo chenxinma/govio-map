@@ -6,6 +6,18 @@ import { refreshCanvasFromRemote } from "./storage/canvas-storage.js";
 import { consumeStagedFork, readStagedFork } from "./share.js";
 import { buildInjectionContext, composePrompt, buildTraceEntry, recordInjectionTrace } from "./prompt-injection.js";
 import { detectSecretLeaks, redactSecrets, redactForLog, recordSecretGuardAudit, buildSecretRedirect } from "./secret-guard.js";
+import {
+  getOnboardingStatus,
+  initGraph,
+  addDatasource,
+  removeDatasource,
+  testDatasource,
+  testModel,
+  importMetadata,
+  runEnvCheck,
+  type OnboardingResult,
+  type TestModelRuntime,
+} from "./onboarding.js";
 import { flushGovioNodes, emitFlushed, onGovioNodesFlushed, setCurrentReferencedNodes, clearCurrentReferencedNodes, type GovioNodeCreateEvent } from "./govio-node-queue.js";
 import { setSessionSemanticRefs, setSessionCaliberMetrics, clearSessionSemanticRefs, toSemanticRefs } from "./semantic-context.js";
 import { permissionManager } from "./permission-manager.js";
@@ -567,6 +579,12 @@ export function setupWebSocket(server: import("http").Server) {
         });
         break;
       }
+      case "onboarding_action": {
+        // X34 onboarding（P1b）：凭据类 payload（add_datasource/test_datasource）绝不入日志，
+        // 只在 handleOnboardingAction → onboarding.ts → 子进程 stdin 管道内流转。
+        void handleOnboardingAction(msg, ws, ctx.session.modelRuntime);
+        break;
+      }
       default:
         assertNever(msg);
     }
@@ -588,6 +606,11 @@ export function setupWebSocket(server: import("http").Server) {
             switch (msg.type) {
               case "get_models_config":
                 await sendModelsConfig(ws);
+                break;
+              case "onboarding_action":
+                // 向导 Step0/2/3 在无 models.json 时也要可用（全新环境首启）；
+                // test_model 无会话时由 handleOnboardingAction 返回可读引导。
+                await handleOnboardingAction(msg, ws, null);
                 break;
               case "save_models_config": {
                 await handleSaveModelsConfig(ws, msg);
@@ -664,6 +687,88 @@ function sendMsg(ws: WebSocket, msg: WSServerMessage): void {
 /** 编译期穷尽校验：WSClientMessage 新增消息类型必须在 handleNormalMessage 落 case，否则构建失败 */
 function assertNever(x: never): never {
   throw new Error(`unexpected client message: ${JSON.stringify(x)}`);
+}
+
+/**
+ * X34 onboarding（P1b）动作分发。纪律：凭据类载荷（password）绝不进任何日志/错误回显
+ * （onboarding.ts 内 wrapper 已脱敏，出口再过 redactSecrets 双保险）；长耗时动作
+ * （init_graph/import_metadata/env_check）边跑边发 onboarding_progress。
+ */
+async function handleOnboardingAction(
+  msg: WSClientMessageOf<"onboarding_action">,
+  ws: WebSocket,
+  modelRuntime: TestModelRuntime | null,
+): Promise<void> {
+  const { payload, requestId } = msg;
+  const sendResult = (result: OnboardingResult<unknown>) => {
+    sendMsg(ws, {
+      type: "onboarding_result",
+      requestId,
+      action: payload.action,
+      ok: result.ok,
+      data: result.ok ? result.data : undefined,
+      error: result.ok ? undefined : result.error,
+      errorKind: result.ok ? undefined : result.errorKind,
+      hint: result.ok ? undefined : result.hint,
+    });
+  };
+  const progress = (message: string) => {
+    sendMsg(ws, {
+      type: "onboarding_progress",
+      requestId,
+      action: payload.action,
+      message: redactSecrets(message),
+    });
+  };
+  try {
+    switch (payload.action) {
+      case "status":
+        sendResult({ ok: true, data: await getOnboardingStatus() });
+        break;
+      case "init_graph":
+        progress("正在初始化图库…");
+        sendResult(await initGraph(payload.config));
+        break;
+      case "add_datasource":
+        sendResult(await addDatasource(payload.datasource));
+        break;
+      case "remove_datasource":
+        sendResult(await removeDatasource(payload.name));
+        break;
+      case "test_datasource":
+        sendResult(await testDatasource(payload.datasource));
+        break;
+      case "test_model":
+        if (!modelRuntime) {
+          sendResult({
+            ok: false,
+            error: "请先完成模型配置后再测试模型",
+            hint: "先在向导 Step1 保存模型配置，再回到此处测试",
+          });
+          break;
+        }
+        sendResult(await testModel(modelRuntime, payload.provider, payload.modelId));
+        break;
+      case "import_metadata":
+        progress("开始导入元数据…");
+        sendResult(
+          await importMetadata(
+            { datasource: payload.datasource, schemas: payload.schemas, mode: payload.mode },
+            progress,
+          ),
+        );
+        break;
+      case "env_check":
+        sendResult(await runEnvCheck(progress));
+        break;
+    }
+  } catch (err) {
+    console.error(`[onboarding] ${payload.action} failed:`, redactForLog(err));
+    sendResult({
+      ok: false,
+      error: redactSecrets(err instanceof Error ? err.message : String(err)),
+    });
+  }
 }
 
 async function makePrompt(msg: WSClientMessageOf<"prompt">, session: SessionInstance): Promise<string> {
