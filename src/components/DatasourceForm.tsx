@@ -65,11 +65,11 @@ export default function DatasourceForm({
         <input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="duckdb:///D:/data/sales.duckdb 或 mysql+pymysql://user@host:3306/db"
+          placeholder="duckdb://D:/data/sales.duckdb 或 mysql+pymysql://user@host:3306/db"
           className={INPUT_CLASS}
         />
         <span className="text-[11px] text-text-dim">
-          账号写在 URL 的 user@host 段；密码单独填在下方（不要写进 URL）
+          账号写在 URL 的 user@host 段；密码单独填在下方（不要写进 URL）；Windows 盘符路径用双斜杠 duckdb://D:/...（三斜杠会被解析成 POSIX 路径导致访问失败）
         </span>
       </div>
 

@@ -9,7 +9,8 @@
  * 无秘密的操作（initGraph/removeDatasource/importMetadata/status）走常规 argv。
  *
  * 可测性（供 P3 verify:onboarding）：所有子进程交互经 `ExecFn` 注入（可 stub）；
- * 错误分类 `classifyDatasourceError` 为纯函数；不依赖模块级隐藏状态。
+ * 错误分类 `classifyDatasourceError` 与 URL 形态纠正 `normalizeDatasourceUrl` 为纯函数；
+ * 不依赖模块级隐藏状态。
  */
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -366,6 +367,18 @@ async function runGovioWrapper(
 
 // ── 数据源增删改（凭据走 stdin wrapper） ─────────────────────────────────────
 
+/**
+ * 数据源 URL 形态纠正（纯函数）：Windows 盘符路径统一为双斜杠 `duckdb://D:/...`——
+ * 三斜杠 `duckdb:///D:/...` 会被当成 POSIX 路径 `/D:/...` 报「目录不存在」
+ * （.pi/APPEND_SYSTEM.md「环境提示 → 路径」）。仅改写 `duckdb:` + 斜杠 + 盘符形态
+ * （盘符前多余斜杠收敛为 `//`，盘符后路径原样保留）；POSIX 绝对路径三斜杠
+ * （`duckdb:///home/x.db`）、UNC（`duckdb://server/share`）与其它 scheme 原样返回。
+ */
+export function normalizeDatasourceUrl(url: string): string {
+  const m = /^duckdb:\/+([A-Za-z]:)(.*)$/.exec(url);
+  return m ? `duckdb://${m[1]}${m[2]}` : url;
+}
+
 /** 添加数据源（update = 同名 + overwrite：单次 ConfigManager.save，保留备份语义，无中间态） */
 export async function addDatasource(
   payload: WSOnboardingAddDatasource,
@@ -375,7 +388,7 @@ export async function addDatasource(
     {
       op: "add_datasource",
       name: payload.name,
-      url: payload.url,
+      url: normalizeDatasourceUrl(payload.url),
       password: payload.password,
       connect_args: payload.connectArgs ?? {},
       overwrite: payload.overwrite ?? false,
@@ -440,7 +453,7 @@ function datasourceHint(message: string): string {
   if (message.includes("已存在")) return "同名数据源已存在：勾选「覆盖」以更新，或换一个名称";
   if (message.includes("不含用户信息")) return "该 URL 不含用户信息（user@host），无法单独传密码：请把账号写进 URL（如 mysql+pymysql://user@host:3306/db），或去掉密码字段";
   if (message.includes("已包含密码")) return "URL 中已含密码，请清空单独的密码字段（二选一）";
-  if (message.includes("URL 格式无效")) return "URL 需包含协议前缀，如 mysql+pymysql://user@host:3306/db 或 duckdb:///path/to/file.duckdb";
+  if (message.includes("URL 格式无效")) return "URL 需包含协议前缀，如 mysql+pymysql://user@host:3306/db 或 duckdb://D:/path/to/file.duckdb";
   return "请检查数据源名称与 URL 后重试";
 }
 
@@ -456,7 +469,7 @@ export async function testDatasource(
   const run = await runGovioWrapper(
     {
       op: "test_connection",
-      url: payload.url,
+      url: normalizeDatasourceUrl(payload.url),
       password: payload.password,
       connect_args: payload.connectArgs ?? {},
     },
@@ -560,7 +573,9 @@ export async function importMetadata(
   onProgress?: (message: string) => void,
   exec: ExecFn = defaultExec,
 ): Promise<OnboardingResult<{ mode: string }>> {
-  const args = ["meta", "import-schema", "--datasource", params.datasource, "--schemas", params.schemas];
+  // --datasource 常规传数据源名（URL 取自已存配置）；入口统一套用 normalizeDatasourceUrl：
+  // URL 形态输入同样纠正，名称原样通过。
+  const args = ["meta", "import-schema", "--datasource", normalizeDatasourceUrl(params.datasource), "--schemas", params.schemas];
   const mode = params.mode ?? "update";
   args.push("--mode", mode);
   const res = await exec("govio-cli", args, {

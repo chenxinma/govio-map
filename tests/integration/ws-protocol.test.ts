@@ -112,7 +112,7 @@ const clientSamples: WSClientMessage[] = [
   { type: "canvas_save", nodes: [{ id: "n1" }], edges: [{ id: "e1" }] },
   { type: "canvas_fork_apply", forkId: "0123456789abcdef0123456789abcdef" },
   { type: "onboarding_action", requestId: "ob-1", payload: { action: "status" } },
-  { type: "onboarding_action", payload: { action: "add_datasource", datasource: { name: "sales", url: "duckdb:///D:/data/sales.duckdb", password: "fake-pw", connectArgs: { timeout: "30" }, overwrite: true } } },
+  { type: "onboarding_action", payload: { action: "add_datasource", datasource: { name: "sales", url: "duckdb://D:/data/sales.duckdb", password: "fake-pw", connectArgs: { timeout: "30" }, overwrite: true } } },
   { type: "onboarding_action", payload: { action: "test_model", provider: "anthropic", modelId: "claude-x" } },
   { type: "onboarding_action", payload: { action: "import_metadata", datasource: "sales", schemas: "main", mode: "rebuild" } },
 ];

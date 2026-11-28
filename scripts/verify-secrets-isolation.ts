@@ -132,7 +132,7 @@ console.log("\n[B] detectSecretLeaks 负样本（无凭据不误伤）");
 
 const NEGATIVE_SAMPLES: string[] = [
   "duckdb://D:/Work/data/sales.duckdb",
-  "duckdb:///D:/govio/ontology.lbdb",
+  "duckdb://D:/govio/ontology.lbdb",
   "mysql+pymysql://app@10.0.0.5:3306/sales",
   "帮我统计一下上个月各地区的销售额，按销售额降序",
   "SELECT region, SUM(amount) FROM orders WHERE dt >= '2024-01-01' GROUP BY region",
